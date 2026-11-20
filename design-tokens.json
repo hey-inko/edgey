@@ -1,0 +1,258 @@
+{
+  "design": "Edgey",
+  "siteVersion": 3,
+  "sourceCommit": "ef47b7acec4444c00049e6ad3ac5916a6b24b442",
+  "defaultState": {
+    "theme": "dark",
+    "drawingView": "ink",
+    "proof": "prism"
+  },
+  "themes": {
+    "dark": {
+      "page": "#141617",
+      "text": "#F2F1EC",
+      "textMuted": "#B5B8B6",
+      "rule": "#404549",
+      "utilityPanel": "#282C2E",
+      "catalogue": "#17191B",
+      "productCard": "#1E2123",
+      "productPlate": "#292D30",
+      "field": "#1E2123",
+      "drawingPlate": "#1D2022",
+      "drawingControls": "#202325",
+      "primaryFill": "#EEEEE8",
+      "primaryText": "#191B1C",
+      "focus": "#9BE3F9",
+      "heroFullStop": "#A5A9AA",
+      "footer": "#191B1C",
+      "drawingContour": "#BBBFBA",
+      "drawingCoreFill": "#454643",
+      "drawingRidge": "#9C9E93",
+      "drawingCoreOutlineMode": "#323739",
+      "drawingDots": "#53595C"
+    },
+    "light": {
+      "page": "#FAFAF8",
+      "text": "#232627",
+      "textMuted": "#5B605E",
+      "rule": "#D1D3CD",
+      "utilityPanel": "#F2F3EF",
+      "catalogue": "#FDFDFB",
+      "productCard": "#FDFDFB",
+      "productPlate": "#F0F2EE",
+      "field": "#FAFBF8",
+      "drawingPlate": "#F5F6F2",
+      "drawingControls": "#F9FAF7",
+      "primaryFill": "#292C2B",
+      "primaryText": "#FFFFFF",
+      "focus": "#215DAD",
+      "heroFullStop": "#7A7F79",
+      "footer": "#F1F3EE",
+      "drawingContour": "#454A44",
+      "drawingCoreFill": "#E9E6DE",
+      "drawingRidge": "#858075",
+      "drawingCoreOutlineMode": "#F7F8F5",
+      "drawingDots": "#C8CEC5"
+    }
+  },
+  "type": {
+    "sans": [
+      "Inter",
+      "Helvetica Neue",
+      "Arial",
+      "sans-serif"
+    ],
+    "mono": [
+      "IBM Plex Mono",
+      "SFMono-Regular",
+      "Consolas",
+      "Liberation Mono",
+      "monospace"
+    ],
+    "body": {
+      "fontSize": "16px",
+      "lineHeight": 1.5
+    },
+    "h1": {
+      "fontSize": "clamp(3.6rem, 6.55vw, 7.35rem)",
+      "compactSize": "clamp(3.6rem, 11.5vw, 5.7rem)",
+      "weight": 480,
+      "lineHeight": 0.975,
+      "tracking": "-0.068em"
+    },
+    "h2": {
+      "fontSize": "clamp(2.05rem, 3.15vw, 3.35rem)",
+      "weight": 480,
+      "lineHeight": 1.07,
+      "tracking": "-0.064em"
+    },
+    "overline": {
+      "fontSize": "0.77rem",
+      "weight": 450,
+      "lineHeight": 1.4,
+      "tracking": "0.064em",
+      "case": "uppercase"
+    }
+  },
+  "layout": {
+    "frameMax": "1400px",
+    "desktopGutterTotal": "clamp(40px, 9vw, 160px)",
+    "heroColumns": [
+      "0.83fr",
+      "1.17fr"
+    ],
+    "heroGap": "clamp(30px, 5vw, 80px)",
+    "cardPlateAspectRatio": 1.94,
+    "baseRadius": "0",
+    "baseBorderWidth": "1px",
+    "mediaMaxWidthsPx": [
+      920,
+      740,
+      490,
+      370
+    ],
+    "wideOpticalAdjustmentMinWidthPx": 1550
+  },
+  "wordmark": {
+    "file": "assets/edgey-wire.svg",
+    "fragment": "edgey",
+    "viewBox": [
+      0,
+      0,
+      400,
+      141
+    ],
+    "frontStroke": 3.15,
+    "exposedRearStroke": 2.7,
+    "hiddenRearStroke": 1.7,
+    "dasharray": [
+      2.5,
+      4.8
+    ],
+    "hiddenOpacity": 0.8,
+    "rearOffset": [
+      6,
+      -8
+    ],
+    "matrix": [
+      1,
+      -0.022,
+      -0.105,
+      1,
+      16,
+      17
+    ],
+    "headerWidth": "clamp(126px, 11vw, 166px)",
+    "footerWidth": "clamp(205px, 28vw, 420px)"
+  },
+  "board": {
+    "file": "assets/corrugated-study.svg",
+    "viewBox": [
+      0,
+      0,
+      620,
+      411
+    ],
+    "displayAspectRatio": "620 / 370",
+    "faceMatrix": [
+      1.18,
+      -0.4,
+      0.7,
+      0.58,
+      48,
+      167
+    ],
+    "dotGridPitch": "17px",
+    "cornerTick": "9px",
+    "visibleContour": 1.15,
+    "hiddenDasharray": [
+      3.5,
+      4
+    ],
+    "axisDasharray": [
+      13,
+      4,
+      2,
+      4
+    ]
+  },
+  "controls": {
+    "primaryMinHeight": "44px",
+    "fieldHeight": "41px",
+    "hatchAngle": "127deg",
+    "primaryHatchPitch": "4px",
+    "primaryHatchStripe": "1px",
+    "primaryEndCapRest": "27px",
+    "primaryEndCapHoverDesktop": "31px",
+    "primaryEndCapRestAt370": "19px",
+    "focusRingWidth": "2px",
+    "cardLift": "-2px",
+    "cardTransition": "0.2s ease"
+  },
+  "texturePlacement": {
+    "productCardClip": "polygon(67% 0,100% 0,100% 100%,38% 100%)",
+    "footerCitronClip": "polygon(0 0,74% 0,55% 100%,0 100%)",
+    "proofPickerCrop": "center 52% / cover",
+    "vinylIndexCrop": "60% 50% / cover"
+  },
+  "proofs": [
+    {
+      "label": "Prism",
+      "key": "prism",
+      "asset": "assets/proof-prism.webp",
+      "sourcePixels": [
+        1100,
+        1100
+      ],
+      "cardProfiles": []
+    },
+    {
+      "label": "Coral",
+      "key": "coral",
+      "asset": "assets/proof-coral.webp",
+      "sourcePixels": [
+        640,
+        640
+      ],
+      "cardProfiles": [
+        "drag"
+      ]
+    },
+    {
+      "label": "Glacier",
+      "key": "cyan",
+      "asset": "assets/proof-cyan.webp",
+      "sourcePixels": [
+        640,
+        640
+      ],
+      "cardProfiles": [
+        "oscillating"
+      ]
+    },
+    {
+      "label": "Citron",
+      "key": "lime",
+      "asset": "assets/proof-lime.webp",
+      "sourcePixels": [
+        640,
+        640
+      ],
+      "cardProfiles": [
+        "cylinder"
+      ]
+    },
+    {
+      "label": "Violet",
+      "key": "violet",
+      "asset": "assets/proof-violet.webp",
+      "sourcePixels": [
+        610,
+        610
+      ],
+      "cardProfiles": [
+        "rotary"
+      ]
+    }
+  ]
+}
