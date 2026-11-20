@@ -1,3 +1,7 @@
+create or replace trigger provider_events_touch before update on public.provider_events
+for each row when (old.state is distinct from new.state or old.last_error is distinct from new.last_error)
+execute function private.touch_updated_at();
+
 alter table public.finance_retry_requests
   add column worker_token uuid,
   add column worker_until timestamptz,

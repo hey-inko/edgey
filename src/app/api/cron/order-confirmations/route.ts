@@ -12,10 +12,13 @@ export async function GET(request: Request) {
   const configurationError = emailConfigurationError();
   if (configurationError) return Response.json({ error: configurationError }, { status: 503 });
   try {
-    const [orders, finance] = await Promise.all([
+    const [orders, finance] = await Promise.allSettled([
       processOrderConfirmations(), drainFinanceRetries("confirmation", replayOrderConfirmation),
     ]);
-    return Response.json({ ...orders, finance }, { headers: { "Cache-Control": "no-store" } });
+    if (orders.status === "rejected") throw orders.reason;
+    return Response.json({
+      ...orders.value, finance: finance.status === "fulfilled" ? finance.value : { error: "Could not process finance retries." },
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ error: "Could not process order confirmations." }, { status: 500 });
   }

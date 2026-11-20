@@ -12,8 +12,13 @@ export async function GET(request: Request) {
   if (denied) return denied;
   try {
     getStripe();
-    const finance = await drainFinanceRetries("event", replayStripeEvent);
-    return Response.json({ ...await reconcileStripePayments(), finance }, { headers: { "Cache-Control": "no-store" } });
+    const [payments, finance] = await Promise.allSettled([
+      reconcileStripePayments(), drainFinanceRetries("event", replayStripeEvent),
+    ]);
+    if (payments.status === "rejected") throw payments.reason;
+    return Response.json({
+      ...payments.value, finance: finance.status === "fulfilled" ? finance.value : { error: "Could not process finance retries." },
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return Response.json({
       error: error instanceof PaymentConfigurationError ? error.message : "Stripe reconciliation did not complete.",

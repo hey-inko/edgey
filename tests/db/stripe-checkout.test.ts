@@ -384,7 +384,9 @@ it("finance replays only the currently requested failed version, and only one wo
     expect(await requestFinanceReplay(finance.id, { kind: "event", id: eventId })).toBe(true);
     await db.query("update public.provider_events set last_error = 'Fixture newer failure' where event_id = $1", [eventId]);
     expect(await drainFinanceRetries("event", replayStripeEvent)).toMatchObject({ claimed: 0 });
+    expect(await replayStripeEvent(eventId)).toBe("failed");
     expect(await requestFinanceReplay(finance.id, { kind: "event", id: eventId })).toBe(true);
+    expect(await replayStripeEvent(eventId)).toBe("failed");
     session.invoice = invoiceId;
     const results = await Promise.all([
       drainFinanceRetries("event", replayStripeEvent),
