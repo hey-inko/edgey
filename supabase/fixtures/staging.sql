@@ -39,11 +39,15 @@ update public.variants v set
   evidence_source = 'STAGING FIXTURE - not supplier evidence',
   supplier_name = 'Staging fixture supplier',
   supplier_part_number = 'FIXTURE-' || v.sku,
-  stock_on_hand = f.stock,
-  stock_reserved = 0,
   is_staging_fixture = true
 from fixture_variants f
 where v.sku = f.sku;
+
+select private.apply_stock_movement('receive', 'receive:staging-fixture:' || v.sku, v.id, f.stock, 0)
+from fixture_variants f join public.variants v on v.sku = f.sku
+where f.stock > 0 and not exists (
+  select 1 from public.stock_movements m where m.variant_id = v.id and m.kind = 'opening'
+);
 
 update public.compatibility c set
   verification_state = 'approved',
