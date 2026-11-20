@@ -236,6 +236,34 @@ test("a new price must be reviewed and uses a new attempt token", async ({ page 
   }
 });
 
+test("a dropped response does not lose the submitted attempt on reload", async ({ page }) => {
+  await addZ10(page);
+  await selection(page).getByRole("link", { name: "Go to checkout" }).click();
+  await fillAddress(page);
+  await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
+  const checkoutUrl = (url: URL) => url.pathname === "/checkout";
+  let lostToken: string | undefined;
+  await page.route(checkoutUrl, async (route) => {
+    const request = route.request();
+    if (request.method() === "POST") lostToken = request.postData()?.match(/"attemptToken":"([\da-f-]+)"/)?.[1];
+    if (lostToken) await route.abort();
+    else await route.continue();
+  });
+
+  const pay = page.getByRole("button", { name: "Continue to payment" });
+  await pay.click();
+  await expect(page.getByRole("status").filter({ hasText: "We couldn’t review your checkout." })).toBeVisible();
+  expect(lostToken).toBeTruthy();
+  await page.unroute(checkoutUrl);
+  await page.reload();
+  await fillAddress(page);
+  await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
+  const request = page.waitForRequest((request) => request.method() === "POST" && !!request.postData()?.includes("attemptToken"));
+  await pay.click();
+  expect((await request).postData()).toContain(`"attemptToken":"${lostToken}"`);
+  await expect(page.getByText("Payment is not connected in this build.")).toBeVisible();
+});
+
 for (const width of [1440, 390, 320]) {
   for (const theme of ["dark", "light"] as const) {
     test(`selection and checkout fit ${width}px in ${theme} with visible keyboard focus`, async ({ page }) => {

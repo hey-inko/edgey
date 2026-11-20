@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { checkoutReview } from "@/app/checkout/actions";
 import { forgetCheckoutAttempt, materialValue, prepareCheckoutToken } from "@/lib/checkout/attempt-token";
 import type { CheckoutFields } from "@/lib/checkout/types";
@@ -40,6 +40,7 @@ export function CheckoutReview() {
   const [result, setResult] = useState<{ lines: LineRequest[]; value: SubmitResult } | null>(null);
   const attempt = useRef<{ token: string; revision: number; quoteKey: string } | null>(null);
   const submitLock = useRef(false);
+  const form = useRef<HTMLFormElement>(null);
   const feedback = useRef<HTMLDivElement>(null);
   const summaryTitle = useRef<HTMLHeadingElement>(null);
   const parsedPostcode = parseUkPostcode(values.postcode);
@@ -56,6 +57,12 @@ export function CheckoutReview() {
     ? "Enter a full UK postcode, for example SW1A 1AA."
     : unsupported ? "Online delivery isn’t available for this postcode."
       : undefined;
+
+  useEffect(() => {
+    if (!response) return;
+    const firstError = response.status === "invalid" ? form.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]') : null;
+    (firstError ?? feedback.current)?.focus();
+  }, [response]);
 
   function change<K extends keyof CheckoutFields>(name: K, value: CheckoutFields[K]) {
     if (submitLock.current) return;
@@ -102,10 +109,9 @@ export function CheckoutReview() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitLock.current || pending || !priced || !basket || corrections.length || unsupported) return;
-    const form = event.currentTarget;
     submitLock.current = true;
     setSubmitting(true);
-    let invalid = false;
+    setResult(null);
     try {
       const { quoteKey } = priced;
       const current = attempt.current;
@@ -114,21 +120,16 @@ export function CheckoutReview() {
       if (!prepared.stillCurrent()) return;
       const { token } = prepared;
       attempt.current = { token, revision, quoteKey };
+      await prepared.remember();
+      if (!prepared.stillCurrent()) return;
       const value = await checkoutReview({ attemptToken: token, lines, fields: values, quoteKey: priced.quoteKey });
       if (!prepared.stillCurrent()) return;
-      if (value.status === "payment-unavailable") await prepared.remember();
-      if (!prepared.stillCurrent()) return;
-      invalid = value.status === "invalid";
       setResult({ lines, value });
     } catch {
       setResult({ lines, value: { status: "error", message: "We couldn’t review your checkout. Try again." } });
     } finally {
       submitLock.current = false;
       setSubmitting(false);
-      requestAnimationFrame(() => {
-        const firstError = invalid ? form.querySelector<HTMLInputElement>('input[aria-invalid="true"]') : null;
-        (firstError ?? feedback.current)?.focus();
-      });
     }
   }
 
@@ -192,7 +193,7 @@ export function CheckoutReview() {
         )}
       </section>
 
-      <form className="checkout-panel checkout-form" onSubmit={submit} noValidate>
+      <form ref={form} className="checkout-panel checkout-form" onSubmit={submit} noValidate>
         <fieldset>
           <legend>Business and contact</legend>
           {field("businessName")}
