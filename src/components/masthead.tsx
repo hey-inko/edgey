@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MastNav } from "./mast-nav";
+import { SelectionTrigger } from "./selection-dialog";
 import { ThemeSwitch } from "./theme-switch";
 import { Wordmark } from "./wordmark";
 
@@ -13,11 +14,7 @@ export function Masthead() {
         <MastNav />
         <div className="nav-tools">
           <ThemeSwitch />
-          <button type="button" className="tray-trigger" aria-label="Selection, 0 blades (not available yet)" disabled>
-            <span className="case-icon" aria-hidden="true" />
-            <span className="tray-label">Selection</span>
-            <span className="tray-count" aria-hidden="true">0</span>
-          </button>
+          <SelectionTrigger />
         </div>
       </div>
     </header>

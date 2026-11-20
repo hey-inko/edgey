@@ -51,7 +51,7 @@ test("the home keyboard path opens a shareable dialog and returns focus on Escap
   await expect(dialog).toContainText("£99.75");
   await expect(dialog).toContainText("£19.95 each · ex VAT");
   await expect(dialog).toContainText("£119.70 inc VAT (20%)");
-  await expect(dialog.getByRole("button", { name: "Add to selection" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Add to selection" })).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(page).toHaveURL(/\?q=3910-301$/);
   await expect(dialog).not.toBeVisible();
@@ -145,7 +145,7 @@ test("direct visits render a standalone verified product with per-blade price br
     offers: { url: baseURL + "/blades/edg-z10", priceCurrency: "GBP" },
   });
   expect(await page.content()).not.toMatch(/PRIV-Z10-ALIAS|500-9802|FIXTURE-EDG-Z10/);
-  const quantity = page.getByLabel("Other quantity");
+  const quantity = page.getByRole("spinbutton", { name: "Quantity", exact: true });
   await quantity.fill("0");
   await expect(quantity).toHaveAttribute("aria-invalid", "true");
   await expect(quantity).toHaveAccessibleDescription("Enter a positive whole quantity to see the total.");

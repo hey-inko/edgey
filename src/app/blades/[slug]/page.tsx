@@ -1,5 +1,6 @@
 import { getFamily } from "@/lib/catalogue/server";
 import { siteUrl } from "@/lib/catalogue/site-url";
+import { withVatPence } from "@/lib/catalogue/display-prices";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -45,6 +46,13 @@ export default async function ProductPage({ params, searchParams }: Props) {
   const family = await getFamily(slug);
   if (!family) notFound();
   const initialSku = queryValue(query.variant);
+  const grossBreaks = Object.fromEntries(family.variants.map(({ sku, prices }) => [
+    sku, {
+      oneToFour: withVatPence(prices.oneToFour),
+      fiveToNine: withVatPence(prices.fiveToNine),
+      tenPlus: withVatPence(prices.tenPlus),
+    },
+  ]));
 
   return (
     <main id="main-content" tabIndex={-1} className="frame product">
@@ -74,7 +82,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
           {family.media.drawing && <p className="fine figure-note">Drawing for identification. Not to scale.</p>}
         </div>
         <section className="product-panel" aria-label="Fit, availability and price">
-          <ProductDetail key={family.slug + (initialSku ?? "")} family={family} initialSku={initialSku} mode="page" />
+          <ProductDetail key={family.slug + (initialSku ?? "")} family={family} initialSku={initialSku} mode="page" grossBreaks={grossBreaks} />
         </section>
       </div>
 
