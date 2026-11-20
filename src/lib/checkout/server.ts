@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { getBuyerSession } from "@/lib/auth/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { prepareCheckoutAttempt } from "./attempt";
 import { quoteSelectionWith, type QuoteDependencies } from "./quote";
@@ -50,6 +51,12 @@ export function quoteCurrentSelection(lines: unknown, postcode?: unknown) {
   return quoteSelectionWith(lines, postcode, deps);
 }
 
-export function startCheckoutAttempt(input: unknown) {
-  return prepareCheckoutAttempt(input, deps);
+export async function startCheckoutAttempt(input: unknown) {
+  const attempt = await prepareCheckoutAttempt(input, deps);
+  if (attempt.status !== "ready") return attempt;
+  const session = await getBuyerSession();
+  if (session.status === "unverified") {
+    return { status: "error" as const, message: "We couldn’t verify your sign-in. Sign in again or reload checkout before continuing." };
+  }
+  return { ...attempt, buyerId: session.status === "verified" ? session.buyer.id : undefined };
 }

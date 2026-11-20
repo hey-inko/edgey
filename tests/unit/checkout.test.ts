@@ -6,6 +6,7 @@ import type { CheckoutFields, QuoteResult } from "@/lib/checkout/types";
 import type { LineRequest } from "@/lib/commerce";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/headers", () => ({ cookies: async () => ({ getAll: () => [] }) }));
 
 const z10Id = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
 const secondId = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";

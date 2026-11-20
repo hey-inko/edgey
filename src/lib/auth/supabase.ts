@@ -3,6 +3,7 @@ import { createServerClient, type CookieMethodsServer } from "@supabase/ssr";
 import type { Database } from "@/lib/supabase/database.types";
 
 export const authCookieName = "edgey-auth";
+export const signInTargetCookie = "edgey-sign-in-target";
 
 export function createAuthClient(cookies: CookieMethodsServer) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

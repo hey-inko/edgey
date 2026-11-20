@@ -15,6 +15,7 @@ export function SiteFooter() {
           <Link className="textlink" href="/enquiry">Enquiries</Link>
           <Link className="textlink" href="/sample-pack">Two-blade trial</Link>
           <Link className="textlink" href="/trade">Trade accounts</Link>
+          <Link className="textlink" href="/account">Account</Link>
           <Link className="textlink" href="#top">Back to top</Link>
         </nav>
       </div>
