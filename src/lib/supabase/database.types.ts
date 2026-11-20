@@ -1907,6 +1907,10 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      get_own_buyer_invoice_url: {
+        Args: { p_order_id: string };
+        Returns: string;
+      };
       set_buyer_invoice_url: {
         Args: { p_order_id: string; p_provider_invoice_id: string; p_url: string };
         Returns: boolean;

@@ -16,13 +16,20 @@ export const sessionClient = cache(async () => {
   });
 });
 
-export const getVerifiedBuyer = cache(async () => {
+export const getBuyerSession = cache(async () => {
   const jar = await cookies();
-  if (!jar.getAll().some(({ name }) => name === authCookieName || name.startsWith(authCookieName + "."))) return null;
+  if (!jar.getAll().some(({ name }) => name === authCookieName || name.startsWith(authCookieName + "."))) {
+    return { status: "guest" } as const;
+  }
   const client = await sessionClient();
   const { data: { user }, error } = await client.auth.getUser();
-  if (error || !user?.email || !user.email_confirmed_at || user.is_anonymous) return null;
-  return { id: user.id, email: user.email };
+  if (error || !user?.email || !user.email_confirmed_at || user.is_anonymous) return { status: "unverified" } as const;
+  return { status: "verified", buyer: { id: user.id, email: user.email } } as const;
+});
+
+export const getVerifiedBuyer = cache(async () => {
+  const session = await getBuyerSession();
+  return session.status === "verified" ? session.buyer : null;
 });
 
 export async function getOwnTradeApplicationStatus() {

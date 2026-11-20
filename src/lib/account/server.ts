@@ -24,10 +24,16 @@ export const getBuyerOrder = cache(async (id: string) => {
   const { data, error } = await (await sessionClient()).from("orders").select(
     `${orderSummary},goods_net_pence,delivery_net_pence,vat_pence,business_name,recipient_name,
     address_line1,address_line2,address_town,address_region,address_postcode,
-    delivery_service,promised_dispatch_date,estimated_delivery_date,dispatched_at,carrier,tracking_number,buyer_invoice_url,
+    delivery_service,promised_dispatch_date,estimated_delivery_date,dispatched_at,carrier,tracking_number,
     order_items(variant_id,sku,option_label,quantity,unit_price_pence,net_pence,gross_pence)`,
   ).eq("buyer_id", buyer.id).eq("id", id)
     .order("sku", { referencedTable: "order_items" }).maybeSingle();
   if (error) throw new Error("Order detail is unavailable.");
   return data;
 });
+
+export async function getBuyerInvoiceUrl(orderId: string) {
+  const { data, error } = await (await sessionClient()).rpc("get_own_buyer_invoice_url", { p_order_id: orderId });
+  if (error) return null;
+  return data;
+}

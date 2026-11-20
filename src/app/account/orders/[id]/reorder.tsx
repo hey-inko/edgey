@@ -42,9 +42,9 @@ export function Reorder({ orderId }: { orderId: string }) {
       <button type="button" className="primary" ref={start} disabled={!selection.hydrated || pending} onClick={check}>
         {pending ? "Checking stock and prices…" : "Reorder"}
       </button>
+      <p role="status" className={added ? styles.actions : "sr"}>{added ? "Your selection has been replaced." : ""}</p>
       {added && (
         <div className={styles.actions}>
-          <p role="status">Your selection has been replaced.</p>
           <button type="button" className="textlink" ref={open} onClick={(event) => selection.open(event.currentTarget)}>
             Open selection
           </button>
@@ -57,7 +57,7 @@ export function Reorder({ orderId }: { orderId: string }) {
           {review && (
             <>
               <p>These are today’s prices and available quantities. Nothing changes until you confirm.</p>
-              <ul className={styles.reviewLines}>
+              <ul className={styles.reviewLines} role="list">
                 {review.items.map((item) => (
                   <li key={item.id}>
                     <p className={styles.reference}>{item.sku}</p>

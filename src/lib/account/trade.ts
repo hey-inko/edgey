@@ -11,6 +11,6 @@ export type BuyerTradeOverview = {
   }[];
 };
 
-export type BuyerTradeReader = () => Promise<BuyerTradeOverview | null>;
+export type BuyerTradeReader = (buyerId: string) => Promise<BuyerTradeOverview | null>;
 
 export const getBuyerTradeOverview: BuyerTradeReader = async () => null;

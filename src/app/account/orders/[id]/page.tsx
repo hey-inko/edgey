@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { accountDate, fulfilmentLabels, paymentLabels } from "@/lib/account/display";
-import { getBuyerOrder } from "@/lib/account/server";
+import { accountDate, fulfilmentLabels, orderPaymentLabel } from "@/lib/account/display";
+import { getBuyerInvoiceUrl, getBuyerOrder } from "@/lib/account/server";
 import { getVerifiedBuyer } from "@/lib/auth/server";
 import { formatGbp } from "@/lib/commerce";
 import styles from "../../account.module.css";
@@ -12,6 +12,7 @@ export default async function AccountOrderPage({ params }: { params: Promise<{ i
   const order = await getBuyerOrder((await params).id);
   if (!order) notFound();
 
+  const invoiceUrl = await getBuyerInvoiceUrl(order.id);
   const showEstimate = order.dispatched_at || order.fulfilment_status === "picking" || order.fulfilment_status === "ready_to_pick";
   const address = [order.recipient_name, order.business_name, order.address_line1, order.address_line2,
     order.address_town, order.address_region, order.address_postcode, "United Kingdom"].filter(Boolean);
@@ -27,7 +28,7 @@ export default async function AccountOrderPage({ params }: { params: Promise<{ i
         </div>
         <dl className={styles.orderMeta}>
           <div><dt>Placed</dt><dd><time dateTime={order.created_at} className={styles.figure}>{accountDate(order.created_at)}</time></dd></div>
-          <div><dt>Payment</dt><dd>{paymentLabels[order.payment_status]}</dd></div>
+          <div><dt>Payment</dt><dd>{orderPaymentLabel(order.payment_status, order.fulfilment_status)}</dd></div>
           <div><dt>Fulfilment</dt><dd>{fulfilmentLabels[order.fulfilment_status]}</dd></div>
         </dl>
       </header>
@@ -35,7 +36,7 @@ export default async function AccountOrderPage({ params }: { params: Promise<{ i
       <div className={styles.columns}>
         <section aria-labelledby="items-title">
           <h2 id="items-title">Order items</h2>
-          <ul className={styles.lines}>
+          <ul className={styles.lines} role="list">
             {order.order_items.map((item) => (
               <li className={styles.panel} key={item.variant_id}>
                 <p className={styles.reference}>{item.sku}</p>
@@ -80,8 +81,8 @@ export default async function AccountOrderPage({ params }: { params: Promise<{ i
               )}
             </dl>
           </div>
-          {order.buyer_invoice_url && (
-            <p className={styles.actions}><a className="textlink" href={order.buyer_invoice_url} rel="noreferrer">View invoice</a></p>
+          {invoiceUrl && (
+            <p className={styles.actions}><a className="textlink" href={invoiceUrl} rel="noreferrer">View invoice</a></p>
           )}
         </section>
       </div>

@@ -14,7 +14,7 @@ let db: Client;
 beforeAll(async () => { db = await connectAccountDb(); });
 afterAll(() => db?.end());
 
-async function asRole(role: "anon" | "authenticated", buyerId: string | undefined, read: () => Promise<void>) {
+async function asRole(role: "anon" | "authenticated" | "service_role", buyerId: string | undefined, read: () => Promise<void>) {
   await db.query("savepoint account_role");
   try {
     await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role, sub: buyerId })]);
@@ -93,12 +93,22 @@ describe("buyer account database isolation", () => {
 
   test("buyers see only their own hosted invoice URL and cannot read provider invoice IDs or change order data", async () => {
     const { buyers, guest } = await seedBuyers();
-    const allOrderIds = [...buyers.map(({ order }) => order.id), guest.id];
+    await db.query("insert into public.staff_members (user_id, role) values ($1, 'finance')", [buyers[0].id]);
     for (const buyer of buyers) {
       await asRole("authenticated", buyer.id, async () => {
-        expect((await db.query(
-          "select id, buyer_invoice_url from public.orders where id = any($1::uuid[])", [allOrderIds],
-        )).rows).toEqual([{ id: buyer.order.id, buyer_invoice_url: buyer.order.invoiceUrl }]);
+        const invoice = async (id: string) =>
+          (await db.query("select public.get_own_buyer_invoice_url($1) as url", [id])).rows[0]?.url;
+        expect(await invoice(buyer.order.id)).toBe(buyer.order.invoiceUrl);
+        expect(await invoice(guest.id)).toBeNull();
+        expect(await invoice(randomUUID())).toBeNull();
+        for (const other of buyers.filter(({ id }) => id !== buyer.id)) {
+          expect(await invoice(other.order.id)).toBeNull();
+          if (buyer === buyers[0]) {
+            expect((await db.query("select id from public.orders where id = $1", [other.order.id])).rows)
+              .toEqual([{ id: other.order.id }]);
+          }
+        }
+        await rejects("select buyer_invoice_url from public.orders where id = $1", [buyer.order.id]);
         await rejects("select provider_invoice_id from public.orders where id = $1", [buyer.order.id]);
         await rejects("update public.orders set buyer_invoice_url = $2 where id = $1", [
           buyer.order.id, accountInvoiceUrl(randomUUID()),
@@ -117,6 +127,7 @@ describe("buyer account database isolation", () => {
     }
     await asRole("anon", undefined, async () => {
       await rejects("select buyer_invoice_url from public.orders");
+      await rejects("select public.get_own_buyer_invoice_url($1)", [guest.id]);
       await rejects("select public.set_buyer_invoice_url($1, $2, $3)", [
         guest.id, guest.providerInvoiceId, accountInvoiceUrl(randomUUID()),
       ]);
@@ -124,7 +135,7 @@ describe("buyer account database isolation", () => {
   });
 
   test("an invoice URL is optional and constrained to hosted HTTPS Stripe invoices", async () => {
-    const { buyers: [{ id, order }] } = await seedBuyers();
+    const { buyers: [{ id, order }], guest } = await seedBuyers();
     for (const url of [
       "http://invoice.stripe.com/i/invst_example",
       "https://invoice.stripe.com.example.com/i/invst_example",
@@ -136,8 +147,21 @@ describe("buyer account database isolation", () => {
     }
     await db.query("update public.orders set buyer_invoice_url = null where id = $1", [order.id]);
     await asRole("authenticated", id, async () => {
+      expect((await db.query("select public.get_own_buyer_invoice_url($1) as url", [order.id])).rows)
+        .toEqual([{ url: null }]);
+    });
+    await asRole("service_role", undefined, async () => {
+      const set = async (orderId: string, invoiceId: string | null, url: string | null) =>
+        (await db.query("select public.set_buyer_invoice_url($1, $2, $3) as linked", [orderId, invoiceId, url])).rows[0]?.linked;
+      expect(await set(order.id, guest.providerInvoiceId, order.invoiceUrl)).toBe(false);
+      expect(await set(guest.id, guest.providerInvoiceId, order.invoiceUrl)).toBe(false);
+      expect(await set(order.id, order.providerInvoiceId, null)).toBe(false);
+      await rejects("select public.set_buyer_invoice_url($1, $2, 'https://example.com/i/test')", [
+        order.id, order.providerInvoiceId,
+      ], "23514");
+      expect(await set(order.id, order.providerInvoiceId, order.invoiceUrl)).toBe(true);
       expect((await db.query("select buyer_invoice_url from public.orders where id = $1", [order.id])).rows)
-        .toEqual([{ buyer_invoice_url: null }]);
+        .toEqual([{ buyer_invoice_url: order.invoiceUrl }]);
     });
   });
 });

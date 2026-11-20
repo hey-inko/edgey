@@ -1,6 +1,9 @@
 import type { Database } from "@/lib/supabase/database.types";
 
-export const paymentLabels = {
+type OrderPaymentStatus = Database["public"]["Enums"]["order_payment_status"];
+type OrderFulfilmentStatus = Database["public"]["Enums"]["order_fulfilment_status"];
+
+const paymentLabels = {
   pending: "Payment pending",
   invoiced: "Invoiced",
   partially_paid: "Partially paid",
@@ -8,15 +11,19 @@ export const paymentLabels = {
   voided: "Payment voided",
   partially_refunded: "Partially refunded",
   refunded: "Refunded",
-} satisfies Record<Database["public"]["Enums"]["order_payment_status"], string>;
+} satisfies Record<OrderPaymentStatus, string>;
+
+export function orderPaymentLabel(payment: OrderPaymentStatus, fulfilment: OrderFulfilmentStatus) {
+  return payment === "pending" && fulfilment === "cancelled" ? "Payment not completed" : paymentLabels[payment];
+}
 
 export const fulfilmentLabels = {
-  awaiting_authorisation: "Awaiting authorisation",
+  awaiting_authorisation: "Awaiting confirmation",
   ready_to_pick: "Preparing for dispatch",
   picking: "Picking",
   dispatched: "Dispatched",
   cancelled: "Cancelled",
-} satisfies Record<Database["public"]["Enums"]["order_fulfilment_status"], string>;
+} satisfies Record<OrderFulfilmentStatus, string>;
 
 const londonDate = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",

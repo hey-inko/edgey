@@ -40,7 +40,9 @@ async function focusByKeyboard(page: Page, target: Locator) {
 }
 
 async function signIn(page: Page, email: string) {
-  await page.goto("/account");
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Footer" }).getByRole("link", { name: "Account", exact: true }).click();
+  await expect(page).toHaveURL(isAccount);
   await expect(signInHeading(page)).toBeVisible();
   await focusByKeyboard(page, emailField(page));
   await emailField(page).fill(email);
@@ -104,8 +106,14 @@ async function seedHistory(db: Client, email: string) {
       buyerId: null, email, state: "dispatched", createdAt: "2026-11-18T10:00:00Z",
       lines: [{ ...selected, quantity: 1, price: 2100 }],
     });
+    const applicationId = randomUUID();
+    await db.query(`
+      select public.submit_trade_application(
+        $1, $2, 'Test Buyer', 'Account Test Studio', '12 Test Lane', 'London', 'SW1A 1AA'
+      )
+    `, [applicationId, buyer.id]);
     await db.query("commit");
-    return { pending, refunded, dispatched, foreign, guest, foreignBuyer, catalogue };
+    return { pending, refunded, dispatched, foreign, guest, foreignBuyer, catalogue, applicationId };
   } catch (error) {
     await db.query("rollback");
     throw error;
@@ -119,6 +127,7 @@ async function cleanUpHistory(db: Client, email: string, fixture?: Awaited<Retur
       const { pending, refunded, dispatched, foreign, guest, catalogue } = fixture;
       const orders = [pending.id, refunded.id, dispatched.id, foreign.id, guest.id];
       const variants = [catalogue.available.id, catalogue.soldOut.id, catalogue.selected.id];
+      await db.query("delete from public.trade_applications where id = $1", [fixture.applicationId]);
       await db.query("delete from public.order_items where order_id = any($1::uuid[])", [orders]);
       await db.query("delete from public.orders where id = any($1::uuid[])", [orders]);
       await db.query("delete from public.stock_movements where variant_id = any($1::uuid[])", [variants]);
@@ -156,9 +165,10 @@ test("verified buyers can read and reorder their history without exposing foreig
     await test.step("Verify a buyer through the local email and shared Auth callback", async () => {
       await page.emulateMedia({ reducedMotion: "reduce" });
       await signIn(page, email);
+      await expect(page.getByText("No trade application submitted.")).toBeVisible();
     });
     fixture = await seedHistory(db, email);
-    const { pending, refunded, dispatched, foreign, guest, catalogue } = fixture;
+    const { pending, refunded, dispatched, foreign, guest, catalogue, applicationId, foreignBuyer } = fixture;
     const oldSelection = { [catalogue.selected.id]: 3 };
     await page.evaluate(({ key, oldSelection }) => localStorage.setItem(key, JSON.stringify(oldSelection)), {
       key: selectionKey, oldSelection,
@@ -172,11 +182,31 @@ test("verified buyers can read and reorder their history without exposing foreig
       await expect(displayed).toHaveText(ids);
       for (const [index, id] of ids.entries()) await expect(displayed.nth(index)).toHaveAttribute("href", orderPath(id));
       const rows = orders.getByRole("listitem");
-      const statuses = [["Paid", "Dispatched"], ["Payment pending", "Awaiting authorisation"], ["Refunded", "Cancelled"]];
+      const statuses = [["Paid", "Dispatched"], ["Payment pending", "Awaiting confirmation"], ["Refunded", "Cancelled"]];
       for (const [index, terms] of statuses.entries()) {
         for (const term of terms) await expect(rows.nth(index).getByText(term, { exact: true })).toBeVisible();
       }
       for (const id of [foreign.id, guest.id]) await expect(orderLink(page, id)).toHaveCount(0);
+    });
+
+    await test.step("Show the application decision without implying that approval grants credit", async () => {
+      const trade = page.getByRole("region", { name: "Trade account", exact: true });
+      await expect(trade.getByRole("heading", { name: "Application pending", exact: true })).toBeVisible();
+      await db.query(`
+        update public.trade_applications
+        set status = 'rejected', reviewed_at = now(), reviewed_by = $2
+        where id = $1
+      `, [applicationId, foreignBuyer.id]);
+      await page.reload();
+      await expect(trade.getByRole("heading", { name: "Application not approved", exact: true })).toBeVisible();
+      await expect(trade.getByText("Available credit", { exact: true })).toHaveCount(0);
+      await db.query("update public.trade_applications set status = 'approved' where id = $1", [applicationId]);
+      await page.reload();
+      await expect(trade.getByRole("heading", { name: "Application approved", exact: true })).toBeVisible();
+      for (const text of ["Available credit", "Outstanding balance", "Invoices and PO references"]) {
+        await expect(trade.getByText(text, { exact: true })).toBeVisible();
+      }
+      await expect(trade.getByText("Not available yet", { exact: true })).toHaveCount(3);
     });
 
     await test.step("Show the historical items, dispatch, tracking and invoice only where applicable", async () => {
@@ -215,6 +245,17 @@ test("verified buyers can read and reorder their history without exposing foreig
       }
     });
 
+    await test.step("A dual-role finance buyer still sees only their own buyer history", async () => {
+      await db.query(`
+        insert into public.staff_members (user_id, role) select id, 'finance' from auth.users where email = $1
+      `, [email]);
+      await page.goto("/account");
+      const orders = page.getByRole("region", { name: "Orders", exact: true });
+      await expect(orders.getByRole("link", { name: /^View order / })).toHaveText([dispatched.id, pending.id, refunded.id]);
+      expect((await page.goto(orderPath(foreign.id)))?.status()).toBe(404);
+      await expect(page.getByRole("link", { name: "View invoice" })).toHaveCount(0);
+    });
+
     const renders = process.env.EDGEY_ACCOUNT_RENDERS;
     if (renders) await mkdir(renders, { recursive: true });
     await test.step("List, detail and reorder fit with visible keyboard focus in both themes and at all three widths", async () => {
@@ -222,7 +263,9 @@ test("verified buyers can read and reorder their history without exposing foreig
         for (const viewport of viewports) {
           const { width } = viewport;
           const capture = async (view: string) => {
-            if (renders) await page.screenshot({ path: join(renders, `${view}-${theme}-${width}.png`), fullPage: true });
+            if (!renders) return;
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.screenshot({ path: join(renders, `${view}-${theme}-${width}.png`), fullPage: true });
           };
           await page.setViewportSize(viewport);
           await page.goto("/account");
@@ -249,6 +292,8 @@ test("verified buyers can read and reorder their history without exposing foreig
           await expect(reorderButton(page)).toBeFocused();
         }
       }
+      await page.addStyleTag({ content: "html { font-size: 125% }" });
+      await expectViewportFits(page, 320);
     });
 
     await test.step("Review current prices and stock; cancel preserves the selection and replace keeps only the available line", async () => {
@@ -264,7 +309,22 @@ test("verified buyers can read and reorder their history without exposing foreig
       const readSelection = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}"), selectionKey);
       expect(await readSelection()).toEqual(oldSelection);
       await reorderButton(page).press("Enter");
-      await preview.getByRole("button", { name: "Replace selection", exact: true }).press("Enter");
+      const replace = preview.getByRole("button", { name: "Replace selection", exact: true });
+      await expect(replace).toBeEnabled();
+      const otherTab = await page.context().newPage();
+      try {
+        await otherTab.goto("/account");
+        await otherTab.evaluate(({ key, id }) => localStorage.setItem(key, JSON.stringify({ [id]: 4 })), {
+          key: selectionKey, id: catalogue.selected.id,
+        });
+        await expect(replace).toBeDisabled();
+        await expect(preview.getByRole("status")).toContainText("Your selection changed");
+      } finally {
+        await otherTab.close();
+      }
+      await reorderButton(page).press("Enter");
+      await expect(replace).toBeEnabled();
+      await replace.press("Enter");
       await expect(preview).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Open selection, 2 blades" })).toBeVisible();
       expect(await readSelection()).toEqual({ [catalogue.available.id]: 2 });
@@ -291,6 +351,7 @@ test("verified buyers can read and reorder their history without exposing foreig
           await expect(signInHeading(page)).toBeVisible();
           await expectViewportFits(page, viewport.width);
           await focusByKeyboard(page, emailField(page));
+          if (renders) await page.screenshot({ path: join(renders, `signin-${theme}-${viewport.width}.png`), fullPage: true });
         }
       }
     });

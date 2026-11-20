@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { accountDate, fulfilmentLabels, paymentLabels } from "@/lib/account/display";
+import { accountDate, fulfilmentLabels, orderPaymentLabel } from "@/lib/account/display";
 import { listBuyerOrders } from "@/lib/account/server";
 import { getBuyerTradeOverview } from "@/lib/account/trade";
 import { sendAccountSignInLink, signOutOfAccount } from "@/lib/auth/actions";
@@ -47,8 +47,10 @@ export default async function AccountPage({ searchParams }: {
   }
 
   const page = typeof params.page === "string" && /^[1-9]\d{0,6}$/.test(params.page) ? Number(params.page) : 1;
-  const [history, status] = await Promise.all([listBuyerOrders(page), getOwnTradeApplicationStatus()]);
-  const trade = status === "approved" ? await getBuyerTradeOverview() : null;
+  const [orderResult, applicationResult] = await Promise.allSettled([listBuyerOrders(page), getOwnTradeApplicationStatus()]);
+  const history = orderResult.status === "fulfilled" ? orderResult.value : null;
+  const status = applicationResult.status === "fulfilled" ? applicationResult.value : null;
+  const trade = status === "approved" ? await getBuyerTradeOverview(buyer.id).catch(() => null) : null;
 
   return (
     <main id="main-content" tabIndex={-1} className={`frame ${styles.page}`}>
@@ -68,8 +70,10 @@ export default async function AccountPage({ searchParams }: {
       <div className={styles.columns}>
         <section aria-labelledby="orders-title">
           <h2 id="orders-title">Orders</h2>
-          {history?.orders.length ? (
-            <ol className={styles.orderList}>
+          {orderResult.status === "rejected" ? (
+            <p className={styles.panel}>We couldn’t load your orders. <Link className="textlink" href="/account">Try again</Link></p>
+          ) : history?.orders.length ? (
+            <ol className={styles.orderList} role="list">
               {history.orders.map((order) => (
                 <li key={order.id} className={styles.orderRow}>
                   <div className={styles.orderHeader}>
@@ -80,7 +84,7 @@ export default async function AccountPage({ searchParams }: {
                     <time dateTime={order.created_at} className={styles.figure}>{accountDate(order.created_at)}</time>
                   </div>
                   <dl className={styles.facts}>
-                    <div><dt>Payment</dt><dd>{paymentLabels[order.payment_status]}</dd></div>
+                    <div><dt>Payment</dt><dd>{orderPaymentLabel(order.payment_status, order.fulfilment_status)}</dd></div>
                     <div><dt>Fulfilment</dt><dd>{fulfilmentLabels[order.fulfilment_status]}</dd></div>
                     <div className={styles.orderTotal}><dt>Total inc VAT</dt><dd className={styles.figure}>{formatGbp(order.gross_pence)}</dd></div>
                   </dl>
@@ -104,7 +108,9 @@ export default async function AccountPage({ searchParams }: {
         <section aria-labelledby="trade-title">
           <h2 id="trade-title">Trade account</h2>
           <div className={styles.panel}>
-            {status ? (
+            {applicationResult.status === "rejected" ? (
+              <p>We couldn’t load your trade application status. Try again shortly.</p>
+            ) : status ? (
               <>
                 <h3>{applicationStatus[status].title}</h3>
                 {(status !== "approved" || !trade) && <p className="muted">{applicationStatus[status].detail}</p>}
@@ -123,7 +129,7 @@ export default async function AccountPage({ searchParams }: {
                   <dt>Invoices and PO references</dt>
                   <dd>{trade ? (
                     trade.invoices.length ? (
-                      <ul className={styles.invoiceList}>
+                      <ul className={styles.invoiceList} role="list">
                         {trade.invoices.map(({ orderId, poReference }) => (
                           <li key={orderId}><Link className="textlink" href={`/account/orders/${orderId}`}>Order {orderId}</Link> · PO {poReference}</li>
                         ))}

@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
-import { accountDate } from "@/lib/account/display";
+import { accountDate, orderPaymentLabel } from "@/lib/account/display";
 import { compareReorder } from "@/lib/account/reorder";
 import { quoteSelectionWith } from "@/lib/checkout/quote";
 import { startCheckoutAttempt } from "@/lib/checkout/server";
-import { getVerifiedBuyer } from "@/lib/auth/server";
+import { getBuyerSession } from "@/lib/auth/server";
 import { prepareCheckoutAttempt } from "@/lib/checkout/attempt";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/auth/server", () => ({ getVerifiedBuyer: vi.fn() }));
+vi.mock("@/lib/auth/server", () => ({ getBuyerSession: vi.fn() }));
 vi.mock("@/lib/checkout/attempt", () => ({ prepareCheckoutAttempt: vi.fn() }));
 
 const stocked = "57f4a2c1-ec92-476f-b362-616793ede231";
@@ -17,6 +17,12 @@ describe("buyer account", () => {
   test("uses London dates for UTC order and dispatch instants", () => {
     expect(accountDate("2026-07-14T23:20:00.000Z")).toBe("15 Jul 2026");
     expect(accountDate("2026-07-14")).toBe("14 Jul 2026");
+  });
+
+  test("distinguishes an abandoned checkout from a pending payment", () => {
+    expect(orderPaymentLabel("pending", "cancelled")).toBe("Payment not completed");
+    expect(orderPaymentLabel("pending", "awaiting_authorisation")).toBe("Payment pending");
+    expect(orderPaymentLabel("refunded", "cancelled")).toBe("Refunded");
   });
 
   test("previews a reorder at current stock and the quantity-adjusted price tier", async () => {
@@ -52,10 +58,12 @@ describe("buyer account", () => {
     vi.mocked(prepareCheckoutAttempt).mockResolvedValue(ready as Awaited<ReturnType<typeof prepareCheckoutAttempt>>);
     const input = { buyerId: unavailable, fields: orderInput.contact };
 
-    vi.mocked(getVerifiedBuyer).mockResolvedValueOnce({ id: stocked, email: "buyer@example.com" });
+    vi.mocked(getBuyerSession).mockResolvedValueOnce({ status: "verified", buyer: { id: stocked, email: "buyer@example.com" } });
     expect(await startCheckoutAttempt(input)).toEqual({ ...ready, buyerId: stocked });
-    vi.mocked(getVerifiedBuyer).mockResolvedValueOnce(null);
+    vi.mocked(getBuyerSession).mockResolvedValueOnce({ status: "guest" });
     expect((await startCheckoutAttempt(input))).toEqual({ ...ready, buyerId: undefined });
+    vi.mocked(getBuyerSession).mockResolvedValueOnce({ status: "unverified" });
+    expect(await startCheckoutAttempt(input)).toMatchObject({ status: "error", message: expect.stringMatching(/Sign in again/) });
     expect(orderInput).not.toHaveProperty("buyerId");
   });
 });
