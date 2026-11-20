@@ -1,0 +1,96 @@
+.pageHeader {
+  margin-block-end: 1.65rem;
+}
+
+.form {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.field {
+  display: grid;
+  gap: .25rem;
+  min-width: 0;
+  font-size: .92rem;
+}
+
+.control {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--edgey-field-height);
+  padding: .5rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--edgey-field);
+  color: inherit;
+  font: inherit;
+}
+
+textarea.control {
+  resize: vertical;
+}
+
+.field [aria-invalid="true"]:not(select),
+.field :global(.select-field):has(select[aria-invalid="true"]) {
+  border-color: var(--muted);
+}
+
+.field :focus-visible {
+  outline-offset: 1px;
+}
+
+.fieldError {
+  font-weight: 600;
+}
+
+.submit {
+  justify-self: start;
+  max-width: 100%;
+  margin-block-start: .25rem;
+}
+
+.trap {
+  position: absolute;
+  inset-inline-start: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
+.notice {
+  margin-block-end: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  overflow-wrap: anywhere;
+}
+
+.notice h2 {
+  margin-block-end: .5rem;
+  font-size: 1.25rem;
+  letter-spacing: -.03em;
+}
+
+.notice h2:focus {
+  outline: var(--edgey-focus-width) solid var(--edgey-focus);
+  outline-offset: 4px;
+}
+
+.notice ul {
+  margin-block: .5rem 0;
+  padding-inline-start: 1.25rem;
+}
+
+.signedIn {
+  margin-block: 1.5rem 0;
+  overflow-wrap: anywhere;
+}
+
+.signedIn p {
+  margin-block-end: .5rem;
+}

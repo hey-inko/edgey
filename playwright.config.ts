@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
@@ -11,7 +12,7 @@ export default defineConfig({
   webServer: {
     command: `pnpm start --hostname 127.0.0.1 --port ${port}`,
     url: baseURL,
-    env: { NEXT_PUBLIC_SITE_URL: baseURL },
+    env: { NEXT_PUBLIC_SITE_URL: baseURL, EDGEY_REQUEST_HASH_KEY: randomBytes(32).toString("hex") },
     reuseExistingServer: false,
   },
 });

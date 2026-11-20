@@ -1,5 +1,6 @@
 // Writes .env.local from the running local Supabase stack.
 import { execFileSync } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { writeFileSync } from "node:fs";
 
 const output = execFileSync("pnpm", ["exec", "supabase", "status", "-o", "env"], { encoding: "utf8" });
@@ -18,6 +19,7 @@ writeFileSync(
     "NEXT_PUBLIC_SUPABASE_URL=" + status.API_URL,
     "NEXT_PUBLIC_SUPABASE_ANON_KEY=" + anonKey,
     "SUPABASE_SERVICE_ROLE_KEY=" + serviceRoleKey,
+    "EDGEY_REQUEST_HASH_KEY=" + createHmac("sha256", serviceRoleKey).update("edgey-local-request-hash").digest("hex"),
     "SUPABASE_DB_URL=" + status.DB_URL,
     "",
   ].join("\n"),

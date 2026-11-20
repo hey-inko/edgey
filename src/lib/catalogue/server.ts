@@ -5,6 +5,7 @@ import {
   type Family, type Media, type SearchHit,
 } from "./index";
 import { publicClient } from "./supabase";
+import { recordFinderSearch } from "@/lib/requests/finder-events";
 
 type VariantRow = {
   id: string;
@@ -153,5 +154,7 @@ const searchBlades = cache(async (query: string): Promise<SearchHit[]> => {
 export async function loadCatalogue(filters: CatalogueFilters) {
   const query = filters.q.trim();
   const [families, hits] = await Promise.all([listFamilies(), query ? searchBlades(query) : null]);
-  return buildCatalogueView(families, hits, filters);
+  const view = buildCatalogueView(families, hits, filters);
+  if (hits) await recordFinderSearch(query, hits, view);
+  return view;
 }
