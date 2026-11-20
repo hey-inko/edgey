@@ -15,6 +15,10 @@ export function assertSessionMatches(order: Order, session: Stripe.Checkout.Sess
   }
 }
 
+export function sessionAmountMatches(order: Order, session: Stripe.Checkout.Session) {
+  return session.amount_total === order.gross_pence && session.currency?.toUpperCase() === order.currency;
+}
+
 export function stripeId<T extends { id: string }>(value: string | T | null | undefined) {
   return typeof value === "string" ? value : value?.id;
 }

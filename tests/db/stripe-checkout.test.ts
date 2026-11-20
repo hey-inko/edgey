@@ -207,6 +207,21 @@ it("recovers a timed-out create by discovering the same provider session before 
   expect(sessions.size).toBe(1);
 });
 
+it("never redirects to an open Stripe session with a different total", async () => {
+  provider.create.mockImplementationOnce((params, options) => {
+    const session = createSession(params, options);
+    session.amount_total = 1;
+    return session;
+  });
+  const response = await submit(await checkoutInput(await makeVariant(1), 1));
+  expect(response.status).toBe(409);
+  expect(await response.json()).not.toHaveProperty("url");
+  const [session] = sessions.values();
+  expect(await state(session!.client_reference_id!)).toMatchObject({
+    reservation_state: "held", stripe_reconciliation_error: expect.stringMatching(/amount or currency/),
+  });
+});
+
 it("creates one reservation for two simultaneous requests using the same attempt", async () => {
   const input = await checkoutInput(await makeVariant(1), 1);
   const responses = await Promise.all([submit(input), submit(input)]);

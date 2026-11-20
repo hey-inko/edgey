@@ -3,8 +3,8 @@ import type Stripe from "stripe";
 import { calculateDispatchPromise, STANDARD_DELIVERY_QUOTE } from "@/lib/commerce";
 import { confirmPayment, releaseReservation } from "@/lib/orders";
 import { bindVerifiedSession } from "./recovery";
-import { assertSessionMatches, PaymentReviewError, stripeId } from "./session-identity";
-import type { Order } from "./store";
+import { assertSessionMatches, PaymentReviewError, sessionAmountMatches, stripeId } from "./session-identity";
+import { paymentStore, type Order } from "./store";
 
 export async function reconcileSession(
   stripe: Stripe,
@@ -65,7 +65,7 @@ export async function reconcileSession(
         ? "Captured Stripe amount or currency does not match the order."
         : "Stripe captured payment after the reservation was released.");
     }
-    return { ...order, ...updated };
+    return clearReconciliationError({ ...order, ...updated });
   }
 
   const potentiallyPayable = intent && !["canceled", "requires_payment_method"].includes(intent.status);
@@ -81,11 +81,22 @@ export async function reconcileSession(
       operationKey: `stripe-closed:${session.id}`,
       reason: "closed",
     });
-    return { ...order, ...updated };
+    return clearReconciliationError({ ...order, ...updated });
   }
 
+  if (session.status === "open" && !sessionAmountMatches(order, session)) {
+    throw new PaymentReviewError("Open Stripe Checkout amount or currency does not match the order.");
+  }
   if (!order.checkout_session_id && order.fulfilment_status === "awaiting_authorisation") {
     return { ...order, ...await bindVerifiedSession(order, session) };
   }
   return order;
+}
+
+async function clearReconciliationError(order: Order): Promise<Order> {
+  if (!order.stripe_reconciliation_error || order.fulfilment_status === "awaiting_authorisation") return order;
+  const { data, error } = await paymentStore().from("orders").update({ stripe_reconciliation_error: null })
+    .eq("id", order.id).eq("updated_at", order.updated_at).select("*").maybeSingle();
+  if (error) throw error;
+  return data ?? order;
 }

@@ -36,7 +36,7 @@ export async function readCheckoutSuccess(sessionId: string): Promise<CheckoutSu
     if (error instanceof PaymentReviewError || (error as { statusCode?: number })?.statusCode === 404) return null;
     throw error;
   }
-  if (order.payment_review_reason || order.stripe_reconciliation_error) return { kind: "review" };
+  if (order.payment_review_reason || (!order.authorised_at && order.stripe_reconciliation_error)) return { kind: "review" };
   if (!order.authorised_at) return { kind: order.fulfilment_status === "cancelled" ? "expired" : "pending" };
   const items = await getOrderItems(order.id);
   return {

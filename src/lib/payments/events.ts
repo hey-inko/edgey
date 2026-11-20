@@ -78,6 +78,10 @@ async function applyFinancialEffect(stripe: Stripe, type: string, objectId: stri
       !current.paid_pence && !current.payment_review_refund_id) {
       throw new PaymentReviewError("Stripe reported success before its captured charge could be verified.");
     }
+    if ((type === "checkout.session.expired" || type === "checkout.session.async_payment_failed") &&
+      current.fulfilment_status === "awaiting_authorisation" && !current.paid_pence) {
+      throw new PaymentReviewError("Stripe has not yet confirmed that this Checkout Session closed unpaid.");
+    }
     return;
   }
   if (type === "invoice.finalized") {

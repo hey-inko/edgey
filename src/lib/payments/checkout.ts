@@ -4,7 +4,7 @@ import { createOrderWithReservations, type CreateOrderInput } from "@/lib/orders
 import type { Json } from "@/lib/supabase/database.types";
 import { checkoutOrigin } from "./config";
 import { bindVerifiedSession, findStripeSession, stripeRequestKey } from "./recovery";
-import { assertSessionMatches } from "./session-identity";
+import { assertSessionMatches, sessionAmountMatches } from "./session-identity";
 import { stripeSessionParams } from "./session-params";
 import { getOrderItems, paymentStore, type Order } from "./store";
 import { getStripe } from "./stripe";
@@ -101,6 +101,13 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
   }
   const url = new URL(session.url);
   if (url.origin !== "https://checkout.stripe.com") throw new Error("Unexpected Stripe Checkout origin.");
+  if (!sessionAmountMatches(order, session)) {
+    const { error } = await db.from("orders")
+      .update({ stripe_reconciliation_error: "Open Stripe Checkout amount or currency does not match the order." })
+      .eq("id", order.id).eq("fulfilment_status", "awaiting_authorisation");
+    if (error) throw error;
+    throw new CheckoutUnavailableError("The payment amount could not be verified. This attempt needs review.");
+  }
   return { sessionId: session.id, url: session.url };
 }
 

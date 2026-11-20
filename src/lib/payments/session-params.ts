@@ -41,6 +41,8 @@ export function stripeSessionParams(
     ));
   }
   if (!items.length || line_items.length > 100 ||
+    items.reduce((sum, item) => sum + item.net_pence, 0) !== order.goods_net_pence ||
+    items.reduce((sum, item) => sum + item.tax_pence, deliveryTax.value) !== order.vat_pence ||
     line_items.reduce((sum, line) => sum + line.price_data.unit_amount, 0) !== order.gross_pence) {
     throw new Error("Stripe line totals do not match the saved order.");
   }
