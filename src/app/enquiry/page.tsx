@@ -1,37 +1,54 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { RequestForm, type RequestField } from "@/components/requests/request-form";
+import { RequestPage } from "@/components/requests/request-page";
 import { queryValue, type RouteQuery } from "@/lib/catalogue";
+import { submitEnquiry } from "@/lib/requests/actions";
+import { MACHINE_BRANDS } from "@/lib/requests/forms";
 
 type Props = { searchParams: Promise<RouteQuery> };
 
-// The title never repeats the query: an unmatched code must not reach search engines.
 export const metadata: Metadata = {
-  title: "Ask us to match a blade",
+  title: "Enquiries",
   robots: { index: false, follow: false },
+  referrer: "no-referrer",
 };
 
-// Placeholder for the compatibility enquiry. The form, staff queue and email
-// arrive in a later slice; this page proves the query is carried through.
 export default async function EnquiryPage({ searchParams }: Props) {
-  const query = queryValue((await searchParams).q);
+  const params = await searchParams;
+  const query = queryValue(params.q);
+  const postcode = queryValue(params.postcode);
+  const delivery = params.postcode !== undefined || queryValue(params.kind) === "delivery";
+  const kind = delivery ? "delivery" : "compatibility";
+  const fields: RequestField[] = [
+    delivery
+      ? { name: "postcode", label: "Delivery postcode", initialValue: postcode, autoComplete: "postal-code", required: true }
+      : { name: "query", label: "Your search", initialValue: query, maxLength: 80, help: "Optional. Enter a part number or the text from your search." },
+    { name: "email", label: "Reply email", type: "email", autoComplete: "email", required: true },
+  ];
+  if (!delivery) fields.push({ name: "machineBrand", label: "Machine brand (optional)", type: "select", options: MACHINE_BRANDS });
+  fields.push({
+    name: "message",
+    label: "Message",
+    type: "textarea",
+    required: true,
+    help: delivery ? "Tell us what you’d like to know about delivery." : "Tell us what you know about the blade, tool or holder.",
+  });
+
   return (
-    <main id="main-content" tabIndex={-1} className="frame simple-page">
-      <p className="kicker">
-        <span className="register" aria-hidden="true" />
-        Compatibility enquiry
-      </p>
-      <h1>Ask us to match this blade</h1>
-      <dl className="specs">
-        <dt>Your search</dt>
-        <dd>{query || "No code entered"}</dd>
-        <dt>Status</dt>
-        <dd>Enquiries are not open yet on this staging build. Nothing has been sent.</dd>
-      </dl>
-      <div className="empty-actions">
-        <Link className="primary" href="/blades">
-          Back to the catalogue
-        </Link>
-      </div>
-    </main>
+    <RequestPage
+      overline={delivery ? "Delivery enquiry" : "Compatibility enquiry"}
+      title={delivery ? "Ask about delivery" : "Ask us to match this blade"}
+      intro={delivery ? "We’ll check which delivery options are available for your postcode and reply by email." : "Send us the details you have and we’ll reply by email to help you check the fit."}
+    >
+      <RequestForm
+        key={JSON.stringify([kind, delivery ? postcode : query])}
+        action={submitEnquiry.bind(null, kind)}
+        attemptId={crypto.randomUUID()}
+        fields={fields}
+        submitLabel="Send enquiry"
+        successTitle="Enquiry received"
+        successMessage="We’ll reply by email."
+      />
+    </RequestPage>
   );
 }

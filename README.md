@@ -46,7 +46,40 @@ pnpm test:e2e                       # Uses the fixture and starts the production
 ```
 
 Run `pnpm tokens` to regenerate `src/app/tokens.css` from the design pack.
-The storefront uses the anonymous/publishable key only. Supplier data, stock
-counts and unpublished mappings stay behind the database grants and RLS.
-Set `NEXT_PUBLIC_SITE_URL` to the deployed storefront origin to include
-absolute canonical and structured-data URLs; local development doesn't need it.
+Public catalogue reads use the publishable key. Supplier data, stock counts
+and unpublished mappings stay behind database grants and RLS. Request
+submissions and Finder analytics use service-only RPCs from the server.
+
+### Enquiries, trials and trade applications
+
+The delivery enquiry link is `/enquiry?postcode=<encoded postcode>`. For
+local trade sign-in, request the link in the browser and open it in the same
+browser from the [local mail inbox](http://127.0.0.1:54324). If upgrading an
+already-running local stack, restart it to pick up the local mail settings.
+`pnpm test:e2e` uses that inbox and the default port 3100 for its auth callback.
+
+On Vercel, set `NEXT_PUBLIC_SITE_URL` to the HTTPS storefront origin and
+allow that origin’s exact `/auth/confirm` URL in Supabase Auth. Enable email
+confirmation and configure the Supabase Auth sender and provider-side abuse
+limits. Open the link in the browser that requested it. Set the server-only
+`SUPABASE_SERVICE_ROLE_KEY` and `EDGEY_REQUEST_HASH_KEY` (at least 32 random
+bytes). Rate limits trust Vercel’s client IP header and do not accept hosted
+submissions when it’s missing; the local stack uses a shared IP bucket.
+Finder telemetry ignores prefetch and recognised crawlers and caps writes
+per IP and globally. The outbox records request confirmations and staff
+notifications; a later worker sends them. Trial requests make no delivery
+promise, and an approved application does not grant credit.
+
+Before accepting public submissions, supply the HTTPS privacy notice URL as
+`EDGEY_PRIVACY_NOTICE_URL` and have operations approve retention periods.
+Set `EDGEY_PUBLIC_REQUESTS_ENABLED=true` only after scheduling the service-only
+`purge_request_data(p_enquiry_age, p_trial_age, p_trade_age, p_search_age)`
+RPC with explicit positive PostgreSQL intervals (for example, `90 days`).
+It removes expired rate windows, old Finder events and eligible requests
+with their outbox messages. An in-review enquiry or trial is kept if it was
+updated within its retention period. Converted enquiries and approved trial and trade
+records are preserved for operational and audit use; operations must set
+their separate retention policy. Finder analytics keep published terms in
+normalised form and use keyed fingerprints for other code-like input only.
+Unrecognised free text and input resembling an email, phone or postcode
+are counted by outcome without keeping the query.

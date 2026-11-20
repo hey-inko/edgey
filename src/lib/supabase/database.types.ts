@@ -104,6 +104,74 @@ export type Database = {
           },
         ];
       };
+      enquiries: {
+        Row: {
+          created_at: string;
+          email: string;
+          id: string;
+          kind: string;
+          machine_brand: string | null;
+          message: string;
+          postcode: string | null;
+          query: string | null;
+          staff_notes: string | null;
+          status: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          email: string;
+          id: string;
+          kind: string;
+          machine_brand?: string | null;
+          message: string;
+          postcode?: string | null;
+          query?: string | null;
+          staff_notes?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          email?: string;
+          id?: string;
+          kind?: string;
+          machine_brand?: string | null;
+          message?: string;
+          postcode?: string | null;
+          query?: string | null;
+          staff_notes?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      finder_search_events: {
+        Row: {
+          created_at: string;
+          id: string;
+          normalised_query: string | null;
+          outcome: string;
+          query_fingerprint: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          id?: string;
+          normalised_query?: string | null;
+          outcome: string;
+          query_fingerprint?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          normalised_query?: string | null;
+          outcome?: string;
+          query_fingerprint?: string | null;
+        };
+        Relationships: [];
+      };
       order_items: {
         Row: {
           gross_pence: number;
@@ -159,32 +227,65 @@ export type Database = {
       order_outbox: {
         Row: {
           created_at: string;
+          enquiry_id: string | null;
+          id: string;
           message_key: string;
-          order_id: string;
+          order_id: string | null;
           state: Database["public"]["Enums"]["order_message_state"];
+          trade_application_id: string | null;
+          trial_request_id: string | null;
           updated_at: string;
         };
         ComputedFields: never;
         Insert: {
           created_at?: string;
+          enquiry_id?: string | null;
+          id?: string;
           message_key: string;
-          order_id: string;
+          order_id?: string | null;
           state?: Database["public"]["Enums"]["order_message_state"];
+          trade_application_id?: string | null;
+          trial_request_id?: string | null;
           updated_at?: string;
         };
         Update: {
           created_at?: string;
+          enquiry_id?: string | null;
+          id?: string;
           message_key?: string;
-          order_id?: string;
+          order_id?: string | null;
           state?: Database["public"]["Enums"]["order_message_state"];
+          trade_application_id?: string | null;
+          trial_request_id?: string | null;
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "order_outbox_enquiry_id_fkey";
+            columns: ["enquiry_id"];
+            isOneToOne: false;
+            referencedRelation: "enquiries";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "order_outbox_order_id_fkey";
             columns: ["order_id"];
             isOneToOne: false;
             referencedRelation: "orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_outbox_trade_application_id_fkey";
+            columns: ["trade_application_id"];
+            isOneToOne: false;
+            referencedRelation: "trade_applications";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_outbox_trial_request_id_fkey";
+            columns: ["trial_request_id"];
+            isOneToOne: false;
+            referencedRelation: "trial_requests";
             referencedColumns: ["id"];
           },
         ];
@@ -479,6 +580,7 @@ export type Database = {
           order_id: string | null;
           reserved_delta: number;
           return_id: string | null;
+          trial_request_id: string | null;
           variant_id: string;
         };
         ComputedFields: never;
@@ -492,6 +594,7 @@ export type Database = {
           order_id?: string | null;
           reserved_delta: number;
           return_id?: string | null;
+          trial_request_id?: string | null;
           variant_id: string;
         };
         Update: {
@@ -504,6 +607,7 @@ export type Database = {
           order_id?: string | null;
           reserved_delta?: number;
           return_id?: string | null;
+          trial_request_id?: string | null;
           variant_id?: string;
         };
         Relationships: [
@@ -520,6 +624,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "order_returns";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "stock_movements_trial_request_id_variant_id_fkey";
+            columns: ["trial_request_id", "variant_id"];
+            isOneToOne: false;
+            referencedRelation: "trial_allocations";
+            referencedColumns: ["trial_request_id", "variant_id"];
           },
           {
             foreignKeyName: "stock_movements_variant_id_fkey";
@@ -604,6 +715,214 @@ export type Database = {
           name?: string;
           slug?: string;
           sort_order?: number;
+        };
+        Relationships: [];
+      };
+      trade_applications: {
+        Row: {
+          billing_line1: string;
+          billing_line2: string | null;
+          billing_postcode: string;
+          billing_town: string;
+          buyer_id: string | null;
+          buyer_name: string;
+          company: string;
+          created_at: string;
+          email: string;
+          id: string;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          status: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          billing_line1: string;
+          billing_line2?: string | null;
+          billing_postcode: string;
+          billing_town: string;
+          buyer_id?: string | null;
+          buyer_name: string;
+          company: string;
+          created_at?: string;
+          email: string;
+          id: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          billing_line1?: string;
+          billing_line2?: string | null;
+          billing_postcode?: string;
+          billing_town?: string;
+          buyer_id?: string | null;
+          buyer_name?: string;
+          company?: string;
+          created_at?: string;
+          email?: string;
+          id?: string;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      trial_allocations: {
+        Row: {
+          quantity: number;
+          trial_request_id: string;
+          variant_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          quantity: number;
+          trial_request_id: string;
+          variant_id: string;
+        };
+        Update: {
+          quantity?: number;
+          trial_request_id?: string;
+          variant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trial_allocations_trial_request_id_fkey";
+            columns: ["trial_request_id"];
+            isOneToOne: false;
+            referencedRelation: "trial_fulfilments";
+            referencedColumns: ["trial_request_id"];
+          },
+          {
+            foreignKeyName: "trial_allocations_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "variants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      trial_fulfilments: {
+        Row: {
+          address_country: string;
+          address_line1: string;
+          address_line2: string | null;
+          address_postcode: string;
+          address_region: string | null;
+          address_town: string;
+          address_verified_at: string;
+          address_verified_by: string;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          carrier: string;
+          carrier_service: string;
+          dispatched_at: string | null;
+          dispatched_by: string | null;
+          recipient_name: string;
+          state: string;
+          subsequent_order_id: string | null;
+          tracking_number: string | null;
+          trial_request_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          address_country: string;
+          address_line1: string;
+          address_line2?: string | null;
+          address_postcode: string;
+          address_region?: string | null;
+          address_town: string;
+          address_verified_at: string;
+          address_verified_by: string;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          carrier: string;
+          carrier_service: string;
+          dispatched_at?: string | null;
+          dispatched_by?: string | null;
+          recipient_name: string;
+          state?: string;
+          subsequent_order_id?: string | null;
+          tracking_number?: string | null;
+          trial_request_id: string;
+        };
+        Update: {
+          address_country?: string;
+          address_line1?: string;
+          address_line2?: string | null;
+          address_postcode?: string;
+          address_region?: string | null;
+          address_town?: string;
+          address_verified_at?: string;
+          address_verified_by?: string;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          carrier?: string;
+          carrier_service?: string;
+          dispatched_at?: string | null;
+          dispatched_by?: string | null;
+          recipient_name?: string;
+          state?: string;
+          subsequent_order_id?: string | null;
+          tracking_number?: string | null;
+          trial_request_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trial_fulfilments_subsequent_order_id_fkey";
+            columns: ["subsequent_order_id"];
+            isOneToOne: true;
+            referencedRelation: "orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "trial_fulfilments_trial_request_id_fkey";
+            columns: ["trial_request_id"];
+            isOneToOne: true;
+            referencedRelation: "trial_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      trial_requests: {
+        Row: {
+          company: string;
+          created_at: string;
+          email: string;
+          id: string;
+          machine_brand: string;
+          oem_code: string;
+          postcode: string;
+          staff_notes: string | null;
+          status: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          company: string;
+          created_at?: string;
+          email: string;
+          id: string;
+          machine_brand: string;
+          oem_code: string;
+          postcode: string;
+          staff_notes?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          company?: string;
+          created_at?: string;
+          email?: string;
+          id?: string;
+          machine_brand?: string;
+          oem_code?: string;
+          postcode?: string;
+          staff_notes?: string | null;
+          status?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -748,6 +1067,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      approve_trial_fulfilment: {
+        Args: {
+          p_actor_id: string;
+          p_address: Json;
+          p_address_verified: boolean;
+          p_carrier: string;
+          p_carrier_service: string;
+          p_trial_request_id: string;
+          p_variant_ids: string[];
+        };
+        Returns: string;
+      };
       bind_checkout_session: {
         Args: {
           p_expires_at: string;
@@ -860,6 +1191,10 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      cancel_trial_fulfilment: {
+        Args: { p_actor_id: string; p_trial_request_id: string };
+        Returns: string;
+      };
       confirm_payment: {
         Args: {
           p_amount_pence: number;
@@ -921,6 +1256,10 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
+      };
+      consume_request_rate_limit: {
+        Args: { p_email_key: string; p_ip_key: string; p_scope: string };
+        Returns: boolean;
       };
       create_order_with_reservations: {
         Args: {
@@ -1043,13 +1382,25 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      dispatch_trial_fulfilment: {
+        Args: {
+          p_actor_id: string;
+          p_tracking_number: string;
+          p_trial_request_id: string;
+        };
+        Returns: string;
+      };
       enqueue_order_confirmation: {
         Args: { p_order_id: string };
         Returns: {
           created_at: string;
+          enquiry_id: string | null;
+          id: string;
           message_key: string;
-          order_id: string;
+          order_id: string | null;
           state: Database["public"]["Enums"]["order_message_state"];
+          trade_application_id: string | null;
+          trial_request_id: string | null;
           updated_at: string;
         };
         SetofOptions: {
@@ -1060,6 +1411,14 @@ export type Database = {
         };
       };
       fold_text: { Args: { input: string }; Returns: string };
+      link_trial_order: {
+        Args: {
+          p_actor_id: string;
+          p_order_id: string;
+          p_trial_request_id: string;
+        };
+        Returns: string;
+      };
       mark_provider_event: {
         Args: {
           p_error?: string;
@@ -1085,6 +1444,16 @@ export type Database = {
         };
       };
       normalise_code: { Args: { code: string }; Returns: string };
+      purge_request_data: {
+        Args: {
+          p_enquiry_age: string;
+          p_rate_window_grace?: string;
+          p_search_age: string;
+          p_trade_age: string;
+          p_trial_age: string;
+        };
+        Returns: Json;
+      };
       receive_stock: {
         Args: {
           p_actor_id: string;
@@ -1102,6 +1471,7 @@ export type Database = {
           order_id: string | null;
           reserved_delta: number;
           return_id: string | null;
+          trial_request_id: string | null;
           variant_id: string;
         };
         SetofOptions: {
@@ -1110,6 +1480,14 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
+      };
+      record_finder_search: {
+        Args: {
+          p_normalised_query?: string;
+          p_outcome: string;
+          p_query_fingerprint?: string;
+        };
+        Returns: string;
       };
       record_provider_event: {
         Args: {
@@ -1360,6 +1738,14 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      review_trade_application: {
+        Args: {
+          p_actor_id: string;
+          p_application_id: string;
+          p_decision: string;
+        };
+        Returns: string;
+      };
       search_blades: {
         Args: { query_text: string };
         Returns: {
@@ -1427,6 +1813,42 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
+      };
+      submit_enquiry: {
+        Args: {
+          p_email: string;
+          p_id: string;
+          p_kind: string;
+          p_machine_brand?: string;
+          p_message: string;
+          p_postcode?: string;
+          p_query?: string;
+        };
+        Returns: string;
+      };
+      submit_trade_application: {
+        Args: {
+          p_billing_line1: string;
+          p_billing_line2?: string;
+          p_billing_postcode: string;
+          p_billing_town: string;
+          p_buyer_id: string;
+          p_buyer_name: string;
+          p_company: string;
+          p_id: string;
+        };
+        Returns: string;
+      };
+      submit_trial_request: {
+        Args: {
+          p_company: string;
+          p_email: string;
+          p_id: string;
+          p_machine_brand: string;
+          p_oem_code: string;
+          p_postcode: string;
+        };
+        Returns: string;
       };
     };
     Enums: {

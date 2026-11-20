@@ -105,7 +105,7 @@ test("a search response does not overwrite newer typing", async ({ page }) => {
   await expect(page).toHaveURL(/\?q=Foam$/);
 });
 
-test("filters published tool types and materials and carries an unmatched code to the placeholder", async ({ page }) => {
+test("filters published tool types and materials and carries an unmatched code to the enquiry", async ({ page }) => {
   await page.goto("/blades");
   await expect(page.getByRole("heading", { name: "Blade catalogue" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "The cutting room." })).toHaveCount(0);
@@ -123,8 +123,8 @@ test("filters published tool types and materials and carries an unmatched code t
   await expect(page.getByRole("link", { name: /EDG-Z71/ })).toHaveCount(0);
   await ask.click();
   await expect(page).toHaveURL(/\/enquiry\?q=5201345$/);
-  await expect(page.getByText("5201345", { exact: true })).toBeVisible();
-  await expect(page.getByText("Nothing has been sent.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Your search" })).toHaveValue("5201345");
+  await expect(page.getByRole("button", { name: "Send enquiry" })).toBeEnabled();
 });
 
 test("direct visits render a standalone verified product with per-blade price breaks", async ({ page, baseURL }) => {
