@@ -10,7 +10,7 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src/", import.meta.url)) },
   },
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "src/lib/commerce/**/*.test.ts"],
     environment: "node",
     fileParallelism: false,
     testTimeout: 20000,

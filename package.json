@@ -19,7 +19,7 @@
     "db:reset": "supabase db reset",
     "db:env": "node scripts/write-env.mjs",
     "db:fixture": "node scripts/apply-staging-fixture.mjs",
-    "test": "vitest run tests/unit",
+    "test": "vitest run tests/unit src/lib/commerce",
     "bench:search": "node scripts/bench-search.mjs",
     "test:db": "vitest run tests/db",
     "test:e2e": "playwright test"
