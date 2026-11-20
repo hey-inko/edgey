@@ -25,7 +25,7 @@ export default async function AccountPage({ searchParams }: {
       <main id="main-content" tabIndex={-1} className="frame simple-page">
         <p className="kicker"><span className="register" aria-hidden="true" /> Buyer account</p>
         <h1>Sign in to your account</h1>
-        <p className={`muted ${styles.signInIntro}`}>Use an email link to see orders placed while signed in. Guest orders don’t appear here, even if they used the same email address.</p>
+        <p className={`muted ${styles.signInIntro}`}>Use an email link to see orders linked to your account. Guest orders don’t appear here, even if they used the same email address.</p>
         {params.signin === "retry" && (
           <p className={styles.panel} role="status">We couldn’t verify the sign-in link. Request a new link and open it in this browser.</p>
         )}

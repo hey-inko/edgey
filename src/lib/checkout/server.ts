@@ -56,7 +56,7 @@ export async function startCheckoutAttempt(input: unknown) {
   if (attempt.status !== "ready") return attempt;
   const session = await getBuyerSession();
   if (session.status === "unverified") {
-    return { status: "error" as const, message: "We couldn’t verify your sign-in. Sign in again before continuing." };
+    return { status: "error" as const, message: "We couldn’t verify your sign-in. Sign in again or reload checkout before continuing." };
   }
   return { ...attempt, buyerId: session.status === "verified" ? session.buyer.id : undefined };
 }
