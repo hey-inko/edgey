@@ -1,7 +1,9 @@
 # Edgey storefront
 ## Product requirements for the UK trade launch
 
-**Revision 2 · 20 November 2026 · Staging build specification**
+**Revision 3 · 20 November 2026 · Staging build specification**
+
+*Revision 3 aligns the UI requirements with the approved design pack: the visual direction in §2 now defers to `design.md`, §4.1 to §4.6 are new, §6 gains a styling note and §7 gains a UI evidence row. Behaviour, data, pricing and release scope are unchanged from revision 2.*
 
 A print production manager has a cutter waiting and a part number on an old packet. Edgey should let them identify the exact replacement, see which tool or holder it fits, order the right quantity and know when it will leave the warehouse. A buyer who is unsure of the fit should be able to ask a person or request two trial blades before committing to a pack.
 
@@ -30,7 +32,9 @@ For each launch variant the catalogue owner records its supplier part number, Ed
 3. An unmatched code shows **“Ask us to match this blade”** and carries the query into the enquiry. Staff receive the query and the buyer’s reply address. Private candidate aliases must never surface in public search, filters, structured data or SEO titles.
 4. Index approved records only. Test the search RPC against seeded staging data at p95 under 50 ms over 100 representative warm queries. Measure page-to-results latency separately on mobile. Show stock status on the product page and recheck availability at checkout.
 
-Keep the industrial visual treatment from the brief. Use charcoal, white specification panels and electric lime for the primary action. Put the OEM code, tool fit, variant and both prices above the fold. Support keyboard search, labelled inputs, visible focus and text equivalents for colour-coded availability.
+**Visual direction.** The approved design pack governs how the storefront looks and how its controls behave: `design.md` (version 3), `design-tokens.json`, `Edgey-preview.html`, `assets/` and `figures/`. Where this document and the pack disagree on look, layout, components, wording style or interaction styling, follow the pack. In short, the storefront opens in a graphite dark theme and offers a warm-white light theme with the same hierarchy. Surfaces are square, fine-ruled and neutral, and the primary action is a neutral high-contrast button that ends in a narrow hatched cap. Colour appears only where a printed surface would carry it, through the five named print proofs, so text, prices and controls sit on neutral fields. §4.1 to §4.6 apply the system to every route.
+
+Put the part code, OEM reference, tool fit, variant and both prices in the first screen of the product detail, in the reading order in §4.3. Support keyboard search, labelled inputs and visible focus as `design.md` specifies. State availability in words (§4.4). No part of the interface relies on colour to show status.
 
 ## 3. Prices, delivery and samples
 
@@ -62,6 +66,91 @@ Use integer pence throughout. The server prices every basket from current varian
 
 At launch one named buyer owns each trade account, with one credit limit and Stripe customer. Record that limitation in the application flow. Guest email alone never grants access to an existing account or its order history.
 
+### 4.1 Design authority and vocabulary
+
+Build every screen from the approved design pack: `design.md` (version 3), `design-tokens.json`, `Edgey-preview.html`, `assets/` and `figures/`. For look, layout, components, wording style and interaction styling the pack wins over this document. Take values from `design-tokens.json` and the tables in `design.md`. This document does not restate them.
+
+The pack’s reference is one home page with two native dialogs: the product detail and the selection. Its products, prices, counts and notices are a demo. The catalogue data, prices and rules in this document replace them.
+
+The two documents use different words for the same things. Customer-facing screens use the design’s words.
+
+| This document says | The interface says | Note |
+| --- | --- | --- |
+| Blade Finder | Catalogue search: the “Search blades” field, reached from the hero action “Find a blade” | There is no separate Finder screen. The Finder rules in §2 describe how that field behaves. |
+| Basket | Selection: “Selection” with a count of blades in the masthead, “Your selection”, “Add to selection” | The same thing. “Basket” stays the term for data and behaviour in this document. Buyers never see it. |
+| Product page | Product detail, as the approved dialog and as the page at `/blades/[slug]` | See §4.3. |
+| Tool category | Tool type: the “Tool type” filter, “All tool types” | |
+| Substrate filter | Material index: “What are you cutting?”, “Materials” in the masthead | Choosing a row filters the catalogue. |
+| “Require a selection” (§2, Finder rule 1) | A choice of variant in the product detail | Not the selection dialog. |
+
+### 4.2 Route map
+
+Every route uses the approved masthead, shared frame, printed footer, both themes and the rules in §4.5. The pack designs `/`, the product dialog and the selection dialog. Every other screen is an extension with no approved reference. Build each one from the components named here and from “Applying the system to another page” in `design.md`. Extension screens stay neutral. Proof colour appears only in product figure crops and the footer print sample.
+
+| Route or surface | Approved reference | Build it from | Status |
+| --- | --- | --- | --- |
+| `/` | The whole reference page | Masthead, hero and material study, catalogue with search and tool-type filter, material index, printed footer, in that order. | Approved. Extended only as §4.4 lists. |
+| `/blades` | None of its own | The catalogue section of `/` as a page: section heading, search field, tool-type select, result count with “Clear filters”, the card grid (four across on desktop, two across on phones), the zero-result panel and the material index. No hero or material study. | Extension |
+| Product dialog | The approved product dialog | Photograph on a neutral plate, part code, product name, description-list specification, pack choice, total, per-unit price, full-width primary action. | Approved. Extended as §4.3 and §4.4 list. |
+| `/blades/[slug]` | None of its own. “A product family page” in `design.md` applies. | The part family as the heading. One large neutral figure plate with one diagonal proof crop borrowed from the catalogue card. Part numbers, compatibility and pricing on an opaque panel in the dialog’s reading order. The dialog’s specification list, pack choice and primary action. | Extension |
+| Selection dialog | The approved selection dialog | Part number, quantity × unit price, line total, “Remove”, subtotal ex VAT, “Continue browsing”. | Approved. Extended as §4.4 lists. |
+| `/checkout` | None | A section heading. The selection’s reading order as an order summary on an opaque panel. A form in the catalogue field pattern with visible labels and native selects. One primary action with the hatched end cap. An underlined secondary link back to the selection. | Extension |
+| `/checkout/success` | None | A single column: overline, section heading, a description list for the order reference, dispatch date and delivery, a read-only order summary and a secondary link. “Confirming payment” is a text status in a polite live region. | Extension |
+| `/sample-pack`, `/trade` | None | A section heading and short intro, a form in the field pattern, one primary action. Confirmation and pending states are stated in text. | Extension |
+| `/account` | None | Fine-ruled rows in the material-index pattern, with the name on the left and figures in mono on the right, for orders and invoices. Description lists for credit, balance and PO references. | Extension |
+| `/admin` | None | The same tokens, themes, type, fields, buttons, ruled rows and description lists. No hero, proof or material artwork. Dense tables are acceptable. | Extension |
+
+### 4.3 Product dialog and product page
+
+A catalogue card represents one family. It stays a whole-card button that opens the approved product dialog. The page at `/blades/[slug]` must also exist, one per family, because this section and §6 require indexable product content, metadata and structured data. The dialog and the page show the same data in the same reading order: photograph, part code, product name, machine and OEM reference, tool fit, compatible materials, availability and dispatch, variant, quantity, total, per-unit price, then the primary action “Add to selection”.
+
+A family with more than one variant needs a control the pack does not show. Use a row of adjacent rectangular buttons in the pack-choice pattern, with the pressed option hatched. Label each with the angle, shank or holder that tells the variants apart, and place the row before the quantity. An exact code match opens with its variant chosen. Where a code has several valid configurations, nothing is preselected, and a line of text asks for a choice before “Add to selection” becomes available.
+
+How the dialog and the page connect is open question 1 in §4.6.
+
+### 4.4 Extensions the behaviour requires
+
+Each row is a requirement of this document that the approved design does not show. The behaviour stands. Build it in the design’s language as described.
+
+| Requirement | What the design shows | Required extension |
+| --- | --- | --- |
+| VAT-inclusive price beside the business price (§3) | The ex-VAT price only, as “£22.50 ex VAT / ea” | The ex-VAT price leads in the approved format. Follow it with the VAT-inclusive figure and rate in the muted text tone on the same neutral field, as “£27.00 inc VAT (20%)”. On a card it takes its own line below the ex-VAT price. In the product detail, five EDG-Z10 show “£99.75”, “£19.95 each · ex VAT” and “£119.70 inc VAT (20%)”. The selection and checkout add right-aligned rows under the subtotal for delivery, VAT at the applied rate and the total including VAT. |
+| Tool categories across the range (this section, Appendix A) | A native select with “All tool types”, “Drag”, “Oscillating”, “Rotary” | Keep the native select and “All tool types”. List one option, in sentence case, for each tool category that has a published variant. The range adds kiss-cut, V-cut, tangential and roll-plotter blades. Options come from catalogue data. |
+| Substrates across the range | Three material-index rows: Corrugated board, Vinyl, Textile | One row per substrate that has a published variant, in the approved row pattern: swatch, plain name, matching count in mono. Each new swatch follows “A new material” in `design.md`. The missing artwork is open question 4. |
+| Browse verified machine brands (this section) | No control | A second native select in the tool-type field pattern, opening on “All machines” and listing only brands with a verified mapping. It stacks with the other controls on narrow screens. |
+| Stock status and dispatch date (§2, §3) | Neither | Two rows in the specification list of the product detail: “Availability” and “Dispatch”, each with a plain-word value such as “In stock” or “Dispatches Monday 23 November”. Estimated delivery is a separate row. The selection, checkout and confirmation repeat the dispatch date. |
+| Availability without colour | The design has no colour-coded interface. Selection state uses hatching, a border and a visible name. | Availability is always stated in words. An unavailable variant keeps its label and adds “Out of stock” to it. Its button is disabled, and a line of text beside the primary action says why it cannot be added. Never signal availability by colour or opacity alone. On a reorder, an unavailable item is marked “Out of stock” in words. A basket corrected for stock (§7) says what changed in a line of text in the selection, announced in a polite live region. |
+| Any whole quantity, with breaks at 5 and 10 (§3, §7) | Three pack-choice buttons: 1, 5, 10 | Keep the three buttons as shortcuts to the price-break quantities. Add a labelled numeric quantity field in the field pattern so a buyer can order any whole number. Unit and total prices update together. Selection lines let the buyer change a quantity. The saving prompt in §3 is a line of plain text under the total. |
+| Labelled Finder results and unmatched codes (§2) | Typing filters the cards. A zero-result panel offers “Show all blades”. | Mark each result “Exact match” or “Suggested” in the mono overline style. Show the machine, holder, angle or shank that tells similar results apart in the card’s text panel. The zero-result panel replaces the demo copy, makes “Ask us to match this blade” its primary action, carrying the query, and keeps “Show all blades” as the route back. |
+| Progress to free delivery (§3) | Nothing | One sentence on the ex-VAT basis in the selection and at checkout, such as “£50.25 more ex VAT for free delivery”. No coloured bar. |
+| Checkout from the selection | The selection ends with a demo notice and “Continue browsing” | Remove the demo notices from the product detail, the selection and the footer credit. Add a primary action with the hatched end cap, “Go to checkout”, above “Continue browsing”. The footer credit row carries the business contact and privacy links that §8 requires. |
+| Forms on extension screens | A labelled search field and a native select | Every input has a visible label. State errors in words next to the field and associate them with it. Do not mark an error by colour alone. |
+| Stored selection | Quantities kept in the browser under `edgey-storefront-selection-v1` | Store variant IDs and quantities only. Prices, stock and totals always come from the server (§3). |
+
+### 4.5 Accessibility, responsive layout, theme and motion
+
+“Accessibility and motion”, “Layout and responsive behaviour” and “Theme behaviour” in `design.md` apply to every route, extensions included. In particular:
+
+- Real links for destinations, buttons for actions, labelled inputs, native selects and named native dialogs. A skip link is the first keyboard destination. The `/` shortcut reaches catalogue search as specified.
+- A visible focus ring in both themes, which survives every dialog close and filter update. Result counts are announced in a polite live region.
+- Every route works from 1440 px down to 320 px with no horizontal scrolling, using the pack’s breakpoints. Check longer product names, enlarged browser text and a selection containing several items.
+- The first visit is dark. The explicit choice persists under `edgey-theme`, is applied before first paint and still works for the current page when storage is unavailable.
+- With `prefers-reduced-motion: reduce`, remove transitions and scroll immediately.
+- Extension screens use the pack’s named text and surface pairs, so its measured contrast holds. Sample any new text placed over artwork.
+
+### 4.6 Open UI questions
+
+Neither document settles these. Each has a recommendation. None blocks the catalogue and database work in §8.
+
+1. **How do the product dialog and the product page connect?** Recommendation: a card opens the dialog as approved and the address becomes `/blades/[slug]`, so the view can be shared and Back closes it. A direct visit to that address shows the full page.
+2. **Where does “Blade catalogue” in the masthead go, and does `/` list the whole range?** Recommendation: `/` shows the full published catalogue below the hero, as designed. `/blades` is the same catalogue without the hero. The link scrolls on `/` and opens `/blades` elsewhere.
+3. **“Pack quantity” or “Quantity”?** The design labels the control “Pack quantity”. §2 says five and ten are quantities of the same blade, not packs. Recommendation: label it “Quantity”.
+4. **Who supplies the missing artwork?** The pack has four line drawings, four illustrative photographs and three substrate swatches. The range has 23 families, more tool types and more substrates. Recommendation: the design owner supplies drawings and swatches under “A new illustration” and “A new material”. Until then a family without its own drawing shows the neutral figure plate with its part code and no proof crop, and no illustrative photograph stands in for a different blade.
+5. **What are the product display names?** The demo uses plain names such as “Flat-stock drag blade”. Appendix A has model references and applications. Recommendation: the catalogue owner writes a sentence-case plain name for each family in the demo’s style, and the machine reference stays in the specification list.
+6. **Which availability words, and are counts shown?** Recommendation: “In stock” and “Out of stock” only, with no stock counts.
+7. **“Before VAT” or “ex VAT” in the saving prompt?** §3 quotes “Add one blade and save £4.55 before VAT”. The design’s price language is “ex VAT”. Recommendation: “Add one blade and save £4.55 ex VAT”.
+8. **Who approves the extension screens?** They have no approved reference. Recommendation: the owner of the design pack reviews staging screenshots of each extension in both themes before the first live release.
+
 ## 5. Order, stock and credit rules
 
 **Order creation.** On checkout, validate the submitted variant IDs and positive whole quantities, recalculate prices and delivery, and require complete contact and shipping details. Create the pending order, its immutable line snapshots and stock reservations together in one database transaction. Repeated submission of the same checkout attempt returns the same order. A material basket or address change starts a repriced attempt after the old payable attempt is closed. The server associates the chosen payment method and Stripe object IDs with that order.
@@ -82,7 +171,7 @@ At launch one named buyer owns each trade account, with one credit limit and Str
 
 ## 6. Engineering contract
 
-Use Next.js App Router with strict TypeScript, Tailwind, Lucide, Supabase Postgres/Auth and Vercel. Use Stripe-hosted Checkout and Stripe Invoicing. Pin supported package and Stripe API versions in the implementation. Serve indexable product content with revalidation on publication changes. Recheck live prices, publication and stock on every checkout.
+Use Next.js App Router with strict TypeScript, Tailwind, Lucide, Supabase Postgres/Auth and Vercel. Use Stripe-hosted Checkout and Stripe Invoicing. Configure Tailwind from `design-tokens.json` and the type stacks in `design.md`. Use the design pack’s SVG masters and its drawn icons where it supplies them, and Lucide only for icons it does not supply. Pin supported package and Stripe API versions in the implementation. Serve indexable product content with revalidation on publication changes. Recheck live prices, publication and stock on every checkout.
 
 | Data or endpoint | Minimum contract |
 | --- | --- |
@@ -97,7 +186,7 @@ Use Next.js App Router with strict TypeScript, Tailwind, Lucide, Supabase Postgr
 
 ## 7. Acceptance tests
 
-Use these as release evidence alongside typecheck and build. The product owner supplies representative OEM packets. The fulfilment owner checks what appears on the picking screen.
+Use these as release evidence alongside typecheck and build. The product owner supplies representative OEM packets. The fulfilment owner checks what appears on the picking screen. The last row is the release evidence for UI.
 
 | Scenario | Pass condition |
 | --- | --- |
@@ -110,6 +199,7 @@ Use these as release evidence alongside typecheck and build. The product owner s
 | Dispatch then settlement | Dispatch a Net 30 order, then partially pay and settle its invoice. Tracking and dispatch history persist. The outstanding balance reduces by the amounts actually settled. Cancelling an undispatched order or refunding a dispatched one follows the stock rules in §5. |
 | Isolation and trials | A buyer cannot read another buyer’s order lines or invoice or change their credit limit. A trial can be requested with five fields, dispatched only with two allocated units and a complete deliverable address, and linked to a subsequent order. |
 | Delivery promises | Exercise 15:29 and 15:30 in UK local time, a Friday, a bank holiday and an unsupported postcode. Checkout, confirmation and picking show the same dispatch date and agreed service. |
+| Visual acceptance | Run the visual acceptance pass in `design.md` against the staging build, with `Edgey-preview.html` open beside it, in both themes at 1440, 390 and 320 px. Every row passes on `/`, with seeded staging data standing in for the demo’s cards and counts. Repeat the theme, keyboard, focus, reduced-motion and horizontal-scroll checks on every other route in §4.2. Keep screenshots and list each deliberate departure from the approved design. The only accepted departures are the extensions in §4.4 and the answers to §4.6. |
 
 ## 8. Release decisions and build order
 
