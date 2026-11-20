@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
+import { getVerifiedBuyer } from "@/lib/auth/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { prepareCheckoutAttempt } from "./attempt";
 import { quoteSelectionWith, type QuoteDependencies } from "./quote";
@@ -50,6 +51,9 @@ export function quoteCurrentSelection(lines: unknown, postcode?: unknown) {
   return quoteSelectionWith(lines, postcode, deps);
 }
 
-export function startCheckoutAttempt(input: unknown) {
-  return prepareCheckoutAttempt(input, deps);
+export async function startCheckoutAttempt(input: unknown) {
+  const attempt = await prepareCheckoutAttempt(input, deps);
+  if (attempt.status !== "ready") return attempt;
+  const buyer = await getVerifiedBuyer();
+  return { ...attempt, buyerId: buyer?.id };
 }

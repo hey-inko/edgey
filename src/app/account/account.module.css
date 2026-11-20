@@ -1,0 +1,221 @@
+.page {
+  padding-block: clamp(36px, 5vw, 76px);
+  overflow-wrap: anywhere;
+}
+
+.page h1 {
+  margin: .75rem 0 .6rem;
+  font-size: var(--edgey-h2-size);
+  letter-spacing: var(--edgey-h2-tracking);
+  line-height: var(--edgey-h2-leading);
+}
+
+.page h2 {
+  margin-block-end: .65rem;
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  font-weight: var(--edgey-h2-weight);
+  letter-spacing: -.04em;
+}
+
+.page h3 {
+  font-size: 1.125rem;
+  letter-spacing: -.02em;
+}
+
+.header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  padding-block-end: clamp(1rem, 3vw, 2rem);
+  border-block-end: 1px solid var(--line);
+  margin-block-end: clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.session {
+  font-size: .875rem;
+}
+
+.columns {
+  display: grid;
+  gap: clamp(1.75rem, 4vw, 3.5rem);
+}
+
+.columns > section {
+  min-width: 0;
+}
+
+@media (min-width: 53rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+  }
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-block-end: .75rem;
+}
+
+.orderList, .lines, .reviewLines, .invoiceList {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.orderList {
+  border-block-start: 1px solid var(--line);
+}
+
+.orderRow {
+  border-block-end: 1px solid var(--line);
+  padding-block: 1rem;
+}
+
+.orderRow .facts {
+  border-block-start: 0;
+  padding-block-start: 0;
+}
+
+@media (min-width: 35rem) {
+  .orderTotal {
+    text-align: end;
+  }
+}
+
+.lines {
+  display: grid;
+  gap: .65rem;
+}
+
+.panel {
+  min-width: 0;
+  padding: clamp(.85rem, 2vw, 1.35rem);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.panel h3 {
+  margin-block-end: .4rem;
+}
+
+.panel address {
+  font-style: normal;
+}
+
+.orderHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .25rem 1rem;
+}
+
+.orderHeader > div {
+  min-width: 0;
+}
+
+.reference, .figure, .totals dd {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.reference {
+  font-size: .875rem;
+  overflow-wrap: anywhere;
+}
+
+.facts, .orderMeta {
+  display: grid;
+  gap: .65rem 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  margin: 0;
+}
+
+.orderMeta {
+  flex: 0 1 28rem;
+}
+
+.facts, .tradeFacts {
+  margin-block-start: .75rem;
+  border-block-start: 1px solid var(--line);
+  padding-block-start: .65rem;
+}
+
+.facts dt, .orderMeta dt, .tradeFacts dt {
+  color: var(--muted);
+  font-size: .83rem;
+}
+
+.facts dd, .orderMeta dd, .tradeFacts dd, .totals dd {
+  margin: 0;
+}
+
+.tradeFacts {
+  display: grid;
+  gap: .65rem;
+  margin-block-end: 0;
+}
+
+.totals {
+  display: grid;
+  gap: .4rem;
+  border-block: 1px solid var(--line);
+  margin-block: 1rem;
+  padding-block: .75rem;
+}
+
+.totals > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 .5rem;
+}
+
+.totals > div:last-child {
+  margin-block-start: .3rem;
+  border-block-start: 1px solid var(--line);
+  padding-block-start: .6rem;
+  font-weight: 650;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .65rem 1rem;
+  margin-block-start: .9rem;
+}
+
+.actions :global(.textlink), .session :global(.textlink) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.signInIntro, .reorder > button {
+  margin-block-end: 1rem;
+}
+
+.privacy {
+  margin-block-start: 1rem;
+}
+
+.reorder button:disabled {
+  cursor: default;
+  opacity: .65;
+}
+
+.reviewLines {
+  margin-block: .75rem;
+}
+
+.reviewLines > li {
+  padding-block: .7rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.reviewLines > li:last-child {
+  border-block-end: 1px solid var(--line);
+}
