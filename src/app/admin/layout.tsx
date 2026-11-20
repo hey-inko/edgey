@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const roles = staff?.roles ?? [];
 
   return (
-    <main className="admin frame" id="main-content">
+    <main className="admin frame" id="main-content" tabIndex={-1}>
       {staff && (
         <div className="admin-bar">
           <nav aria-label="Staff areas">

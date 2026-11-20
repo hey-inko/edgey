@@ -7,5 +7,5 @@ export function displayTimestamp(value: string) {
 }
 
 export function displayState(value: string) {
-  return value[0]?.toUpperCase() + value.slice(1).replaceAll("_", " ");
+  return value.replaceAll("_", " ").replace(/^./, (first) => first.toUpperCase());
 }

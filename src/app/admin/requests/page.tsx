@@ -33,7 +33,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         {enquiries.data.length ? (
           <AdminTable label="Enquiries" headers={["Type", "Reply address", "Lookup", "Message", "Status", "Received"]}>
             {enquiries.data.slice(0, adminPageSize).map((row) => <tr key={row.id}>
-              <td>{displayState(row.kind)}</td><td className="admin-mono">{row.email}</td>
+              <td>{displayState(row.kind)}</td><td className="admin-mono admin-email">{row.email}</td>
               <td>{[row.query, row.machine_brand, row.postcode].filter(Boolean).join(" · ") || "—"}</td>
               <td className="admin-request-message">{row.message}</td><td>{displayState(row.status)}</td>
               <td className="admin-mono">{displayTimestamp(row.created_at)}</td>
@@ -46,7 +46,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         {trials.data.length ? (
           <AdminTable label="Trial requests" headers={["Company", "Reply address", "Machine", "OEM code", "Postcode", "Status", "Received"]}>
             {trials.data.slice(0, adminPageSize).map((row) => <tr key={row.id}>
-              <td>{row.company}</td><td className="admin-mono">{row.email}</td><td>{row.machine_brand}</td>
+              <td>{row.company}</td><td className="admin-mono admin-email">{row.email}</td><td>{row.machine_brand}</td>
               <td className="admin-mono">{row.oem_code}</td><td className="admin-mono">{row.postcode}</td>
               <td>{displayState(row.status)}</td><td className="admin-mono">{displayTimestamp(row.created_at)}</td>
             </tr>)}
@@ -58,7 +58,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         {trade.data.length ? (
           <AdminTable label="Trade applications" headers={["Company", "Applicant", "Email", "Billing postcode", "Status", "Received"]}>
             {trade.data.slice(0, adminPageSize).map((row) => <tr key={row.id}>
-              <td>{row.company}</td><td>{row.buyer_name}</td><td className="admin-mono">{row.email}</td>
+              <td>{row.company}</td><td>{row.buyer_name}</td><td className="admin-mono admin-email">{row.email}</td>
               <td className="admin-mono">{row.billing_postcode}</td><td>{displayState(row.status)}</td>
               <td className="admin-mono">{displayTimestamp(row.created_at)}</td>
             </tr>)}

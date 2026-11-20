@@ -94,6 +94,7 @@ body:has(> .admin) .footer-proof { display: none; }
 .admin-table tbody tr:last-child td { border-bottom: 0; }
 .admin-table td .primary { max-width: 100%; white-space: nowrap; }
 .admin-request-message { min-width: 15rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-email { white-space: nowrap; }
 .admin-pagination { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
 .admin-spec {
   display: grid;

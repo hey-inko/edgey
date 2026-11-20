@@ -10,11 +10,11 @@ export async function signInStaff(page: Page, credentials: { email: string; pass
   await expect(page.getByRole("heading", { name: "Staff desk" })).toBeVisible();
 }
 
-export async function seedPaidAdminOrder() {
+export async function seedPaidAdminOrder({ mismatch = false, sku = "EDG-Z10" }: { mismatch?: boolean; sku?: string } = {}) {
   const db = localAdminClient();
   const { data: variant, error: variantError } = await db.from("variants")
     .select("id,sku,price_1_4_pence")
-    .eq("sku", "EDG-Z10").single();
+    .eq("sku", sku).single();
   if (variantError || !variant.price_1_4_pence) throw new Error("Apply the local staging fixture first.");
   const quantity = 2;
   const goods = variant.price_1_4_pence * quantity;
@@ -41,10 +41,10 @@ export async function seedPaidAdminOrder() {
   if (created.error) throw created.error;
   const captured = await db.rpc("confirm_payment", {
     p_order_id: created.data.id, p_session_id: `cs_test_${randomUUID()}`, p_payment_intent_id: `pi_${randomUUID()}`,
-    p_amount_pence: gross, p_currency: "gbp", p_paid_at: new Date().toISOString(),
+    p_amount_pence: gross + Number(mismatch), p_currency: "gbp", p_paid_at: new Date().toISOString(),
     p_dispatch_date: dispatchDate, p_delivery_date: deliveryDate,
   });
   if (captured.error) throw captured.error;
-  expect(captured.data.fulfilment_status).toBe("ready_to_pick");
-  return { id: created.data.id, variant, quantity, recipient, service };
+  expect(captured.data.fulfilment_status).toBe(mismatch ? "awaiting_authorisation" : "ready_to_pick");
+  return { id: created.data.id, paymentIntent: captured.data.payment_intent_id, gross, variant, quantity, recipient, service };
 }
