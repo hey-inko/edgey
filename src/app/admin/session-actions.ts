@@ -3,7 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { sessionClient } from "@/lib/auth/server";
-import { requireStaff } from "@/lib/admin/auth";
+import { allowRequest } from "@/lib/requests/rate-limit";
 import type { Database } from "@/lib/supabase/database.types";
 import type { AdminResult } from "./form";
 
@@ -13,6 +13,13 @@ export async function signInStaff(_: AdminResult | null, form: FormData): Promis
   const invalid = { ok: false, message: "Could not sign in. Check your staff email and password." };
   if (typeof email !== "string" || email.length > 254 || !email.trim() ||
     typeof password !== "string" || !password || password.length > 128) return invalid;
+  try {
+    if (!await allowRequest("staff_sign_in", email.trim())) {
+      return { ok: false, message: "Too many sign-in attempts. Try again later." };
+    }
+  } catch {
+    return { ok: false, message: "Staff sign-in is unavailable. Try again later." };
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -35,7 +42,7 @@ export async function signInStaff(_: AdminResult | null, form: FormData): Promis
 }
 
 export async function signOutStaff() {
-  const { db } = await requireStaff();
+  const db = await sessionClient();
   await db.auth.signOut({ scope: "local" });
   redirect("/admin/sign-in");
 }

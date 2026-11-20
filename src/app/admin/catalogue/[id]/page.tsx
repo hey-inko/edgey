@@ -73,7 +73,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
         </dl>
         {variant.publication_status !== "archived" && (
           <AdminForm action={action} submit={published ? "Unpublish variant" : "Publish variant"}>
-            <input type="hidden" name="version" value={variant.updated_at} />
+            <input type="hidden" name="version" value={variant.catalogue_updated_at} />
             <input type="hidden" name="operation" value={published ? "unpublish" : "publish"} />
             <p>{published
               ? "Unpublishing hides this SKU and its references without changing existing orders or stock."
@@ -84,7 +84,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
       <AdminSection title="Selling data">
         <p>Family fields apply to every SKU in this family. Changing this variant’s supplier, configuration, specifications or materials sends it and its approved compatibility references back to review and takes it off the storefront if published.</p>
         <AdminForm action={action} submit="Save selling data">
-          <input type="hidden" name="version" value={variant.updated_at} />
+          <input type="hidden" name="version" value={variant.catalogue_updated_at} />
           <input type="hidden" name="familyVersion" value={family.updated_at} />
           <input type="hidden" name="operation" value="save" />
           <div className="admin-grid">
@@ -128,7 +128,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
         <ReviewRecord state={variantReviewStatus(variant)} source={variant.evidence_source} note={variant.evidence_note}
           date={variant.approved_at ?? variant.rejected_at} reviewer={variant.approved_by ?? variant.rejected_by} />
         <AdminForm action={action} submit="Record variant review">
-          <input type="hidden" name="version" value={variant.updated_at} />
+          <input type="hidden" name="version" value={variant.catalogue_updated_at} />
           <ReviewFields />
         </AdminForm>
       </AdminSection>
@@ -141,7 +141,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
             <ReviewRecord state={displayState(mapping.verification_state)} source={mapping.evidence_source} note={mapping.evidence_note} url={mapping.evidence_url}
               date={mapping.approved_at ?? mapping.rejected_at} reviewer={mapping.approved_by ?? mapping.rejected_by} />
             <AdminForm action={action} submit={`Record review for ${mapping.code}`}>
-              <input type="hidden" name="version" value={variant.updated_at} />
+              <input type="hidden" name="version" value={variant.catalogue_updated_at} />
               <input type="hidden" name="mappingId" value={mapping.id} />
               <input type="hidden" name="mappingVersion" value={mapping.updated_at} />
               <div className="admin-grid">

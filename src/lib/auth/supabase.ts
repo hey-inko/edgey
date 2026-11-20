@@ -8,13 +8,16 @@ export function createAuthClient(cookies: CookieMethodsServer) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error("Supabase Auth configuration is missing.");
+  const origin = URL.parse(process.env.NEXT_PUBLIC_SITE_URL ?? "");
+  const loopback = process.env.VERCEL !== "1" && origin?.protocol === "http:" &&
+    ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname);
   return createServerClient<Database>(url, key, {
     cookies,
     cookieOptions: {
       name: authCookieName,
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NEXT_PUBLIC_SITE_URL?.startsWith("https://") ?? false,
+      secure: origin?.protocol === "https:" || (process.env.NODE_ENV === "production" && !loopback),
       path: "/",
     },
   });

@@ -33,3 +33,29 @@ test("finance sees cancellation without a refund and the separate flagged paymen
     if (resolved.error) throw resolved.error;
   }
 });
+
+test("finance can mark failed Stripe events and order confirmations without pretending to process them", async ({ page }) => {
+  const db = localAdminClient();
+  const id = `evt_${randomUUID().replaceAll("-", "")}`;
+  const order = await seedPaidAdminOrder({ sku: "EDG-SR6223" });
+  const recorded = await db.rpc("record_provider_event", {
+    p_provider: "stripe", p_event_id: id, p_event_type: "checkout.session.completed", p_payload: { fixture: true },
+  });
+  if (recorded.error) throw recorded.error;
+  const eventFailed = await db.rpc("mark_provider_event", {
+    p_provider: "stripe", p_event_id: id, p_state: "failed", p_error: "Fixture needs replay",
+  });
+  const messageFailed = await db.from("order_outbox").update({ state: "failed" }).eq("order_id", order.id);
+  if (eventFailed.error || messageFailed.error) throw eventFailed.error ?? messageFailed.error;
+  await signInStaff(page, await createLocalAdminUser("finance"));
+  await page.goto("/admin/finance");
+  const event = page.getByRole("table", { name: "Failed provider events" }).getByRole("row").filter({ hasText: id });
+  const message = page.getByRole("table", { name: "Confirmation outbox" }).getByRole("row").filter({ hasText: order.id });
+  await event.getByRole("button", { name: "Reprocess event" }).click();
+  await expect(event).toContainText("Retry requested. Processing is not connected yet.");
+  await message.getByRole("button", { name: "Resend confirmation" }).click();
+  await page.reload();
+  await expect(message).toContainText("Retry requested. Processing is not connected yet.");
+  await expect(event).toContainText("Fixture needs replay");
+  await expect(message.getByRole("cell", { name: "Failed", exact: true })).toBeVisible();
+});

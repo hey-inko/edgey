@@ -79,6 +79,9 @@ test("a stale finance replay form cannot act after switching to a warehouse sess
     await expect(page).toHaveURL(/\/admin$/);
     const { data } = await db.from("provider_events").select("state,last_error").eq("event_id", eventId).single();
     expect(data).toEqual({ state: "failed", last_error: "Fixture did not process" });
+    const mark = await db.from("finance_retry_requests").select("kind").eq("target_id", eventId);
+    expect(mark.error).toBeNull();
+    expect(mark.data).toEqual([]);
   } finally {
     await warehouseContext.close();
   }
@@ -113,4 +116,15 @@ test("a stale stock form cannot act after switching to catalogue or finance", as
   }
   const after = await db.from("variants").select("id,stock_on_hand").eq("sku", sku).single();
   expect(after.data).toEqual(original.data);
+});
+
+test("revoking warehouse membership takes effect on the next staff request", async ({ page }) => {
+  const db = localAdminClient();
+  const staff = await createLocalAdminUser("warehouse");
+  await signInStaff(page, staff);
+  const deleted = await db.from("staff_members").delete().eq("user_id", staff.id).eq("role", "warehouse");
+  if (deleted.error) throw deleted.error;
+  await page.goto("/admin/stock");
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
+  await expect(page.getByRole("heading", { name: "Staff sign-in" })).toBeVisible();
 });

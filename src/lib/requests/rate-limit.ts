@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { serviceClient } from "@/lib/supabase/service";
 import { localRequestMode } from "./availability";
 
-type FormScope = "enquiry" | "trial" | "trade" | "trade_sign_in";
+type FormScope = "enquiry" | "trial" | "trade" | "trade_sign_in" | "staff_sign_in";
 
 export function requestFingerprint(purpose: "ip" | "email" | "search" | "finder", value: string): string {
   const key = process.env.EDGEY_REQUEST_HASH_KEY;

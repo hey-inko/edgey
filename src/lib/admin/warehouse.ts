@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { serviceDb } from "@/lib/admin/service";
+import { serviceClient } from "@/lib/supabase/service";
 import type { Database } from "@/lib/supabase/database.types";
 import { warehousePageSize } from "./warehouse-format";
 
@@ -71,21 +71,21 @@ export async function getWarehouseReturns(db: StaffDb, orderId: string) {
 
 export async function getStockList(page: number) {
   const first = (page - 1) * warehousePageSize;
-  const { data, error } = await serviceDb().from("variants").select(stockColumns)
+  const { data, error } = await serviceClient().from("variants").select(stockColumns)
     .order("sku").range(first, first + warehousePageSize);
   if (error) throw error;
   return { rows: data.slice(0, warehousePageSize), hasMore: data.length > warehousePageSize };
 }
 
 export async function getStockVariant(db: StaffDb, variantId: string, page: number) {
-  const { data: variant, error } = await serviceDb().from("variants").select(stockColumns)
+  const { data: variant, error } = await serviceClient().from("variants").select(stockColumns)
     .eq("id", variantId).maybeSingle();
   if (error) throw error;
   if (!variant) return null;
 
   const first = (page - 1) * warehousePageSize;
   const { data, error: movementError } = await db.from("stock_movements")
-    .select("id,kind,on_hand_delta,reserved_delta,created_at,order_id")
+    .select("id,kind,on_hand_delta,reserved_delta,created_at,order_id,return_id,trial_request_id")
     .eq("variant_id", variantId).order("created_at", { ascending: false })
     .order("id", { ascending: false }).range(first, first + warehousePageSize);
   if (movementError) throw movementError;

@@ -50,6 +50,14 @@ new users; a local database reset removes them. Playwright provisions separate
 test users and a paid fixture order without touching any external provider.
 In a deployed environment, issue verified Supabase Auth accounts separately
 and assign the minimum required role in `staff_members`; do not run this seed.
+Hosted staff sign-in uses the existing request hashing key and trusted Vercel
+client address to enforce separate password-attempt limits. It fails closed if
+those inputs are missing. Configure Supabase Auth rate limits as well, because
+the application limiter cannot cover requests sent directly to Supabase.
+
+Finance replay controls record retry requests but cannot process them until the
+provider worker is connected. A request is keyed by target and its latest
+failure timestamp, without resetting the provider event or email state.
 
 ### Checks
 

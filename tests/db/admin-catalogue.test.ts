@@ -37,7 +37,7 @@ async function createVariant(optionLabel = "45°"): Promise<Variant> {
       product_id, sku, option_label, tool, angle_deg, supplier_name, supplier_part_number,
       price_1_4_pence, price_5_9_pence, price_10_plus_pence
     ) values ($1, $2, $3, 'UCT', 45, 'DB test supplier', 'PART-45', 1200, 1000, 900)
-    returning id, sku, updated_at::text
+    returning id, sku, catalogue_updated_at::text as updated_at
   `, [family.id, `CATSKU-${randomUUID()}`, optionLabel]);
   await db.query("insert into public.variant_substrates values ($1, 'vinyl')", [row!.id]);
   return row!;
@@ -83,7 +83,8 @@ afterEach(async () => {
 afterAll(() => db?.end());
 
 async function version(table: "products" | "variants" | "compatibility", id: string) {
-  const { rows: [row] } = await db.query<{ version: string }>(`select updated_at::text as version from public.${table} where id = $1`, [id]);
+  const column = table === "variants" ? "catalogue_updated_at" : "updated_at";
+  const { rows: [row] } = await db.query<{ version: string }>(`select ${column}::text as version from public.${table} where id = $1`, [id]);
   return row!.version;
 }
 
@@ -138,7 +139,7 @@ test("only service_role can execute the RPCs, and each checks explicit catalogue
     from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
     where (n.nspname = 'public' and p.proname like 'admin_catalogue_%')
       or (n.nspname = 'private' and p.proname in ('keep_catalogue_mapping_private', 'lock_admin_catalogue_variant',
-        'catalogue_has_public_fit', 'catalogue_trim'))
+        'catalogue_has_public_fit', 'catalogue_trim', 'touch_catalogue_version'))
     order by p.proname
   `);
   expect(rows.map(({ proname, anon, authenticated, service }) => [proname, anon, authenticated, service])).toEqual([
@@ -149,6 +150,7 @@ test("only service_role can execute the RPCs, and each checks explicit catalogue
     ["catalogue_trim", false, false, false],
     ["keep_catalogue_mapping_private", false, false, false],
     ["lock_admin_catalogue_variant", false, false, false],
+    ["touch_catalogue_version", false, false, false],
   ]);
 
   const service = await connect("service_role");
@@ -323,6 +325,19 @@ test("changing the blade geometry requires reapproval of its existing fit eviden
     await expect(publish(service)).rejects.toMatchObject({ message: "catalogue_verified_fit_required" });
     await review(service, { record: mapping });
     await publish(service);
+  } finally {
+    await service.end();
+  }
+});
+
+test("stock activity does not invalidate an open catalogue form", async () => {
+  const service = await connect("service_role");
+  try {
+    const expected = await version("variants", variant.id);
+    await db.query("update public.variants set stock_on_hand = 5 where id = $1", [variant.id]);
+    expect(await version("variants", variant.id)).toBe(expected);
+    await save(service, { price_1_4_pence: 1400 }, expected);
+    expect(await version("variants", variant.id)).not.toBe(expected);
   } finally {
     await service.end();
   }

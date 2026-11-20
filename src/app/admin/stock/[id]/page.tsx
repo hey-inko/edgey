@@ -45,14 +45,18 @@ export default async function StockVariantPage({ params, searchParams }: {
       </AdminSection>
       <AdminSection title="Movement ledger">
         {movements.length ? (
-          <AdminTable label="Movement ledger" headers={["Recorded", "Movement", "On-hand change", "Reserved change", "Order reference"]}>
+          <AdminTable label="Movement ledger" headers={["Recorded", "Movement", "On-hand change", "Reserved change", "Reference"]}>
             {movements.map((entry) => (
               <tr key={entry.id}>
                 <td className="admin-mono"><time dateTime={entry.created_at}>{movementTime(entry.created_at)}</time></td>
                 <td>{warehouseLabel(entry.kind)}</td>
                 <td className="admin-mono">{delta(entry.on_hand_delta)}</td>
                 <td className="admin-mono">{delta(entry.reserved_delta)}</td>
-                <td className="admin-mono break-all">{entry.order_id ?? "—"}</td>
+                <td className="admin-mono break-all">
+                  {entry.return_id ? `Return ${entry.return_id}`
+                    : entry.trial_request_id ? `Trial ${entry.trial_request_id}`
+                    : entry.order_id ? `Order ${entry.order_id}` : "—"}
+                </td>
               </tr>
             ))}
           </AdminTable>

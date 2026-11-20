@@ -1,4 +1,5 @@
-alter table public.variants add column rejected_at timestamptz, add column rejected_by text;
+alter table public.variants add column rejected_at timestamptz, add column rejected_by text,
+  add column catalogue_updated_at timestamptz not null default now();
 alter table public.compatibility add column rejected_at timestamptz, add column rejected_by text;
 
 update public.compatibility set is_private = true
@@ -19,6 +20,26 @@ $$;
 
 create trigger compatibility_keep_private before insert or update on public.compatibility
 for each row execute function private.keep_catalogue_mapping_private();
+
+create function private.touch_catalogue_version()
+returns trigger language plpgsql set search_path = ''
+as $$
+declare
+  ignored_columns text[] := array[
+    'stock_on_hand', 'stock_reserved', 'availability', 'sku_normalised', 'updated_at', 'catalogue_updated_at'
+  ];
+begin
+  new.catalogue_updated_at := case
+    when to_jsonb(new) - ignored_columns is distinct from to_jsonb(old) - ignored_columns
+    then clock_timestamp()
+    else old.catalogue_updated_at
+  end;
+  return new;
+end;
+$$;
+
+create trigger variants_catalogue_version before update on public.variants
+for each row execute function private.touch_catalogue_version();
 
 create function private.catalogue_trim(input text)
 returns text language sql immutable strict set search_path = ''
@@ -42,7 +63,7 @@ begin
   if not found then
     raise exception using errcode = 'P0002', message = 'catalogue_variant_not_found';
   end if;
-  if result.updated_at is distinct from p_expected_updated_at then
+  if result.catalogue_updated_at is distinct from p_expected_updated_at then
     raise exception using errcode = '22023', message = 'catalogue_stale';
   end if;
   return result;
@@ -288,7 +309,7 @@ $$;
 
 revoke all on function private.keep_catalogue_mapping_private(),
   private.lock_admin_catalogue_variant(uuid, uuid, timestamptz), private.catalogue_has_public_fit(uuid),
-  private.catalogue_trim(text)
+  private.catalogue_trim(text), private.touch_catalogue_version()
   from public, anon, authenticated, service_role;
 
 revoke all on function

@@ -69,3 +69,56 @@ test("only finance can read finance rows and its direct client cannot read confi
   const payload = await client.from("provider_events").select("payload").eq("event_id", id);
   expect(payload.error?.code).toBe("42501");
 });
+
+test("only the finance retry RPC can mark a failed target, once per failure version", async () => {
+  const finance = users.get("finance")!;
+  const warehouse = users.get("warehouse")!;
+  const id = `evt_${randomUUID().replaceAll("-", "")}`;
+  const payload = { p_kind: "event", p_target_id: id, p_actor_id: finance.id };
+  const record = await service.rpc("record_provider_event", {
+    p_provider: "stripe", p_event_id: id, p_event_type: "fixture.replay", p_payload: { fixture: true },
+  });
+  expect(record.error).toBeNull();
+
+  expect((await finance.client.rpc("request_finance_retry", payload)).error?.code).toBe("42501");
+  expect((await service.rpc("request_finance_retry", { ...payload, p_actor_id: warehouse.id })).error)
+    .toMatchObject({ code: "42501", message: "finance_role_required" });
+  expect((await service.rpc("request_finance_retry", payload)).data).toBe(false);
+
+  const fail = (message: string) => service.rpc("mark_provider_event", {
+    p_provider: "stripe", p_event_id: id, p_state: "failed", p_error: message,
+  });
+  expect((await fail("Original failure")).error).toBeNull();
+  const results = await Promise.all([service.rpc("request_finance_retry", payload), service.rpc("request_finance_retry", payload)]);
+  expect(results.map(({ data, error }) => ({ data, error }))).toEqual([
+    { data: true, error: null }, { data: true, error: null },
+  ]);
+
+  const list = () => finance.client.from("finance_retry_requests")
+    .select("kind,target_id,target_updated_at,requested_at").eq("target_id", id).single();
+  const initial = await list();
+  expect(initial.error).toBeNull();
+  expect(initial.data).toMatchObject({ kind: "event", target_id: id });
+  expect((await warehouse.client.from("finance_retry_requests").select("target_id").eq("target_id", id)).data).toEqual([]);
+  expect((await finance.client.from("finance_retry_requests").select("requested_by").eq("target_id", id)).error?.code).toBe("42501");
+  expect((await fail("New failure")).error).toBeNull();
+  expect((await service.rpc("request_finance_retry", payload)).data).toBe(true);
+  const later = await list();
+  expect(later.data?.target_updated_at).not.toBe(initial.data?.target_updated_at);
+  expect((await service.from("provider_events").select("state,last_error").eq("event_id", id).single()).data)
+    .toEqual({ state: "failed", last_error: "New failure" });
+});
+
+test("staff password attempts are limited separately from buyer magic links", async () => {
+  const key = () => randomUUID().replaceAll("-", "").repeat(2);
+  const p_ip_key = key();
+  const p_email_key = key();
+  for (let i = 0; i < 11; i++) {
+    const attempt = await service.rpc("consume_request_rate_limit", { p_scope: "staff_sign_in", p_ip_key, p_email_key });
+    expect(attempt.error).toBeNull();
+    expect(attempt.data).toBe(i < 10);
+  }
+  const trade = await service.rpc("consume_request_rate_limit", { p_scope: "trade_sign_in", p_ip_key, p_email_key });
+  expect(trade.error).toBeNull();
+  expect(trade.data).toBe(true);
+});

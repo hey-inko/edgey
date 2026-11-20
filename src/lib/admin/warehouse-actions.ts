@@ -40,7 +40,7 @@ function refused(message: string) {
 
 export async function runWarehouseAction(action: WarehouseAction, _previous: State, form: FormData) {
   const { userId: actorId } = await requireStaff("warehouse");
-  if (!isWarehouseId(action.key) || (
+  if (!action || !(form instanceof FormData) || !isWarehouseId(action.key) || (
     action.kind === "receive" ? !isWarehouseId(action.variantId) : !isWarehouseId(action.orderId)
   )) {
     return refused("This form is no longer valid. Reload the page and try again.");
@@ -104,6 +104,8 @@ export async function runWarehouseAction(action: WarehouseAction, _previous: Sta
         affectedVariant = action.variantId;
         message = "Stock receipt recorded.";
         break;
+      default:
+        return refused("This warehouse operation is not available.");
     }
   } catch (error) {
     if (typeof error === "object" && error !== null && "message" in error &&

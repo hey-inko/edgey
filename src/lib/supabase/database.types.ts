@@ -41,6 +41,8 @@ export type Database = {
           id: string;
           is_private: boolean;
           machine: string | null;
+          rejected_at: string | null;
+          rejected_by: string | null;
           tool: string | null;
           updated_at: string;
           variant_id: string;
@@ -62,6 +64,8 @@ export type Database = {
           id?: string;
           is_private?: boolean;
           machine?: string | null;
+          rejected_at?: string | null;
+          rejected_by?: string | null;
           tool?: string | null;
           updated_at?: string;
           variant_id: string;
@@ -82,6 +86,8 @@ export type Database = {
           id?: string;
           is_private?: boolean;
           machine?: string | null;
+          rejected_at?: string | null;
+          rejected_by?: string | null;
           tool?: string | null;
           updated_at?: string;
           variant_id?: string;
@@ -144,6 +150,31 @@ export type Database = {
           staff_notes?: string | null;
           status?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      finance_retry_requests: {
+        Row: {
+          kind: string;
+          requested_at: string;
+          requested_by: string;
+          target_id: string;
+          target_updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          kind: string;
+          requested_at?: string;
+          requested_by: string;
+          target_id: string;
+          target_updated_at: string;
+        };
+        Update: {
+          kind?: string;
+          requested_at?: string;
+          requested_by?: string;
+          target_id?: string;
+          target_updated_at?: string;
         };
         Relationships: [];
       };
@@ -964,6 +995,7 @@ export type Database = {
           approved_by: string | null;
           availability: string | null;
           blade_thickness_mm: number | null;
+          catalogue_updated_at: string;
           created_at: string;
           cutting_depth_mm: number | null;
           diameter_mm: number | null;
@@ -977,6 +1009,8 @@ export type Database = {
           price_5_9_pence: number;
           product_id: string;
           publication_status: Database["public"]["Enums"]["publication_status"];
+          rejected_at: string | null;
+          rejected_by: string | null;
           shank_mm: number | null;
           sku: string;
           sku_normalised: string | null;
@@ -996,6 +1030,7 @@ export type Database = {
           approved_by?: string | null;
           availability?: never;
           blade_thickness_mm?: number | null;
+          catalogue_updated_at?: string;
           created_at?: string;
           cutting_depth_mm?: number | null;
           diameter_mm?: number | null;
@@ -1009,6 +1044,8 @@ export type Database = {
           price_5_9_pence: number;
           product_id: string;
           publication_status?: Database["public"]["Enums"]["publication_status"];
+          rejected_at?: string | null;
+          rejected_by?: string | null;
           shank_mm?: number | null;
           sku: string;
           sku_normalised?: never;
@@ -1027,6 +1064,7 @@ export type Database = {
           approved_by?: string | null;
           availability?: never;
           blade_thickness_mm?: number | null;
+          catalogue_updated_at?: string;
           created_at?: string;
           cutting_depth_mm?: number | null;
           diameter_mm?: number | null;
@@ -1040,6 +1078,8 @@ export type Database = {
           price_5_9_pence?: number;
           product_id?: string;
           publication_status?: Database["public"]["Enums"]["publication_status"];
+          rejected_at?: string | null;
+          rejected_by?: string | null;
           shank_mm?: number | null;
           sku?: string;
           sku_normalised?: never;
@@ -1067,6 +1107,43 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_catalogue_review: {
+        Args: {
+          p_actor_id: string;
+          p_adapter?: string;
+          p_approve: boolean;
+          p_brand?: string;
+          p_compatibility_id?: string;
+          p_evidence_note: string;
+          p_evidence_source: string;
+          p_evidence_url?: string;
+          p_expected_mapping_updated_at?: string;
+          p_expected_updated_at: string;
+          p_machine?: string;
+          p_tool?: string;
+          p_variant_id: string;
+        };
+        Returns: string;
+      };
+      admin_catalogue_set_publication: {
+        Args: {
+          p_actor_id: string;
+          p_expected_updated_at: string;
+          p_publish: boolean;
+          p_variant_id: string;
+        };
+        Returns: string;
+      };
+      admin_catalogue_update: {
+        Args: {
+          p_actor_id: string;
+          p_expected_product_updated_at: string;
+          p_expected_updated_at: string;
+          p_selling: Json;
+          p_variant_id: string;
+        };
+        Returns: string;
+      };
       approve_trial_fulfilment: {
         Args: {
           p_actor_id: string;
@@ -1655,6 +1732,10 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
+      };
+      request_finance_retry: {
+        Args: { p_actor_id: string; p_kind: string; p_target_id: string };
+        Returns: boolean;
       };
       resolve_refunded_payment_review: {
         Args: {

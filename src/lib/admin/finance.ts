@@ -1,13 +1,14 @@
 import "server-only";
 
-import { requireStaff } from "./auth";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 import { adminRange } from "./pagination";
-import { serviceDb } from "./service";
+import { listFinanceRetryRequests } from "./replay";
+import { serviceClient } from "@/lib/supabase/service";
 
-export async function financeOverview(pages: {
+export async function financeOverview(db: SupabaseClient<Database>, pages: {
   orders: number; captures: number; reviews: number; events: number; outbox: number;
 }) {
-  const { db } = await requireStaff("finance");
   const financeColumns = "id,business_name,payment_status,fulfilment_status,gross_pence,paid_pence,refunded_pence,created_at";
   const [orders, captures, reviews, events, outbox] = await Promise.all([
     db.from("orders").select(financeColumns)
@@ -17,7 +18,7 @@ export async function financeOverview(pages: {
       .in("payment_status", ["paid", "partially_paid", "partially_refunded"])
       .gt("paid_pence", 0)
       .order("created_at", { ascending: false }).order("id").range(...adminRange(pages.captures)),
-    serviceDb().from("orders").select("id,business_name,payment_review_reason,payment_status,payment_review_refund_id")
+    serviceClient().from("orders").select("id,business_name,payment_review_reason,payment_status,payment_review_refund_id")
       .not("payment_review_reason", "is", null).is("payment_review_refund_id", null)
       .order("updated_at", { ascending: false }).order("id").range(...adminRange(pages.reviews)),
     db.from("provider_events").select("provider,event_id,event_type,state,last_error,updated_at")
@@ -32,5 +33,9 @@ export async function financeOverview(pages: {
   if (orders.error || captures.error || reviews.error || events.error || outbox.error) {
     throw new Error("Could not load the finance queues.");
   }
-  return { orders: orders.data, captures: captures.data, reviews: reviews.data, events: events.data, outbox: outbox.data };
+  const queued = await listFinanceRetryRequests(db, [
+    ...events.data.filter((event) => event.provider === "stripe").map((event) => event.event_id),
+    ...outbox.data.flatMap((message) => message.order_id && message.state === "failed" ? [message.order_id] : []),
+  ]);
+  return { orders: orders.data, captures: captures.data, reviews: reviews.data, events: events.data, outbox: outbox.data, queued };
 }
