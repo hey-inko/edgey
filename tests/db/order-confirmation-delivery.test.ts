@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { processRequestEmails, replayOrderConfirmation } from "@/lib/email/outbox";
 import { requestReceipt } from "@/lib/email/request-email";
 
@@ -28,6 +28,7 @@ type Row = {
 
 let connectionString: string;
 let db: Client;
+let unrelatedQueue: Client | undefined;
 const fixtures: string[] = [];
 const requests: { table: "enquiries" | "trial_requests"; id: string }[] = [];
 const recipientFingerprints: string[] = [];
@@ -48,7 +49,15 @@ beforeAll(async () => {
   db = await connect();
 });
 
+beforeEach(async () => {
+  unrelatedQueue = await connect();
+  await unrelatedQueue.query("begin");
+  await unrelatedQueue.query("select id from public.order_outbox where state = 'pending' for update");
+});
+
 afterEach(async () => {
+  await unrelatedQueue?.end();
+  unrelatedQueue = undefined;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   retrieveInvoice.mockReset();
