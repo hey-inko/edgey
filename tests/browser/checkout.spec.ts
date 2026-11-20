@@ -136,6 +136,14 @@ test("checkout validates before payment and retains the same attempt until a mat
   await fillAddress(page, "BT1 5GS");
   const enquiry = page.getByRole("link", { name: "Ask us about delivery" });
   await expect(enquiry).toHaveAttribute("href", "/enquiry?kind=delivery&postcode=BT1%205GS");
+  const destination = await page.context().newPage();
+  try {
+    await destination.goto(await enquiry.getAttribute("href") ?? "");
+    await expect(destination.getByRole("heading", { name: "Ask about delivery" })).toBeVisible();
+    await expect(destination.getByLabel("Delivery postcode")).toHaveValue("BT1 5GS");
+  } finally {
+    await destination.close();
+  }
   await expect(page.getByLabel("Postcode")).toHaveAccessibleDescription("Online delivery isn’t available for this postcode.");
   await expect(pay).toBeDisabled();
   await expect(amount).toHaveCount(0);
