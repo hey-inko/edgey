@@ -51,7 +51,7 @@ test users and a paid fixture order without touching any external provider.
 In a deployed environment, issue verified Supabase Auth accounts separately
 and assign the minimum required role in `staff_members`; do not run this seed.
 Hosted staff sign-in uses the existing request hashing key and trusted Vercel
-client address to enforce separate password-attempt limits. It fails closed if
+client address to enforce password-attempt limits per IP and per IP/email pair. It fails closed if
 those inputs are missing. Configure Supabase Auth rate limits as well, because
 the application limiter cannot cover requests sent directly to Supabase.
 

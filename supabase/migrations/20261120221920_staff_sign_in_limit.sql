@@ -38,4 +38,4 @@ end;
 $$;
 
 comment on function public.consume_request_rate_limit(text, text, text) is
-  'Consume two server-derived dimensions atomically in one-hour windows. Trade sign-in allows 20/IP and 5/email; staff sign-in allows 60/IP and 10/email; intake forms allow 10/IP and 3/email; Finder allows 120/IP and 10,000 globally.';
+  'Consume two server-derived dimensions atomically in one-hour windows. Trade sign-in allows 20/IP and 5/email; staff sign-in allows 60/IP and 10/IP+email; intake forms allow 10/IP and 3/email; Finder allows 120/IP and 10,000 globally.';

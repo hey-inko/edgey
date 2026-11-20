@@ -7,7 +7,7 @@ import { localRequestMode } from "./availability";
 
 type FormScope = "enquiry" | "trial" | "trade" | "trade_sign_in" | "staff_sign_in";
 
-export function requestFingerprint(purpose: "ip" | "email" | "search" | "finder", value: string): string {
+export function requestFingerprint(purpose: "ip" | "email" | "search" | "finder" | "staff_ip_email", value: string): string {
   const key = process.env.EDGEY_REQUEST_HASH_KEY;
   if (!key || Buffer.byteLength(key) < 32) throw new Error("Request hashing configuration is missing.");
   return createHmac("sha256", key).update(purpose + "\0" + value).digest("hex");
@@ -34,7 +34,11 @@ async function consume(scope: FormScope | "finder", ip: string, secondaryKey: st
 export async function allowRequest(scope: FormScope, email: string): Promise<boolean> {
   const ip = await requestIpKey();
   if (!ip) throw new Error("Trusted client address is unavailable.");
-  return consume(scope, ip, requestFingerprint("email", email.toLowerCase()));
+  const normalised = email.toLowerCase();
+  const secondaryKey = scope === "staff_sign_in"
+    ? requestFingerprint("staff_ip_email", ip + "\0" + normalised)
+    : requestFingerprint("email", normalised);
+  return consume(scope, ip, secondaryKey);
 }
 
 export async function allowFinderEvent(): Promise<boolean> {

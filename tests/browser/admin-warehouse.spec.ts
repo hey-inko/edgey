@@ -21,7 +21,7 @@ test("staff sign in, print the paid order, then submit dispatch twice without mo
   await expect(page.getByText(order.service, { exact: true })).toBeVisible();
   await expect(page.getByText("1 Fixture Lane", { exact: true })).toBeVisible();
   await expect(page.locator('time[datetime="2026-11-24"]')).toBeVisible();
-  await page.goBack();
+  await page.getByRole("link", { name: "Back to order" }).click();
   await page.getByRole("button", { name: "Start picking" }).click();
   await expect(page.getByLabel("Carrier")).toBeVisible();
 
