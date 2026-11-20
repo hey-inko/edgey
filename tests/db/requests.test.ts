@@ -67,6 +67,10 @@ const enquiry = (id: string, email = contactEmail) =>
   rpc("submit_enquiry", [id, "compatibility", email, "Which blade fits?"]);
 const trial = (id: string, email = contactEmail) =>
   rpc("submit_trial_request", [id, "zund", "unknown", email, "Test Fabrication", postcode]);
+const reviewTrial = async (id: string, actor: string, variants: string[]) => rpc("review_admin_trial", [
+  id, actor, variants.length ? "eligible" : "declined", "Catalogue fit and eligibility checked", variants,
+  (await one<{ updated_at: string }>("select updated_at::text from public.trial_requests where id = $1", [id])).updated_at,
+]);
 const trade = (id: string, buyer: string, company = "Test Fabrication") => rpc("submit_trade_application", [
   id, buyer, "Test Buyer", company, "1 Test Street", "London", postcode,
 ]);
@@ -180,10 +184,10 @@ describe("request data and permissions", () => {
     }, buyer.id);
     for (const staff of [catalogue, warehouse]) {
       await asRole("authenticated", async () => {
-        expect((await db.query("update public.enquiries set status = 'in_review' where id = $1",
-          [enquiryId])).rowCount).toBe(1);
-        expect((await db.query("update public.trial_requests set staff_notes = 'Checking fit' where id = $1",
-          [trialId])).rowCount).toBe(1);
+        await rejects(() => db.query("update public.enquiries set status = 'in_review' where id = $1",
+          [enquiryId]), "42501");
+        await rejects(() => db.query("update public.trial_requests set staff_notes = 'Checking fit' where id = $1",
+          [trialId]), "42501");
         await rejects(() => db.query("update public.trial_requests set status = 'approved' where id = $1",
           [trialId]), "42501");
         await rejects(() => db.query("update public.trial_requests set email = 'new@example.test' where id = $1",
@@ -252,14 +256,17 @@ describe("request data and permissions", () => {
       await rejects(() => trial(trials, "changed@example.test"), "22023", "request_attempt_conflict");
       expect(await outbox(application)).toHaveLength(2);
     });
-    const columns = (await db.query<{ column_name: string }>(`
-      select column_name from information_schema.columns where table_schema = 'public' and table_name = 'order_outbox'
-    `)).rows;
-    expect(columns.map(({ column_name }) => column_name).sort()).toEqual([
-      "attempt_count", "created_at", "delivery_uncertain", "enquiry_id", "id", "last_error", "lease_token", "lease_until",
-      "message_key", "next_attempt_at", "order_id", "provider_message_id", "send_in_flight", "send_payload", "send_provider",
-      "send_started_at", "sent_at", "state", "trade_application_id", "trial_request_id", "updated_at",
-    ]);
+    const queued = (await db.query(`
+      select to_jsonb(message) - array['state', 'created_at', 'updated_at'] as entry from public.order_outbox as message
+      where enquiry_id = $1 or trial_request_id = $2 or trade_application_id = $3
+    `, [enquiries, trials, application])).rows;
+    expect(queued).toHaveLength(6);
+    for (const { entry } of queued) {
+      expect(entry).toMatchObject({ message_subject: null, message_body: null, send_payload: null });
+      expect(JSON.stringify(entry)).not.toContain(contactEmail);
+      expect(JSON.stringify(entry)).not.toContain(buyer.email);
+      expect(JSON.stringify(entry)).not.toContain("1 Test Street");
+    }
   });
 
   test("requires verified delivery and two units on the shared stock ledger before dispatch or purchase linkage", async () => {
@@ -289,6 +296,8 @@ describe("request data and permissions", () => {
       await rejects(() => rpc("dispatch_trial_fulfilment", [trialId, warehouse.id, "TRACK"]),
         "P0002");
       await rejects(() => approve(trialId, catalogue.id, [first, second]), "42501", "warehouse_role_required");
+      await reviewTrial(trialId, catalogue.id, [first, second]);
+      await reviewTrial(declinedId, catalogue.id, []);
       await rejects(() => approve(trialId, warehouse.id, [first]), "22023", "two_trial_units_required");
       await rejects(() => approve(trialId, warehouse.id, [first, second], delivery, false),
         "22023", "verified_delivery_address_and_service_required");
@@ -315,26 +324,26 @@ describe("request data and permissions", () => {
       expect(await rpc("dispatch_trial_fulfilment", [trialId, warehouse.id, "TRACK"])).toBe(trialId);
       expect(await rpc("dispatch_trial_fulfilment", [trialId, warehouse.id, "TRACK"])).toBe(trialId);
       await rejects(() => rpc("dispatch_trial_fulfilment", [trialId, warehouse.id, "CHANGED"]), "22023",
-        "trial_not_allocated");
+        "trial_tracking_already_recorded");
       await rejects(() => rpc("cancel_trial_fulfilment", [trialId, warehouse.id]), "22023", "trial_not_allocated");
       expect(await stock(first)).toEqual({ stock_on_hand: 1, stock_reserved: 0 });
       expect(await stock(second)).toEqual({ stock_on_hand: 0, stock_reserved: 0 });
       await rejects(() => rpc("link_trial_order", [trialId, earlyOrder.id, warehouse.id]), "22023",
         "not_a_subsequent_purchase");
       const purchase = await order(orderVariant, contactEmail);
-      const wrongBuyer = await order(orderVariant, "someone-else@example.test");
+      const alternateEmail = await order(orderVariant, "different-email@example.test");
       await rejects(() => rpc("link_trial_order", [trialId, purchase.id, warehouse.id]), "22023",
         "not_a_subsequent_purchase");
       await db.query("reset role");
       await db.query("update public.orders set created_at = clock_timestamp() where id in ($1, $2)",
-        [purchase.id, wrongBuyer.id]);
+        [purchase.id, alternateEmail.id]);
       await db.query("set local role service_role");
       await pay(purchase.id);
-      await pay(wrongBuyer.id);
-      await rejects(() => rpc("link_trial_order", [trialId, wrongBuyer.id, warehouse.id]), "22023",
-        "not_a_subsequent_purchase");
-      expect(await rpc("link_trial_order", [trialId, purchase.id, warehouse.id])).toBe(trialId);
-      expect(await rpc("link_trial_order", [trialId, purchase.id, warehouse.id])).toBe(trialId);
+      await pay(alternateEmail.id);
+      expect(await rpc("link_trial_order", [trialId, alternateEmail.id, warehouse.id])).toBe(trialId);
+      expect(await rpc("link_trial_order", [trialId, alternateEmail.id, warehouse.id])).toBe(trialId);
+      await rejects(() => rpc("link_trial_order", [trialId, purchase.id, warehouse.id]), "22023",
+        "trial_order_link_not_available");
       const { rows } = await db.query(`
         select kind, on_hand_delta, reserved_delta, order_id from public.stock_movements
         where trial_request_id = $1 order by id
@@ -348,8 +357,8 @@ describe("request data and permissions", () => {
       expect(orderConfirmation).toEqual({ message_key: "order_confirmation", enquiry_id: null });
     });
     await asRole("authenticated", async () => {
-      expect((await db.query("update public.trial_requests set status = 'declined' where id = $1", [declinedId])).rowCount)
-        .toBe(1);
+      await rejects(() => db.query("update public.trial_requests set status = 'declined' where id = $1", [declinedId]),
+        "42501");
       expect((await db.query("select trial_request_id from public.trial_fulfilments where trial_request_id = $1",
         [trialId])).rows).toEqual([]);
       expect((await db.query("select variant_id from public.trial_allocations where trial_request_id = $1",
@@ -365,6 +374,7 @@ describe("request data and permissions", () => {
 
   test("retention clears old unconverted PII and its outbox while preserving stock history, approved records and live windows", async () => {
     const warehouse = await user("warehouse");
+    const catalogue = await user("catalogue");
     const finance = await user("finance");
     const buyer = await user();
     const otherBuyer = await user();
@@ -386,6 +396,7 @@ describe("request data and permissions", () => {
       await enquiry(activeEnquiry);
       await trial(oldTrial);
       await trial(keptTrial);
+      await reviewTrial(keptTrial, catalogue.id, [item, item]);
       await trade(oldTrade, buyer.id);
       await trade(keptTrade, otherBuyer.id);
       await approve(keptTrial, warehouse.id, [item, item]);
@@ -417,10 +428,8 @@ describe("request data and permissions", () => {
     await db.query("update public.finder_search_events set created_at = now() - interval '60 days' where id = $1", [oldSearch]);
     await db.query("update private.request_rate_limits set expires_at = now() - interval '1 hour' where key in ($1, $2)",
       [expiredIp, expiredEmail]);
-    await asRole("authenticated", async () => {
-      await db.query("update public.enquiries set status = 'converted' where id = $1", [keptEnquiry]);
-      await db.query("update public.enquiries set status = 'in_review' where id = $1", [activeEnquiry]);
-    }, warehouse.id);
+    await db.query("update public.enquiries set status = 'converted' where id = $1", [keptEnquiry]);
+    await db.query("update public.enquiries set status = 'in_review' where id = $1", [activeEnquiry]);
     await asRole("service_role", async () => {
       await rejects(() => rpc("purge_request_data", ["0 days", "1 day", "1 day", "1 day"]),
         "22023", "invalid_request_retention_period");
@@ -428,7 +437,9 @@ describe("request data and permissions", () => {
         enquiries: 1, trials: 1, trade_applications: 1, finder_search_events: 1, rate_limit_windows: 2,
       });
       for (const id of [oldEnquiry, oldTrial, oldTrade]) expect(await outbox(id)).toEqual([]);
-      for (const id of [keptEnquiry, activeEnquiry, keptTrial, keptTrade]) expect(await outbox(id)).toHaveLength(2);
+      for (const id of [keptEnquiry, activeEnquiry, keptTrade]) expect(await outbox(id)).toHaveLength(2);
+      expect((await outbox(keptTrial)).map(({ message_key }) => message_key))
+        .toEqual(["confirmation", "staff_notification", "trial_approved"]);
       expect((await db.query("select id from public.finder_search_events where id in ($1, $2)",
         [oldSearch, liveSearch])).rows).toEqual([{ id: liveSearch }]);
       expect((await db.query("select kind from public.stock_movements where trial_request_id = $1 order by id",

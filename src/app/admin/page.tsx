@@ -1,4 +1,5 @@
 import { requireStaff, type StaffRole } from "@/lib/admin/auth";
+import { requestsDb } from "@/lib/admin/request-schema";
 import { AdminHeading, AdminLink } from "./ui";
 
 const areas: { role?: StaffRole; title: string; path: string; description: string }[] = [
@@ -10,7 +11,10 @@ const areas: { role?: StaffRole; title: string; path: string; description: strin
 ];
 
 export default async function AdminPage() {
-  const { roles } = await requireStaff();
+  const { roles, userId } = await requireStaff();
+  const conversion = roles.includes("warehouse")
+    ? await requestsDb().rpc("count_admin_trial_first_purchases", { p_actor_id: userId })
+    : null;
 
   return (
     <>
@@ -20,6 +24,9 @@ export default async function AdminPage() {
           <section key={path} className="admin-panel admin-area">
             <h2><AdminLink href={`/admin/${path}`}>{title}</AdminLink></h2>
             <p className="admin-muted">{description}</p>
+            {path === "requests" && conversion && <p className="mt-2">
+              {conversion.error ? "Trial purchase count is unavailable." : <>Trials linked to a first purchase: <span className="admin-mono">{conversion.data}</span></>}
+            </p>}
           </section>
         ))}
       </div>

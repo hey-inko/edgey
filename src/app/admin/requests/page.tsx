@@ -1,8 +1,9 @@
 import { requireStaff } from "@/lib/admin/auth";
 import { displayState, displayTimestamp } from "@/lib/admin/format";
 import { adminPage, adminPageSize, adminRange } from "@/lib/admin/pagination";
+import { enquiryStatus, requestBrand, trialStatus } from "@/lib/admin/requests";
 import { AdminPagination } from "../pagination";
-import { AdminHeading, AdminNotice, AdminSection, AdminTable } from "../ui";
+import { AdminHeading, AdminLink, AdminNotice, AdminSection, AdminTable } from "../ui";
 
 type Search = Record<string, string | string[] | undefined>;
 
@@ -23,19 +24,25 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
       .order("created_at", { ascending: false }).order("id").range(...adminRange(pages.trade)) : null,
   ]);
   if (enquiries?.error || trials?.error || trade?.error) throw new Error("Could not load the requests inbox.");
+  const trialRows = trials?.data.slice(0, adminPageSize) ?? [];
+  const fulfilments = roles.includes("warehouse") && trialRows.length
+    ? await db.from("trial_fulfilments").select("trial_request_id,state").in("trial_request_id", trialRows.map(({ id }) => id))
+    : null;
+  if (fulfilments?.error) throw new Error("Could not load trial fulfilment statuses.");
+  const trialStates = new Map(fulfilments?.data.map((row) => [row.trial_request_id, row.state]));
   const nav = (key: keyof typeof pages, length: number) => <AdminPagination pathname="/admin/requests"
     query={query} parameter={key} page={pages[key]} length={length} />;
 
   return (
     <>
-      <AdminHeading title="Requests" description="Read-only inbox. You can see the requests assigned to your role." />
+      <AdminHeading title="Requests" description={viewFit ? "Review trial requests and respond to enquiries. Access is limited to your assigned roles." : "Read-only trade applications inbox."} />
       {enquiries && <AdminSection title="Enquiries">
         {enquiries.data.length ? (
           <AdminTable label="Enquiries" headers={["Type", "Reply address", "Lookup", "Message", "Status", "Received"]}>
             {enquiries.data.slice(0, adminPageSize).map((row) => <tr key={row.id}>
-              <td>{displayState(row.kind)}</td><td className="admin-mono admin-email">{row.email}</td>
-              <td>{[row.query, row.machine_brand, row.postcode].filter(Boolean).join(" · ") || "—"}</td>
-              <td className="admin-request-message">{row.message}</td><td>{displayState(row.status)}</td>
+              <td><AdminLink href={`/admin/requests/enquiries/${row.id}`}>{displayState(row.kind)}</AdminLink></td><td className="admin-mono admin-email">{row.email}</td>
+              <td>{[row.query, row.machine_brand && requestBrand(row.machine_brand), row.postcode].filter(Boolean).join(" · ") || "—"}</td>
+              <td className="admin-request-message">{row.message}</td><td>{enquiryStatus(row.status)}</td>
               <td className="admin-mono">{displayTimestamp(row.created_at)}</td>
             </tr>)}
           </AdminTable>
@@ -45,10 +52,10 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
       {trials && <AdminSection title="Trial requests">
         {trials.data.length ? (
           <AdminTable label="Trial requests" headers={["Company", "Reply address", "Machine", "OEM code", "Postcode", "Status", "Received"]}>
-            {trials.data.slice(0, adminPageSize).map((row) => <tr key={row.id}>
-              <td>{row.company}</td><td className="admin-mono admin-email">{row.email}</td><td>{row.machine_brand}</td>
+            {trialRows.map((row) => <tr key={row.id}>
+              <td><AdminLink href={`/admin/requests/trials/${row.id}`}>{row.company}</AdminLink></td><td className="admin-mono admin-email">{row.email}</td><td>{requestBrand(row.machine_brand)}</td>
               <td className="admin-mono">{row.oem_code}</td><td className="admin-mono">{row.postcode}</td>
-              <td>{displayState(row.status)}</td><td className="admin-mono">{displayTimestamp(row.created_at)}</td>
+              <td>{trialStatus(row.status, trialStates.get(row.id))}</td><td className="admin-mono">{displayTimestamp(row.created_at)}</td>
             </tr>)}
           </AdminTable>
         ) : <AdminNotice>No trial requests on this page.</AdminNotice>}

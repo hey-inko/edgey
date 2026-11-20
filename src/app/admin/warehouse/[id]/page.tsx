@@ -11,8 +11,12 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
   const { db } = await requireStaff("warehouse");
   const { id } = await params;
   if (!isWarehouseId(id)) notFound();
-  const result = await getWarehouseOrder(db, id);
+  const [result, trial] = await Promise.all([
+    getWarehouseOrder(db, id),
+    db.from("trial_fulfilments").select("trial_request_id").eq("subsequent_order_id", id).maybeSingle(),
+  ]);
   if (!result) notFound();
+  if (trial.error) throw new Error("Could not load the linked trial.");
 
   const { order, items } = result;
   const status = order.fulfilment_status;
@@ -40,6 +44,7 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
           <dt>Order reference</dt><dd className="admin-mono break-all">{order.id}</dd>
           <dt>Fulfilment</dt><dd>{warehouseLabel(status)}</dd>
           <dt>Payment</dt><dd>{warehouseLabel(order.payment_status)}</dd>
+          {trial.data && <><dt>Linked trial</dt><dd><AdminLink href={`/admin/requests/trials/${trial.data.trial_request_id}`}>View trial request</AdminLink></dd></>}
           {order.dispatched_at && (
             <>
               <dt>Dispatched</dt><dd><time dateTime={order.dispatched_at}>{movementTime(order.dispatched_at)}</time></dd>

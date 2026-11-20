@@ -27,7 +27,7 @@ test("requests inbox shows states only for the signed-in staff role", async ({ p
   await signInStaff(page, await createLocalAdminUser("warehouse"));
   await page.goto("/admin/requests");
   const enquiryRow = page.getByRole("table", { name: "Enquiries" }).getByRole("row").filter({ hasText: buyer.email });
-  await expect(enquiryRow).toContainText("Pending");
+  await expect(enquiryRow).toContainText("Open");
   const trialRow = page.getByRole("table", { name: "Trial requests" }).getByRole("row").filter({ hasText: company });
   await expect(trialRow).toContainText("Pending");
   await expect(page.getByRole("table", { name: "Trade applications" })).toHaveCount(0);
