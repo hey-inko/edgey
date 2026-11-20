@@ -1235,6 +1235,10 @@ export type Database = {
         Args: { p_order_id: string; p_account_id?: string; p_close_now?: boolean };
         Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
+      consume_checkout_rate_limit: {
+        Args: { p_scope: string; p_ip_key: string; p_email_key: string };
+        Returns: boolean;
+      };
       finish_outbox_email: {
         Args: { p_outbox_id: string; p_lease_token: string; p_outcome: string; p_provider_message_id?: string };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];

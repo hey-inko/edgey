@@ -72,7 +72,7 @@ afterEach(async () => {
   }
   const fingerprints = recipientFingerprints.splice(0);
   if (fingerprints.length) {
-    await db.query("delete from private.request_rate_limits where scope = 'request_receipt' and key = any($1)", [fingerprints]);
+    await db.query("delete from private.payment_rate_limits where scope = 'request_receipt' and key = any($1)", [fingerprints]);
   }
 });
 
@@ -354,7 +354,7 @@ test("permits one freeze when independent workers race receipts from different s
   const [retry] = await claim(db, undefined, "confirmation");
   expect(retry?.id).toBe(winner.id);
   expect((await begin(retry!))[0]).toMatchObject({ send_payload: payload, attempt_count: 2 });
-  const limit = await db.query("select attempts from private.request_rate_limits where scope = 'request_receipt' and key = $1",
+  const limit = await db.query("select attempts from private.payment_rate_limits where scope = 'request_receipt' and key = $1",
     [recipientFingerprint]);
   expect(limit.rows).toEqual([{ attempts: 1 }]);
 });

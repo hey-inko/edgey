@@ -88,7 +88,7 @@ afterEach(async () => {
   await db.query("delete from public.variants where id = any($1)", [variants.splice(0)]);
   await db.query("delete from public.provider_events where provider = 'stripe' and event_id = any($1)", [events.splice(0)]);
   await db.query("delete from private.closed_checkout_attempts");
-  await db.query("delete from private.request_rate_limits where scope in ('checkout', 'checkout_close')");
+  await db.query("delete from private.payment_rate_limits where scope in ('checkout', 'checkout_close')");
 });
 
 afterAll(() => db?.end());

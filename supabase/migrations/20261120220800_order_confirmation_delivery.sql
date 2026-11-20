@@ -30,10 +30,6 @@ grant select (
   last_error, delivery_uncertain, provider_message_id, sent_at
 ) on public.order_outbox to authenticated;
 
-alter table private.request_rate_limits
-  drop constraint request_rate_limits_scope_check,
-  add check (scope in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'finder', 'request_receipt', 'checkout', 'checkout_close'));
-
 create function private.outbox_email_send_deadline(p_started_at timestamptz)
 returns timestamptz
 language sql immutable set search_path = ''
@@ -54,6 +50,7 @@ begin
     or (p_replay_order_id is not null and p_message_key <> 'order_confirmation') then
     raise exception using errcode = '22023', message = 'invalid_outbox_email_queue';
   end if;
+  perform private.prune_payment_rate_limits();
 
   select * into target from public.order_outbox
   where message_key = p_message_key
@@ -130,7 +127,7 @@ begin
       if p_recipient_fingerprint is null or p_recipient_fingerprint !~ '^[a-f0-9]{64}$' then
         raise exception using errcode = '22023', message = 'invalid_receipt_recipient_fingerprint';
       end if;
-      insert into private.request_rate_limits as counter (scope, dimension, key, attempts, expires_at)
+      insert into private.payment_rate_limits as counter (scope, dimension, key, attempts, expires_at)
       values ('request_receipt', 'email', p_recipient_fingerprint, 1, started_at + interval '24 hours')
       on conflict (scope, dimension, key) do update set attempts = 1, expires_at = excluded.expires_at
       where counter.expires_at <= started_at;

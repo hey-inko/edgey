@@ -110,7 +110,33 @@ revoke all on function private.reject_closed_checkout_attempt() from public, ano
 create trigger orders_reject_closed_checkout_attempt before insert on public.orders
 for each row execute function private.reject_closed_checkout_attempt();
 
-create or replace function public.consume_request_rate_limit(p_scope text, p_ip_key text, p_email_key text)
+create table private.payment_rate_limits (
+  scope text not null check (scope in ('checkout', 'checkout_close', 'request_receipt')),
+  dimension text not null check (dimension in ('ip', 'email')),
+  key text not null check (key ~ '^[a-f0-9]{64}$'),
+  attempts integer not null check (attempts > 0),
+  expires_at timestamptz not null,
+  primary key (scope, dimension, key)
+);
+create index payment_rate_limits_expiry_idx on private.payment_rate_limits (expires_at);
+alter table private.payment_rate_limits enable row level security;
+revoke all on private.payment_rate_limits from public, anon, authenticated, service_role;
+
+create function private.prune_payment_rate_limits()
+returns void
+language sql set search_path = ''
+as $$
+  delete from private.payment_rate_limits using (
+    select scope, dimension, key from private.payment_rate_limits
+    where expires_at <= clock_timestamp()
+    order by expires_at limit 50 for update skip locked
+  ) expired
+  where (payment_rate_limits.scope, payment_rate_limits.dimension, payment_rate_limits.key)
+    = (expired.scope, expired.dimension, expired.key)
+$$;
+revoke all on function private.prune_payment_rate_limits() from public, anon, authenticated, service_role;
+
+create function public.consume_checkout_rate_limit(p_scope text, p_ip_key text, p_email_key text)
 returns boolean
 language plpgsql security definer set search_path = ''
 as $$
@@ -118,19 +144,19 @@ declare
   dimension_limit record;
   checked_at timestamptz := clock_timestamp();
 begin
-  if p_scope is null or p_scope not in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'finder', 'checkout', 'checkout_close')
+  if p_scope is null or p_scope not in ('checkout', 'checkout_close')
     or p_ip_key is null or p_ip_key !~ '^[a-f0-9]{64}$'
     or p_email_key is null or p_email_key !~ '^[a-f0-9]{64}$' then
-    raise exception using errcode = '22023', message = 'invalid_request_rate_limit_input';
+    raise exception using errcode = '22023', message = 'invalid_checkout_rate_limit_input';
   end if;
 
   for dimension_limit in
     select * from (values
-      (1, 'ip', p_ip_key, case p_scope when 'finder' then 120 when 'trade_sign_in' then 20 else 10 end),
-      (2, 'email', p_email_key, case p_scope when 'finder' then 10000 when 'trade_sign_in' then 5 else 3 end)
+      (1, 'ip', p_ip_key, 10),
+      (2, 'email', p_email_key, 3)
     ) as limits(lock_order, dimension, key, quota) order by lock_order
   loop
-    insert into private.request_rate_limits as counter (scope, dimension, key, attempts, expires_at)
+    insert into private.payment_rate_limits as counter (scope, dimension, key, attempts, expires_at)
     values (p_scope, dimension_limit.dimension, dimension_limit.key, 1, checked_at + interval '1 hour')
     on conflict (scope, dimension, key) do update set
       attempts = case when counter.expires_at <= checked_at then 1 else counter.attempts + 1 end,
@@ -145,3 +171,5 @@ exception when sqlstate 'P0901' then
   return false;
 end;
 $$;
+revoke all on function public.consume_checkout_rate_limit(text, text, text) from public, anon, authenticated;
+grant execute on function public.consume_checkout_rate_limit(text, text, text) to service_role;

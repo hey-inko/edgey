@@ -13,7 +13,7 @@ export async function limitCheckout(request: Request, origin: string, scope: "ch
   if (!address || Buffer.byteLength(process.env.EDGEY_REQUEST_HASH_KEY ?? "") < 32) {
     throw new PaymentConfigurationError("Checkout rate limiting needs EDGEY_REQUEST_HASH_KEY and a trusted client address.");
   }
-  const { data, error } = await paymentStore().rpc("consume_request_rate_limit", {
+  const { data, error } = await paymentStore().rpc("consume_checkout_rate_limit", {
     p_scope: scope,
     p_ip_key: requestFingerprint("ip", address),
     p_email_key: requestFingerprint("email", recipient.toLowerCase()),
