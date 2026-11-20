@@ -1,0 +1,203 @@
+import type { PriceTiers } from "./display-prices";
+
+export type Availability = "in_stock" | "out_of_stock";
+
+export type Compatibility = {
+  code: string;
+  kind: "model" | "item_number" | "alias";
+  brand: { slug: string; name: string } | null;
+  machine: string | null;
+  tool: string | null;
+  adapter: string | null;
+};
+
+export type Substrate = { slug: string; name: string; swatch: string | null; sortOrder: number };
+
+export type Variant = {
+  id: string;
+  sku: string;
+  optionLabel: string | null;
+  tool: string | null;
+  angleDeg: number | null;
+  shankMm: number | null;
+  cuttingDepthMm: number | null;
+  bladeThicknessMm: number | null;
+  diameterMm: number | null;
+  specs: Record<string, string>;
+  prices: PriceTiers;
+  availability: Availability;
+  substrates: Substrate[];
+  compatibility: Compatibility[];
+};
+
+export type Media = { drawing?: string; photo?: string; proof?: string };
+
+export type Family = {
+  id: string;
+  familyCode: string;
+  slug: string;
+  name: string;
+  description: string;
+  toolType: { slug: string; name: string; sortOrder: number };
+  media: Media;
+  variants: Variant[];
+};
+
+export type SearchHit = {
+  matchType: "exact" | "suggested";
+  matchedCode: string | null;
+  productSlug: string;
+  sku: string;
+};
+
+export function familySubstrates(family: Family): Substrate[] {
+  const bySlug = new Map<string, Substrate>();
+  for (const variant of family.variants) for (const substrate of variant.substrates) bySlug.set(substrate.slug, substrate);
+  return [...bySlug.values()].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+export function familyBrands(family: Family): { slug: string; name: string }[] {
+  const bySlug = new Map<string, { slug: string; name: string }>();
+  for (const variant of family.variants)
+    for (const record of variant.compatibility) if (record.brand) bySlug.set(record.brand.slug, record.brand);
+  return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// What tells one variant from a similar one: holder, angle, shank or size.
+export function variantFit(variant: Variant): string[] {
+  const parts = [
+    variant.tool,
+    ...variant.compatibility.flatMap((record) =>
+      [record.tool, record.adapter ? "Adapter: " + record.adapter : null],
+    ),
+  ].filter((part): part is string => Boolean(part));
+  if (variant.angleDeg !== null) parts.push(formatNumber(variant.angleDeg) + "°");
+  if (variant.shankMm !== null) parts.push(formatNumber(variant.shankMm) + " mm shank");
+  if (variant.diameterMm !== null) parts.push(formatNumber(variant.diameterMm) + " mm diameter");
+  if (variant.bladeThicknessMm !== null) parts.push(formatNumber(variant.bladeThicknessMm) + " mm thick");
+  if (variant.cuttingDepthMm !== null) parts.push(formatNumber(variant.cuttingDepthMm) + " mm cutting depth");
+  return [...new Set(parts)];
+}
+
+export function variantLabel(variant: Variant): string {
+  return variant.optionLabel ?? variantFit(variant)[0] ?? variant.sku;
+}
+
+// "Zünd Z10 / 3910301": the approved machine reference for a variant.
+export function variantReference(variant: Variant): string | null {
+  if (variant.compatibility.length === 0) return null;
+  const groups = new Map<string, string[]>();
+  for (const record of variant.compatibility) {
+    const machine = [record.brand?.name, record.machine].filter(Boolean).join(" ");
+    const codes = groups.get(machine) ?? [];
+    codes.push(record.code);
+    groups.set(machine, codes);
+  }
+  return [...groups].map(([machine, codes]) => [machine, codes.join(" / ")].filter(Boolean).join(" ")).join(" · ");
+}
+
+export function formatNumber(value: number): string {
+  return String(Number(value));
+}
+
+export type RouteQuery = Record<string, string | string[] | undefined>;
+
+export type CatalogueFilters = { q: string; type: string; machine: string; material: string };
+
+export type CatalogueCard = {
+  family: Family;
+  match: "exact" | "suggested" | null;
+  variants: Variant[];
+  href: string;
+  matchedCode: string | null;
+};
+
+export type CatalogueView = {
+  cards: CatalogueCard[];
+  toolTypes: { slug: string; name: string }[];
+  machines: { slug: string; name: string }[];
+  materials: (Substrate & { count: number })[];
+  activeMaterial: Substrate | null;
+  filtered: boolean;
+};
+
+export function buildCatalogueView(families: Family[], hits: SearchHit[] | null, filters: CatalogueFilters): CatalogueView {
+
+  const toolTypes = new Map<string, { slug: string; name: string; sortOrder: number }>();
+  const machines = new Map<string, { slug: string; name: string }>();
+  const materials = new Map<string, Substrate & { count: number }>();
+  for (const family of families) {
+    toolTypes.set(family.toolType.slug, family.toolType);
+    for (const brand of familyBrands(family)) machines.set(brand.slug, brand);
+    for (const substrate of familySubstrates(family)) {
+      const entry = materials.get(substrate.slug) ?? { ...substrate, count: 0 };
+      entry.count += 1;
+      materials.set(substrate.slug, entry);
+    }
+  }
+
+  const passesFilters = (family: Family, variant: Variant) =>
+    (!filters.type || family.toolType.slug === filters.type) &&
+    (!filters.machine || variant.compatibility.some((record) => record.brand?.slug === filters.machine)) &&
+    (!filters.material || variant.substrates.some((substrate) => substrate.slug === filters.material));
+
+  const bySlug = new Map(families.map((family) => [family.slug, family]));
+  const grouped = new Map<string, CatalogueCard>();
+  if (hits === null) {
+    for (const family of families) {
+      const variants = family.variants.filter((variant) => passesFilters(family, variant));
+      if (variants.length) grouped.set(family.slug, { family, variants, match: null, matchedCode: null, href: productHref(family.slug) });
+    }
+  } else {
+    for (const hit of hits) {
+      const family = bySlug.get(hit.productSlug);
+      const variant = family?.variants.find((candidate) => candidate.sku === hit.sku);
+      if (!family || !variant || !passesFilters(family, variant)) continue;
+      const card = grouped.get(family.slug) ?? {
+        family, variants: [], match: hit.matchType, matchedCode: hit.matchedCode, href: productHref(family.slug),
+      };
+      if (hit.matchType === card.match) card.variants.push(variant);
+      grouped.set(family.slug, card);
+    }
+  }
+
+  const cards = [...grouped.values()].map((card) => {
+    const only = card.variants.length === 1 ? card.variants[0] : undefined;
+    const unambiguous = card.match === "exact" &&
+      hits?.filter((hit) => hit.matchType === "exact" && hit.productSlug === card.family.slug).length === 1;
+    return {
+      ...card,
+      href: productHref(card.family.slug, unambiguous && card.family.variants.length > 1 ? only?.sku : undefined),
+    };
+  });
+
+  return {
+    cards,
+    toolTypes: [...toolTypes.values()].sort((a, b) => a.sortOrder - b.sortOrder),
+    machines: [...machines.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    materials: [...materials.values()].sort((a, b) => a.sortOrder - b.sortOrder),
+    activeMaterial: materials.get(filters.material) ?? null,
+    filtered: Boolean(filters.q || filters.type || filters.machine || filters.material),
+  };
+}
+
+export function readFilters(params: RouteQuery): CatalogueFilters {
+  const one = (key: string) => queryValue(params[key]);
+  return { q: one("q"), type: one("type"), machine: one("machine"), material: one("material") };
+}
+
+export function bladeCount(count: number): string {
+  return count + (count === 1 ? " blade" : " blades");
+}
+
+export function queryValue(value: string | string[] | undefined): string {
+  return Array.from((Array.isArray(value) ? value[0] : value) ?? "", (character) => {
+    if (/\s/.test(character)) return " ";
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127 ? "" : character;
+  }).join("").trim().slice(0, 80);
+}
+
+export function productHref(slug: string, sku?: string | null): string {
+  return "/blades/" + slug + (sku ? "?variant=" + encodeURIComponent(sku) : "");
+}

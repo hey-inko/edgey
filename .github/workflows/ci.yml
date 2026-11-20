@@ -8,13 +8,14 @@ on:
 permissions:
   contents: read
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
   app:
     name: Typecheck, lint, build, tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -27,11 +28,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
-
   database:
-    name: Local Supabase integration tests
+    name: Local Supabase and browser tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -46,5 +44,14 @@ jobs:
       - run: pnpm db:env
       - run: pnpm db:fixture
       - run: pnpm test:db
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failures
+          path: test-results/
+          if-no-files-found: ignore
       - if: always()
         run: pnpm db:stop
