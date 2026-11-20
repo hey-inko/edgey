@@ -1,0 +1,28 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./tokens.css";
+
+@theme inline {
+  --color-page: var(--edgey-page);
+  --color-ink: var(--edgey-text);
+  --color-muted: var(--edgey-text-muted);
+  --color-rule: var(--edgey-rule);
+  --color-panel: var(--edgey-utility-panel);
+  --color-card: var(--edgey-product-card);
+  --color-plate: var(--edgey-product-plate);
+  --color-field: var(--edgey-field);
+  --font-sans: var(--edgey-font-sans);
+  --font-mono: var(--edgey-font-mono);
+  --radius-none: var(--edgey-radius);
+}
+
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+
+body {
+  margin: 0;
+  background: var(--edgey-page);
+  color: var(--edgey-text);
+  font: var(--edgey-body-size)/var(--edgey-body-leading) var(--edgey-font-sans);
+}
