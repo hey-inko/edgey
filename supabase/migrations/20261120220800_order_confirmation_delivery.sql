@@ -32,7 +32,7 @@ grant select (
 
 alter table private.request_rate_limits
   drop constraint request_rate_limits_scope_check,
-  add check (scope in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'finder', 'request_receipt'));
+  add check (scope in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'finder', 'request_receipt', 'checkout', 'checkout_close'));
 
 create function private.outbox_email_send_deadline(p_started_at timestamptz)
 returns timestamptz

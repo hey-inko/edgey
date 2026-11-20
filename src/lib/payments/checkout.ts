@@ -3,9 +3,10 @@ import type Stripe from "stripe";
 import { createOrderWithReservations, type CreateOrderInput } from "@/lib/orders";
 import type { Json } from "@/lib/supabase/database.types";
 import { checkoutOrigin } from "./config";
-import { bindVerifiedSession, findStripeSession, stripeRequestKey } from "./recovery";
+import { bindVerifiedSession, closeUnboundCheckout, findStripeSession, stripeAccountId, stripeRequestKey } from "./recovery";
 import { assertSessionMatches, sessionAmountMatches } from "./session-identity";
 import { stripeSessionParams } from "./session-params";
+import { reconcileSession } from "./settle";
 import { getOrderItems, paymentStore, type Order } from "./store";
 import { getStripe } from "./stripe";
 
@@ -18,15 +19,15 @@ export class CheckoutUnavailableError extends Error {
   constructor(message: string, readonly attemptClosed = false) { super(message); }
 }
 
-export async function beginCardPayment(attempt: CardAttempt, priceAttempt: PriceAttempt) {
-  const origin = checkoutOrigin();
-  const db = paymentStore();
-  const existing = async () => {
-    const { data, error } = await db.from("orders").select("*")
-      .eq("checkout_attempt_token", attempt.attemptToken).maybeSingle();
-    if (error) throw error;
-    return data;
-  };
+async function guestAttempt(token: string) {
+  const { data, error } = await paymentStore().from("orders").select("*")
+    .eq("checkout_attempt_token", token).eq("payment_method", "card").is("buyer_id", null).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function beginCardPayment(attempt: CardAttempt, priceAttempt: PriceAttempt, beforeReserve: () => Promise<void>) {
+  const existing = () => guestAttempt(attempt.attemptToken);
   const holdExpiresAt = new Date((Math.floor(Date.now() / 1_000) + 35 * 60) * 1_000).toISOString();
   let order = await existing();
   if (!order) {
@@ -37,6 +38,7 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
         throw new CheckoutUnavailableError("This order is outside the limits for online card payment.");
       }
       getStripe();
+      await beforeReserve();
       await createOrderWithReservations({ ...priced, attemptToken: attempt.attemptToken, holdExpiresAt });
     } catch (error) {
       order = await existing();
@@ -45,16 +47,67 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
   }
   order ??= await existing();
   if (!order) throw new Error("Could not load the reserved order.");
-  const stripe = getStripe();
 
   const items = await getOrderItems(order.id);
   if (!matchesAttempt(order, attempt, items)) {
     throw new CheckoutUnavailableError("This payment attempt cannot be used for a changed order.");
   }
+  return openReservedPayment(order, items);
+}
+
+export async function resumeCardPayment(attemptToken: string) {
+  const order = await guestAttempt(attemptToken);
+  return order ? openReservedPayment(order, await getOrderItems(order.id)) : null;
+}
+
+export async function closeCardPayment(attemptToken: string, beforeCloseMissing: () => Promise<void>) {
+  let order = await guestAttempt(attemptToken);
+  if (!order) {
+    await beforeCloseMissing();
+    const { data, error } = await paymentStore().rpc("close_missing_checkout_attempt", { p_attempt_token: attemptToken });
+    if (error) throw error;
+    if (data) return null;
+    order = await guestAttempt(attemptToken);
+    if (!order) throw new CheckoutUnavailableError("We can’t verify the previous checkout.");
+  }
+  if (order.fulfilment_status === "cancelled" && !order.paid_pence && !order.payment_review_reason) return null;
+  const stripe = getStripe();
+  if (!order.checkout_session_id && !order.stripe_checkout_started_at) {
+    order = await closeUnboundCheckout(order, undefined, true);
+    if (order.fulfilment_status === "cancelled" && !order.paid_pence) return null;
+  }
+  let session = await findStripeSession(stripe, order);
+  if (!session && order.stripe_checkout_started_at) {
+    order = await closeUnboundCheckout(order, await stripeAccountId(stripe));
+    if (order.fulfilment_status === "cancelled" && !order.paid_pence) return null;
+  }
+  if (!session) throw new CheckoutUnavailableError("We can’t verify the previous payment yet. Try again before starting a new checkout.");
+  assertSessionMatches(order, session);
+  if (session.status === "open") {
+    try {
+      session = await stripe.checkout.sessions.expire(session.id);
+    } catch {
+      session = await stripe.checkout.sessions.retrieve(session.id);
+    }
+  }
+  const updated = await reconcileSession(stripe, order, session);
+  if (updated.authorised_at) return successPayment(checkoutOrigin(), session.id);
+  if (updated.fulfilment_status === "cancelled" && !updated.paid_pence) return null;
+  throw new CheckoutUnavailableError("We can’t verify that the previous payment closed unpaid. Try again before starting a new checkout.");
+}
+
+function successPayment(origin: string, sessionId: string) {
+  return { sessionId, url: `${origin}/checkout/success?session_id=${sessionId}` };
+}
+
+async function openReservedPayment(order: Order, items: Awaited<ReturnType<typeof getOrderItems>>) {
   if (order.payment_review_reason || order.fulfilment_status === "cancelled") {
     throw new CheckoutUnavailableError("This payment attempt is closed or under review.",
       order.fulfilment_status === "cancelled" && !order.payment_review_reason && order.paid_pence === 0);
   }
+  const stripe = getStripe();
+  const origin = checkoutOrigin();
+  const db = paymentStore();
 
   let session: Stripe.Checkout.Session | null;
   if (order.checkout_session_id) {
@@ -65,6 +118,7 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
       const { data, error } = await db.rpc("prepare_stripe_checkout", {
         p_order_id: order.id,
         p_request: JSON.parse(JSON.stringify(request)) as Json,
+        p_account_id: await stripeAccountId(stripe),
       });
       if (error) throw error;
       order = data;
@@ -91,10 +145,16 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
     }
   }
 
+  if (!session && !order.stripe_checkout_started_at && !order.checkout_session_id) {
+    const closed = await closeUnboundCheckout(order, undefined, true);
+    if (closed.fulfilment_status === "cancelled" && !closed.paid_pence) {
+      throw new CheckoutUnavailableError("This payment attempt has closed. Review your selection and try again.", true);
+    }
+  }
   if (!session) throw new CheckoutUnavailableError("Payment could not be resumed. Please try again shortly.");
   assertSessionMatches(order, session);
   if (session.status === "complete") {
-    return { sessionId: session.id, url: `${origin}/checkout/success?session_id=${session.id}` };
+    return successPayment(origin, session.id);
   }
   if (session.status !== "open" || !session.url || session.payment_status !== "unpaid") {
     throw new CheckoutUnavailableError("This payment attempt is no longer open.");

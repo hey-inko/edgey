@@ -157,28 +157,20 @@ are counted by outcome without keeping the query.
   card and eligible Apple Pay/Google Pay on supported devices; do not use live
   keys or real buyer details in this build. Check the sandbox’s successful
   payment email setting if you want Stripe to email its own invoice links.
-- Schedule the order GET paths on the staging host every minute using a scheduler
-  that sends `Authorization: Bearer $CRON_SECRET`. For Vercel Cron, deploy a
-  staging project with staging as its production deployment, a plan that
-  supports one-minute schedules, and set `CRON_SECRET` in its production
-  environment. Add these entries to its deployment config:
-
-  ```json
-  {
-    "crons": [
-      { "path": "/api/cron/stripe-reconciliation", "schedule": "* * * * *" },
-      { "path": "/api/cron/order-confirmations", "schedule": "* * * * *" },
-      { "path": "/api/cron/request-emails", "schedule": "* * * * *" }
-    ]
-  }
-  ```
+- `vercel.json` schedules the three workers every minute. Deploy staging as
+  its own production deployment on a Vercel plan that supports one-minute
+  cron, and set `CRON_SECRET` in that project's production environment so
+  Vercel sends `Authorization: Bearer $CRON_SECRET`. Hosted checkout also
+  needs `EDGEY_REQUEST_HASH_KEY` and Vercel's trusted client address header.
+  New reservations are limited to ten attempts per IP and three per email
+  each hour. Retrying a saved attempt does not consume a new hold.
 
 - Use `EMAIL_PROVIDER=resend` (the default), `RESEND_API_KEY` from the staging
   Resend account and a verified `EMAIL_FROM`. Use only controlled test
   recipients. Keep the account and sender configuration stable while sends
   are pending. JSON files from the development provider contain buyer details
   and must not be committed or shared.
-- Enable the separate `/api/cron/request-emails` schedule when request intake
+- Configure the separate `/api/cron/request-emails` worker when request intake
   is ready. It needs `EDGEY_REQUEST_HASH_KEY` and a single controlled mailbox
   in `REQUEST_STAFF_EMAIL`. Across enquiries, samples and trade applications,
   at most one neutral receipt is attempted per email address in a rolling 24
@@ -191,6 +183,10 @@ are counted by outcome without keeping the query.
   `payment_review_reason` for holds needing intervention. Never free a hold
   with an ambiguous provider creation or capture. Use the Stripe order
   metadata and event history to verify the provider outcome first.
+  Keep the Stripe key in the same sandbox for outstanding orders. Recovery
+  checks the saved sandbox, searches up to 500 sessions across the known
+  creation window, and releases an unbound hold only after a complete search
+  finds no session and the original expiry has passed by two minutes.
 - The confirmation worker only claims `order_confirmation` rows. It freezes the
   message before sending and reuses the original provider key on retries. For
   an ambiguous or expired send, look up the order reference in Resend before

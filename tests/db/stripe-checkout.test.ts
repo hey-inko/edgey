@@ -10,12 +10,13 @@ import { reconcileStripePayments, replayStripeEvent } from "@/lib/payments/recon
 import { readCheckoutSuccess } from "@/lib/payments/success";
 
 const provider = vi.hoisted(() => ({
-  create: vi.fn(), list: vi.fn(), session: vi.fn(), intent: vi.fn(), invoice: vi.fn(), refund: vi.fn(),
+  create: vi.fn(), list: vi.fn(), session: vi.fn(), intent: vi.fn(), invoice: vi.fn(), refund: vi.fn(), expire: vi.fn(), account: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/payments/stripe", () => ({
   getStripe: () => ({
-    checkout: { sessions: { create: provider.create, list: provider.list, retrieve: provider.session } },
+    accounts: { retrieveCurrent: provider.account },
+    checkout: { sessions: { create: provider.create, list: provider.list, retrieve: provider.session, expire: provider.expire } },
     paymentIntents: { retrieve: provider.intent },
     invoices: { retrieve: provider.invoice },
     refunds: { retrieve: provider.refund },
@@ -53,6 +54,8 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", origin);
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", webhookSecret);
+  vi.stubEnv("EDGEY_REQUEST_HASH_KEY", randomUUID() + randomUUID());
+  provider.account.mockResolvedValue({ id: "acct_testFixture" });
   provider.create.mockImplementation(createSession);
   provider.list.mockImplementation(async (filter: { payment_intent?: string }) => ({
     data: [...sessions.values()].filter((session) => !filter.payment_intent || session.payment_intent === filter.payment_intent),
@@ -61,6 +64,11 @@ beforeEach(() => {
   provider.session.mockImplementation(async (sessionId: string) => {
     const session = sessions.get(sessionId);
     if (!session) throw Object.assign(new Error("unknown mock session"), { statusCode: 404 });
+    return session;
+  });
+  provider.expire.mockImplementation(async (sessionId: string) => {
+    const session = sessions.get(sessionId)!;
+    session.status = "expired";
     return session;
   });
 });
@@ -79,6 +87,8 @@ afterEach(async () => {
   await db.query("delete from public.orders where id = any($1)", [ids]);
   await db.query("delete from public.variants where id = any($1)", [variants.splice(0)]);
   await db.query("delete from public.provider_events where provider = 'stripe' and event_id = any($1)", [events.splice(0)]);
+  await db.query("delete from private.closed_checkout_attempts");
+  await db.query("delete from private.request_rate_limits where scope in ('checkout', 'checkout_close')");
 });
 
 afterAll(() => db?.end());
@@ -119,7 +129,7 @@ async function checkoutInput(variantId: string, quantity: number) {
   return { lines, attemptToken, fields, quoteKey: quote.quoteKey, totals: { grossPence: 1 }, buyerId: randomUUID() };
 }
 
-function submit(input: Awaited<ReturnType<typeof checkoutInput>>) {
+function submit(input: unknown) {
   return openCheckout(new Request(origin + "/api/checkout/session", {
     method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify(input),
   }));
@@ -241,6 +251,41 @@ it("admits only one payable checkout for concurrent buyers competing for the las
   expect(sessions.size).toBe(1);
 });
 
+it("resumes a reserved last unit and expires it before replacing a changed checkout", async () => {
+  const { input, session } = await checkout(await makeVariant(1), 1);
+  const repeated = await submit({ action: "resume", attemptToken: input.attemptToken });
+  expect(await repeated.json()).toMatchObject({ status: "payment", sessionId: session.id });
+  const replacementToken = randomUUID();
+  attempts.push(replacementToken);
+  const replacement = await submit({
+    ...input, attemptToken: replacementToken, supersedesAttemptToken: input.attemptToken,
+    fields: { ...fields, line1: "2 Sample Street" },
+  });
+  expect(await replacement.json()).toMatchObject({ status: "payment", sessionId: expect.not.stringMatching(session.id) });
+  expect(provider.expire).toHaveBeenCalledExactlyOnceWith(session.id);
+  expect(await state(session.client_reference_id!)).toMatchObject({ fulfilment_status: "cancelled", reservation_state: "released" });
+  expect(sessions.size).toBe(2);
+});
+
+it("cannot recreate a checkout stopped before its order arrived", async () => {
+  const input = await checkoutInput(await makeVariant(1), 1);
+  const cancelled = await submit({ action: "close", attemptToken: input.attemptToken });
+  expect(await cancelled.json()).toEqual({ status: "closed" });
+  const stale = await submit(input);
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({ attemptClosed: true });
+  expect(provider.create).not.toHaveBeenCalled();
+});
+
+it("limits new reservations without blocking a saved-order retry", async () => {
+  const variantId = await makeVariant(12);
+  const inputs = await Promise.all(Array.from({ length: 4 }, () => checkoutInput(variantId, 1)));
+  for (const input of inputs.slice(0, 3)) expect((await submit(input)).status).toBe(200);
+  expect((await submit(inputs[3])).status).toBe(429);
+  expect((await submit(inputs[0])).status).toBe(200);
+  expect(sessions.size).toBe(3);
+});
+
 it("uses raw signature bytes and never persists unverified event data", async () => {
   const invalid = event("checkout.session.completed", id("cs_test_"));
   expect((await invalid.deliver(" ")).status).toBe(400);
@@ -306,13 +351,14 @@ it("reconciles a durably received event after interruption without the original 
   expect(await state(orderId)).toMatchObject({ reservation_state: "allocated", confirmations: 1 });
 });
 
-it("holds unresolved session creation for finance rather than guessing that a timeout failed", async () => {
+it("holds ambiguous creation until a complete search of the original sandbox proves it safe to release", async () => {
   const input = await checkoutInput(await makeVariant(1), 1);
   provider.create.mockRejectedValueOnce(new Error("provider timeout"));
   expect((await submit(input)).status).toBe(502);
   const { rows: [order] } = await db.query<{ id: string }>(`
     update public.orders set hold_expires_at = date_trunc('second', now()) - interval '1 minute',
-      stripe_replay_after = '1970-01-01' where checkout_attempt_token = $1 returning id
+      created_at = now() - interval '36 minutes', stripe_replay_after = '1970-01-01'
+      where checkout_attempt_token = $1 returning id
   `, [input.attemptToken]);
   expect(await reconcileStripePayments()).toMatchObject({ unresolvedOrders: 1 });
   expect(await state(order!.id)).toMatchObject({
@@ -320,6 +366,17 @@ it("holds unresolved session creation for finance rather than guessing that a ti
   });
   expect((await submit(input)).status).toBe(409);
   expect(provider.create).toHaveBeenCalledTimes(1);
+  await db.query(`update public.orders set hold_expires_at = now() - interval '3 minutes',
+    stripe_replay_after = '1970-01-01' where id = $1`, [order!.id]);
+  provider.account.mockResolvedValue({ id: "acct_wrongSandbox" });
+  expect(await reconcileStripePayments()).toMatchObject({ unresolvedOrders: 1 });
+  expect(await state(order!.id)).toMatchObject({
+    reservation_state: "held", stripe_reconciliation_error: expect.stringMatching(/sandbox differs/),
+  });
+  await db.query("update public.orders set stripe_replay_after = '1970-01-01' where id = $1", [order!.id]);
+  provider.account.mockResolvedValue({ id: "acct_testFixture" });
+  expect(await reconcileStripePayments()).toMatchObject({ unresolvedOrders: 0 });
+  expect(await state(order!.id)).toMatchObject({ reservation_state: "released", fulfilment_status: "cancelled" });
 });
 
 it("leaves an amount or currency mismatch held for staff rather than picking or emailing", async () => {
@@ -339,7 +396,8 @@ it("does not release on the local clock or an expired event until Stripe confirm
   const { session } = await checkout(await makeVariant(1), 1);
   const orderId = session.client_reference_id!;
   session.expires_at = Math.floor(Date.now() / 1000) - 15;
-  await db.query("update public.orders set hold_expires_at = to_timestamp($2) where id = $1", [orderId, session.expires_at]);
+  await db.query(`update public.orders set hold_expires_at = to_timestamp($2),
+    created_at = now() - interval '36 minutes' where id = $1`, [orderId, session.expires_at]);
   const expiry = event("checkout.session.expired", session.id);
   expect((await expiry.deliver()).status).toBe(200);
   await reconcileStripePayments();

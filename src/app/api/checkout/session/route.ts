@@ -2,14 +2,17 @@ import { startCheckoutAttempt } from "@/lib/checkout/server";
 import type { CheckoutReviewResult } from "@/lib/checkout/types";
 import { isRecord, normaliseAttemptToken, normaliseLines, validateCheckoutFields } from "@/lib/checkout/validation";
 import { readRequestBody } from "@/lib/payments/body";
-import { beginCardPayment, CheckoutUnavailableError } from "@/lib/payments/checkout";
+import { beginCardPayment, CheckoutUnavailableError, closeCardPayment, resumeCardPayment } from "@/lib/payments/checkout";
 import { checkoutOrigin, PaymentConfigurationError } from "@/lib/payments/config";
+import { CheckoutRateLimitError, limitCheckout } from "@/lib/payments/rate-limit";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type ReviewFailure = Exclude<CheckoutReviewResult, { status: "payment-unavailable" }>;
 export type CheckoutSessionResult = ReviewFailure | { status: "payment"; sessionId: string; url: string }
-  | { status: "error"; message: string; attemptClosed: true };
+  | { status: "error"; message: string; attemptClosed?: true; attemptPending?: true }
+  | { status: "closed" };
 
 class NeedsCheckoutReview extends Error {
   constructor(readonly result: ReviewFailure) { super(result.message); }
@@ -30,19 +33,34 @@ export async function POST(request: Request) {
     return reply({ status: "error", message: "This checkout request is invalid." }, error instanceof RangeError ? 413 : 400);
   }
   const token = isRecord(body) ? normaliseAttemptToken(body.attemptToken) : null;
-  const lines = isRecord(body) ? normaliseLines(body.lines) : null;
-  if (!isRecord(body) || !token || !lines?.length || typeof body.quoteKey !== "string" || body.quoteKey.length > 64) {
-    return reply({ status: "error", message: "This checkout attempt is invalid. Review your selection and try again." }, 400);
-  }
-  const validation = validateCheckoutFields(body.fields);
-  if (!validation.ok) {
-    return reply({ status: "invalid", errors: validation.errors, message: "Check the highlighted details before continuing." }, 422);
-  }
-  const { email, businessName, recipientName, buyingForWork, line1, line2, town, region, postcode } = validation.fields;
+  if (!isRecord(body) || !token) return invalidAttempt();
   try {
-    const origin = request.headers.get("origin");
-    if (origin && origin !== checkoutOrigin()) {
+    const origin = checkoutOrigin();
+    const sender = request.headers.get("origin");
+    if (sender && sender !== origin) {
       return reply({ status: "error", message: "Start payment from the Edgey checkout." }, 403);
+    }
+    const close = (previous: string) => closeCardPayment(previous, () => limitCheckout(request, origin, "checkout_close", previous));
+    const previous = normaliseAttemptToken(body.supersedesAttemptToken);
+    if (body.supersedesAttemptToken !== undefined && (!previous || previous === token)) return invalidAttempt();
+    if (body.action === "resume" || body.action === "close") {
+      let payment = body.action === "resume" ? await resumeCardPayment(token) : await close(token);
+      if (!payment && previous) payment = body.action === "resume" ? await resumeCardPayment(previous) : await close(previous);
+      if (!payment && body.action === "resume") return reply({
+        status: "error", message: "We can’t find a payable session yet. Try again, or close this checkout to start over.", attemptPending: true,
+      }, 409);
+      return reply(payment ? { status: "payment", ...payment } : { status: "closed" }, 200);
+    }
+    const lines = normaliseLines(body.lines);
+    if (!lines?.length || typeof body.quoteKey !== "string" || body.quoteKey.length > 64) return invalidAttempt();
+    const validation = validateCheckoutFields(body.fields);
+    if (!validation.ok) {
+      return reply({ status: "invalid", errors: validation.errors, message: "Check the highlighted details before continuing." }, 422);
+    }
+    const { email, businessName, recipientName, buyingForWork, line1, line2, town, region, postcode } = validation.fields;
+    if (previous) {
+      const paid = await close(previous);
+      if (paid) return reply({ status: "payment", ...paid }, 200);
     }
     const payment = await beginCardPayment({
       attemptToken: token,
@@ -53,7 +71,7 @@ export async function POST(request: Request) {
       const result = await startCheckoutAttempt(body);
       if (result.status !== "ready") throw new NeedsCheckoutReview(result);
       return result.orderInput;
-    });
+    }, () => limitCheckout(request, origin, "checkout", email));
     return reply({ status: "payment", ...payment }, 200);
   } catch (error) {
     if (error instanceof NeedsCheckoutReview) {
@@ -62,14 +80,26 @@ export async function POST(request: Request) {
     if (error instanceof PaymentConfigurationError) {
       return reply({ status: "error", message: `Card payment isn’t configured. ${error.message}` }, 503);
     }
+    if (error instanceof CheckoutRateLimitError) return reply({ status: "error", message: error.message }, 429);
     if (error instanceof CheckoutUnavailableError) return reply({
-      status: "error", message: error.message, ...(error.attemptClosed ? { attemptClosed: true as const } : {}),
+      status: "error", message: error.message,
+      ...(error.attemptClosed ? { attemptClosed: true as const } : { attemptPending: true as const }),
     }, 409);
-    if (["insufficient_stock", "variant_not_published", "stale_unit_price"].includes((error as { message?: string })?.message ?? "")) {
-      return reply({ status: "review", quote: await currentQuote(body), message: "Your quote has changed. Review the selection before continuing." }, 409);
+    const reason = (error as { message?: string })?.message;
+    if (reason === "checkout_attempt_closed") {
+      return reply({ status: "error", message: "This payment attempt has closed. Review your selection and try again.", attemptClosed: true }, 409);
     }
-    return reply({ status: "error", message: "We couldn’t open payment right now. Try again from this checkout." }, 502);
+    if (["insufficient_stock", "variant_not_published", "stale_unit_price"].includes(reason ?? "")) {
+      const quote = await currentQuote(body).catch(() => ({ status: "error" as const, message: "We couldn’t get an updated quote. Try again." }));
+      return reply({ status: "review", quote, message: "Your quote has changed. Review the selection before continuing." }, 409);
+    }
+    console.error("Stripe checkout could not verify provider or database state.");
+    return reply({ status: "error", message: "We couldn’t open payment right now. Try again from this checkout.", attemptPending: true }, 502);
   }
+}
+
+function invalidAttempt() {
+  return reply({ status: "error", message: "This checkout attempt is invalid. Review your selection and try again." }, 400);
 }
 
 async function currentQuote(body: Record<string, unknown>) {

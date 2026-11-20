@@ -249,7 +249,7 @@ test("a dropped response does not lose the submitted attempt on reload", async (
   await selection(page).getByRole("link", { name: "Go to checkout" }).click();
   await fillAddress(page);
   await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
-  const checkoutUrl = (url: URL) => url.pathname === "/checkout";
+  const checkoutUrl = (url: URL) => url.pathname === "/api/checkout/session";
   let lostToken: string | undefined;
   await page.route(checkoutUrl, async (route) => {
     const request = route.request();
@@ -269,7 +269,7 @@ test("a dropped response does not lose the submitted attempt on reload", async (
   const request = page.waitForRequest((request) => request.method() === "POST" && !!request.postData()?.includes("attemptToken"));
   await pay.click();
   expect((await request).postData()).toContain(`"attemptToken":"${lostToken}"`);
-  await expect(page.getByText("Payment is not connected in this build.")).toBeVisible();
+  await expect(page.getByText(/Card payment isn’t configured/)).toBeVisible();
 });
 
 for (const width of [1440, 390, 320]) {

@@ -1,0 +1,7 @@
+{
+  "crons": [
+    { "path": "/api/cron/stripe-reconciliation", "schedule": "* * * * *" },
+    { "path": "/api/cron/order-confirmations", "schedule": "* * * * *" },
+    { "path": "/api/cron/request-emails", "schedule": "* * * * *" }
+  ]
+}

@@ -1,7 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { applyStripeEvent, safePaymentFailure, stripeEventId } from "./events";
-import { findStripeSession } from "./recovery";
+import { closeUnboundCheckout, findStripeSession, stripeAccountId } from "./recovery";
 import { PaymentReviewError } from "./session-identity";
 import { reconcileSession } from "./settle";
 import { paymentStore, type Order } from "./store";
@@ -19,12 +19,12 @@ export async function reconcileStripePayments() {
   const stripe = getStripe();
   const db = paymentStore();
   const now = new Date();
-  const nearExpiry = new Date(now.getTime() + 5 * 60_000).toISOString();
+  const mature = new Date(now.getTime() - 2 * 60_000).toISOString();
   const [events, orders] = await Promise.all([
     db.from("provider_events").select("*").eq("provider", "stripe").neq("state", "processed")
       .lte("stripe_replay_after", now.toISOString()).order("stripe_replay_after").limit(10),
     db.from("orders").select("*").eq("payment_method", "card").eq("fulfilment_status", "awaiting_authorisation")
-      .lte("hold_expires_at", nearExpiry).lte("stripe_replay_after", now.toISOString())
+      .lte("created_at", mature).lte("stripe_replay_after", now.toISOString())
       .order("stripe_replay_after").limit(10),
   ]);
   if (events.error) throw events.error;
@@ -51,10 +51,8 @@ async function reconcileOrder(stripe: Stripe, order: Order, now: Date) {
     const session = await findStripeSession(stripe, order);
     if (session) {
       updated = await reconcileSession(stripe, order, session);
-    } else if (!order.stripe_checkout_started_at && pastExpiry) {
-      const { data, error } = await db.rpc("close_unstarted_stripe_checkout", { p_order_id: order.id });
-      if (error) throw error;
-      updated = data;
+    } else if (pastExpiry) {
+      updated = await closeUnboundCheckout(order, order.stripe_checkout_started_at ? await stripeAccountId(stripe) : undefined);
     }
     if (pastExpiry && updated.fulfilment_status === "awaiting_authorisation") {
       throw new PaymentReviewError(session

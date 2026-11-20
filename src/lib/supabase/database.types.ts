@@ -442,6 +442,7 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
           stripe_reconciliation_error: string | null;
@@ -491,6 +492,7 @@ export type Database = {
           provider_invoice_id?: string | null;
           recipient_name: string;
           refunded_pence?: number;
+          stripe_checkout_account_id?: string | null;
           stripe_checkout_request?: Json | null;
           stripe_checkout_started_at?: string | null;
           stripe_reconciliation_error?: string | null;
@@ -539,6 +541,7 @@ export type Database = {
           provider_invoice_id?: string | null;
           recipient_name?: string;
           refunded_pence?: number;
+          stripe_checkout_account_id?: string | null;
           stripe_checkout_request?: Json | null;
           stripe_checkout_started_at?: string | null;
           stripe_reconciliation_error?: string | null;
@@ -1224,8 +1227,12 @@ export type Database = {
         Args: { p_message_key: string; p_replay_order_id?: string };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
       };
-      close_unstarted_stripe_checkout: {
-        Args: { p_order_id: string };
+      close_missing_checkout_attempt: {
+        Args: { p_attempt_token: string };
+        Returns: boolean;
+      };
+      close_unbound_stripe_checkout: {
+        Args: { p_order_id: string; p_account_id?: string; p_close_now?: boolean };
         Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
       finish_outbox_email: {
@@ -1233,7 +1240,7 @@ export type Database = {
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
       };
       prepare_stripe_checkout: {
-        Args: { p_order_id: string; p_request: Json };
+        Args: { p_order_id: string; p_request: Json; p_account_id: string };
         Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
       bind_checkout_session: {
