@@ -1,4 +1,5 @@
-import { processOrderConfirmations } from "@/lib/email/outbox";
+import { drainFinanceRetries } from "@/lib/admin/replay";
+import { processOrderConfirmations, replayOrderConfirmation } from "@/lib/email/outbox";
 import { emailConfigurationError } from "@/lib/email/provider";
 import { checkCron } from "@/lib/payments/cron";
 
@@ -11,7 +12,10 @@ export async function GET(request: Request) {
   const configurationError = emailConfigurationError();
   if (configurationError) return Response.json({ error: configurationError }, { status: 503 });
   try {
-    return Response.json(await processOrderConfirmations(), { headers: { "Cache-Control": "no-store" } });
+    const [orders, finance] = await Promise.all([
+      processOrderConfirmations(), drainFinanceRetries("confirmation", replayOrderConfirmation),
+    ]);
+    return Response.json({ ...orders, finance }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ error: "Could not process order confirmations." }, { status: 500 });
   }

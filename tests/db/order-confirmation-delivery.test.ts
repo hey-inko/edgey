@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import { drainFinanceRetries, requestFinanceReplay } from "@/lib/admin/replay";
 import { processRequestEmails, replayOrderConfirmation } from "@/lib/email/outbox";
 import { requestReceipt } from "@/lib/email/request-email";
+import { createLocalAdminUser } from "../../scripts/seed-admin";
 
 const { retrieveInvoice } = vi.hoisted(() => ({ retrieveInvoice: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -53,6 +55,7 @@ beforeEach(async () => {
   unrelatedQueue = await connect();
   await unrelatedQueue.query("begin");
   await unrelatedQueue.query("select id from public.order_outbox where state = 'pending' for update");
+  await unrelatedQueue.query("select target_id from public.finance_retry_requests where kind = 'confirmation' for update");
 });
 
 afterEach(async () => {
@@ -94,6 +97,12 @@ async function fixture(state: "failed" | "pending" = "pending", invoiceId: strin
       now(), now() + interval '32 minutes', 'Standard', '2026-11-23', '2026-11-24', $3
     )
   `, [id, randomUUID(), invoiceId]);
+  await db.query(`
+    insert into public.order_items (
+      order_id, variant_id, sku, option_label, quantity, unit_price_pence, net_pence, tax_pence, gross_pence
+    ) select $1, id, 'ORIGINAL-SKU', 'Original option', 1, 1000, 1000, 200, 1200
+      from public.variants limit 1
+  `, [id]);
   await db.query("select public.enqueue_order_confirmation($1)", [id]);
   await db.query("update public.order_outbox set state = $2, next_attempt_at = '1970-01-01' where order_id = $1", [id, state]);
   return id;
@@ -218,7 +227,7 @@ test("stops on an idempotency conflict and preserves the ambiguity of a previous
 test("keeps delivery RPCs and sensitive outbox data service-only", async () => {
   const { rows } = await db.query<{ role: string; claim: boolean; begin: boolean; finish: boolean; payload: boolean; metadata: boolean }>(`
     select role,
-      has_function_privilege(role, 'public.claim_outbox_email(text,uuid)', 'execute') as claim,
+      has_function_privilege(role, 'public.claim_outbox_email(text,uuid,timestamptz)', 'execute') as claim,
       has_function_privilege(role, 'public.begin_outbox_email_send(uuid,uuid,text,text,text)', 'execute') as begin,
       has_function_privilege(role, 'public.finish_outbox_email(uuid,uuid,text,text)', 'execute') as finish,
       has_column_privilege(role, 'public.order_outbox', 'send_payload', 'select') as payload,
@@ -253,12 +262,6 @@ test("gives a recently authorised order time to pick up its invoice without free
 
 test("freezes the first Stripe invoice and Resend body across actual PostgREST calls and staff replay", async () => {
   const id = await fixture("failed", `in_${randomUUID()}`);
-  await db.query(`
-    insert into public.order_items (
-      order_id, variant_id, sku, option_label, quantity, unit_price_pence, net_pence, tax_pence, gross_pence
-    ) select $1, id, 'ORIGINAL-SKU', 'Original option', 1, 1000, 1000, 200, 1200
-      from public.variants limit 1
-  `, [id]);
   vi.stubEnv("EMAIL_PROVIDER", "resend");
   vi.stubEnv("EMAIL_FROM", "orders@example.test");
   vi.stubEnv("RESEND_API_KEY", "test-mocked-resend-key");
@@ -414,4 +417,27 @@ test("does not send a frozen staff notice after the explicit destination changes
   expect(row).toMatchObject({
     state: "failed", attempt_count: 1, delivery_uncertain: true, last_error: "configuration_error",
   });
+});
+
+test("scheduled finance replay claims a failed confirmation once and records its real outcome", async () => {
+  const order = await fixture("failed");
+  await db.query("update public.order_outbox set created_at = now() - interval '3 minutes' where order_id = $1", [order]);
+  configureRequests("replay@example.test");
+  const provider = mockResend();
+  const finance = await createLocalAdminUser("finance");
+  try {
+    expect(await requestFinanceReplay(finance.id, { kind: "confirmation", id: order })).toBe(true);
+    const results = await Promise.all([
+      drainFinanceRetries("confirmation", replayOrderConfirmation),
+      drainFinanceRetries("confirmation", replayOrderConfirmation),
+    ]);
+    expect(results.map((row) => row.claimed).sort()).toEqual([0, 1]);
+    expect(provider).toHaveBeenCalledOnce();
+    expect(await readOutbox(order)).toMatchObject({ state: "sent", attempt_count: 1 });
+    const resolved = await db.query("select result from public.finance_retry_requests where kind = 'confirmation' and target_id = $1", [order]);
+    expect(resolved.rows).toEqual([{ result: "sent" }]);
+  } finally {
+    await db.query("delete from public.finance_retry_requests where target_id = $1", [order]);
+    await db.query("delete from auth.users where id = $1", [finance.id]);
+  }
 });

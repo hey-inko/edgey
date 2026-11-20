@@ -93,8 +93,8 @@ limits. Open the link in the browser that requested it. Set the server-only
 bytes). Rate limits trust Vercel’s client IP header and do not accept hosted
 submissions when it’s missing; the local stack uses a shared IP bucket.
 Finder telemetry ignores prefetch and recognised crawlers and caps writes
-per IP and globally. The outbox records request confirmations and staff
-notifications; a later worker sends them. Trial requests make no delivery
+per IP and globally. The request-email worker sends queued confirmations and
+staff notifications. Trial requests make no delivery
 promise, and an approved application does not grant credit.
 
 Before accepting public submissions, supply the HTTPS privacy notice URL as
@@ -192,6 +192,11 @@ are counted by outcome without keeping the query.
   an ambiguous or expired send, look up the order reference in Resend before
   attempting any manual delivery; the worker won't resend beyond the safe
   idempotency window. Don't reset a failed row to force a new send.
+- From `/admin/finance`, staff with the finance role can queue a retry for a
+  failed Stripe event or order confirmation. The relevant scheduled worker
+  retries that version only if it is still failed; a newer failure requires
+  a new request. Refresh Finance to see the current queue state. Refunds
+  are handled separately in Stripe.
 
 Stripe’s line prices are the saved VAT-inclusive totals, with the net and VAT
 shown on each paid invoice line and in the footer. Stripe automatic tax and FX

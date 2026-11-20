@@ -158,23 +158,32 @@ export type Database = {
           kind: string;
           requested_at: string;
           requested_by: string;
+          result: string | null;
           target_id: string;
           target_updated_at: string;
+          worker_token: string | null;
+          worker_until: string | null;
         };
         ComputedFields: never;
         Insert: {
           kind: string;
           requested_at?: string;
           requested_by: string;
+          result?: string | null;
           target_id: string;
           target_updated_at: string;
+          worker_token?: string | null;
+          worker_until?: string | null;
         };
         Update: {
           kind?: string;
           requested_at?: string;
           requested_by?: string;
+          result?: string | null;
           target_id?: string;
           target_updated_at?: string;
+          worker_token?: string | null;
+          worker_until?: string | null;
         };
         Relationships: [];
       };
@@ -1224,8 +1233,16 @@ export type Database = {
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
       };
       claim_outbox_email: {
-        Args: { p_message_key: string; p_replay_order_id?: string };
+        Args: { p_message_key: string; p_replay_order_id?: string; p_expected_updated_at?: string };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
+      };
+      claim_finance_retries: {
+        Args: { p_kind: string };
+        Returns: Database["public"]["Tables"]["finance_retry_requests"]["Row"][];
+      };
+      finish_finance_retry: {
+        Args: { p_kind: string; p_target_id: string; p_worker_token: string; p_result: string };
+        Returns: undefined;
       };
       close_missing_checkout_attempt: {
         Args: { p_attempt_token: string };

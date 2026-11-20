@@ -3,9 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
 import type { Database } from "../../src/lib/supabase/database.types";
+import { deleteStripeEventFixtures } from "../fixtures/stripe-events";
 
 const roles = ["warehouse", "catalogue", "finance", "buyer"] as const;
 const service = localAdminClient();
+const events: string[] = [];
 const users = new Map<(typeof roles)[number], {
   id: string;
   client: ReturnType<typeof createClient<Database>>;
@@ -26,6 +28,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await deleteStripeEventFixtures(events);
   await Promise.all([...users.values()].map(({ id }) => service.auth.admin.deleteUser(id)));
 });
 
@@ -56,6 +59,7 @@ test("only the service API can invoke receipt mutations and it must supply a war
 
 test("only finance can read finance rows and its direct client cannot read confidential payload fields", async () => {
   const id = `evt_${randomUUID().replaceAll("-", "")}`;
+  events.push(id);
   const recorded = await service.rpc("record_provider_event", {
     p_provider: "stripe", p_event_id: id, p_event_type: "checkout.session.completed", p_payload: { fixture: true },
   });
@@ -74,6 +78,7 @@ test("only the finance retry RPC can mark a failed target, once per failure vers
   const finance = users.get("finance")!;
   const warehouse = users.get("warehouse")!;
   const id = `evt_${randomUUID().replaceAll("-", "")}`;
+  events.push(id);
   const payload = { p_kind: "event", p_target_id: id, p_actor_id: finance.id };
   const record = await service.rpc("record_provider_event", {
     p_provider: "stripe", p_event_id: id, p_event_type: "fixture.replay", p_payload: { fixture: true },

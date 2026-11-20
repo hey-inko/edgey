@@ -19,7 +19,15 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     events: adminPage(query.events), outbox: adminPage(query.outbox),
   };
   const overview = await financeOverview(db, pages);
-  const requested = new Set(overview.queued.map(({ kind, target_id, target_updated_at }) => `${kind}:${target_id}:${target_updated_at}`));
+  const requested = new Map(overview.queued.map(({ kind, target_id, target_updated_at, result }) =>
+    [`${kind}:${target_id}:${target_updated_at}`, result]));
+  const replayLabel = (key: string) => {
+    const result = requested.get(key);
+    if (result === undefined) return null;
+    if (result === null) return "Retry queued.";
+    if (result === "not_replayable") return "A safe retry isn’t available.";
+    return `Retry outcome: ${displayState(result)}`;
+  };
   const nav = (key: keyof typeof pages) => (
     <AdminPagination pathname="/admin/finance" query={query} parameter={key}
       page={pages[key]} length={overview[key].length} />
@@ -28,13 +36,13 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   return (
     <>
       <AdminHeading title="Finance" description="Review payment exceptions and request retries. Refunds are handled separately with the payment provider." />
-      <AdminNotice>Retry requests are recorded but do not run until processing is connected.</AdminNotice>
       <AdminSection title="Payment review">
         {overview.reviews.length ? (
           <AdminTable label="Payment review" headers={["Order", "Business", "Payment", "Reason"]}>
             {overview.reviews.slice(0, adminPageSize).map((order) => <tr key={order.id}>
               <td className="admin-mono">{order.id}</td><td>{order.business_name}</td>
-              <td>{displayState(order.payment_status)}</td><td>{displayState(order.payment_review_reason ?? "Needs review")}</td>
+              <td>{displayState(order.payment_status)}</td>
+              <td>{order.payment_review_reason ? displayState(order.payment_review_reason) : order.stripe_reconciliation_error}</td>
             </tr>)}
           </AdminTable>
         ) : <AdminNotice>No orders to review on this page.</AdminNotice>}
@@ -57,9 +65,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           <AdminTable label="Failed provider events" headers={["Event", "Type", "Last error", "Retry"]}>
             {overview.events.slice(0, adminPageSize).map((event) => <tr key={`${event.provider}:${event.event_id}`}>
               <td className="admin-mono">{event.event_id}</td><td>{event.event_type}</td><td>{event.last_error}</td>
-              <td>{event.provider !== "stripe" ? "No replay available" : requested.has(`event:${event.event_id}:${event.updated_at}`) ? (
-                "Retry requested. Processing is not connected yet."
-              ) : (
+              <td>{event.provider !== "stripe" ? "No replay available" : replayLabel(`event:${event.event_id}:${event.updated_at}`) ?? (
                 <AdminForm action={retryFinanceFailure.bind(null, { kind: "event", id: event.event_id })} submit="Reprocess event" />
               )}</td>
             </tr>)}
@@ -69,11 +75,12 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       </AdminSection>
       <AdminSection title="Confirmation outbox">
         {overview.outbox.length ? (
-          <AdminTable label="Confirmation outbox" headers={["Order", "Status", "Updated", "Retry"]}>
+          <AdminTable label="Confirmation outbox" headers={["Order", "Status", "Last error", "Updated", "Retry"]}>
             {overview.outbox.slice(0, adminPageSize).map((message) => <tr key={message.order_id}>
               <td className="admin-mono">{message.order_id}</td><td>{displayState(message.state)}</td>
+              <td>{message.last_error ? displayState(message.last_error) : "—"}</td>
               <td className="admin-mono">{displayTimestamp(message.updated_at)}</td><td>{message.state !== "failed" || !message.order_id ? "—" :
-              requested.has(`confirmation:${message.order_id}:${message.updated_at}`) ? "Retry requested. Processing is not connected yet." : (
+              replayLabel(`confirmation:${message.order_id}:${message.updated_at}`) ?? (
                 <AdminForm action={retryFinanceFailure.bind(null, { kind: "confirmation", id: message.order_id })} submit="Resend confirmation" />
               )}</td>
             </tr>)}

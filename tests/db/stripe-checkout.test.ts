@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import Stripe from "stripe";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { drainFinanceRetries, requestFinanceReplay } from "@/lib/admin/replay";
 import { POST as openCheckout } from "@/app/api/checkout/session/route";
 import { POST as stripeWebhook } from "@/app/api/webhooks/stripe/route";
 import { quoteCurrentSelection } from "@/lib/checkout/server";
 import { recordProviderEvent } from "@/lib/orders";
 import { reconcileStripePayments, replayStripeEvent } from "@/lib/payments/reconciliation";
 import { readCheckoutSuccess } from "@/lib/payments/success";
+import { createLocalAdminUser } from "../../scripts/seed-admin";
 
 const provider = vi.hoisted(() => ({
   create: vi.fn(), list: vi.fn(), session: vi.fn(), intent: vi.fn(), invoice: vi.fn(), refund: vi.fn(), expire: vi.fn(), account: vi.fn(),
@@ -361,6 +363,41 @@ it("finds a paid pending order well before expiry when Stripe never delivers its
   expect(result).toMatchObject({ eventsChecked: 0, ordersChecked: 1, unresolvedOrders: 0 });
   expect(await state(orderId)).toMatchObject({ reservation_state: "allocated", confirmations: 1 });
   expect(await readCheckoutSuccess(session.id)).toMatchObject({ kind: "confirmed" });
+});
+
+it("finance replays only the currently requested failed version, and only one worker claims it", async () => {
+  const { session } = await checkout(await makeVariant(1), 1);
+  const invoiceId = id("in_");
+  const orderId = session.client_reference_id!;
+  paid(session);
+  provider.invoice.mockResolvedValue({ id: invoiceId, metadata: session.metadata, livemode: false });
+  const invoice = event("invoice.finalized", invoiceId);
+  const { eventId } = invoice;
+  await invoice.deliver();
+  expect(await eventState(eventId)).toMatchObject({ state: "failed" });
+  const other = new Client({ connectionString: process.env.SUPABASE_DB_URL, statement_timeout: 5_000 });
+  const finance = await createLocalAdminUser("finance");
+  await other.connect();
+  try {
+    await other.query("begin");
+    await other.query("select target_id from public.finance_retry_requests where kind = 'event' for update");
+    expect(await requestFinanceReplay(finance.id, { kind: "event", id: eventId })).toBe(true);
+    await db.query("update public.provider_events set last_error = 'Fixture newer failure' where event_id = $1", [eventId]);
+    expect(await drainFinanceRetries("event", replayStripeEvent)).toMatchObject({ claimed: 0 });
+    expect(await requestFinanceReplay(finance.id, { kind: "event", id: eventId })).toBe(true);
+    session.invoice = invoiceId;
+    const results = await Promise.all([
+      drainFinanceRetries("event", replayStripeEvent),
+      drainFinanceRetries("event", replayStripeEvent),
+    ]);
+    expect(results.map((row) => row.claimed).sort()).toEqual([0, 1]);
+    expect(await state(orderId)).toMatchObject({ provider_invoice_id: invoiceId, confirmations: 1 });
+    expect(await eventState(eventId)).toMatchObject({ state: "processed" });
+  } finally {
+    await other.end();
+    await db.query("delete from public.finance_retry_requests where target_id = $1", [eventId]);
+    await db.query("delete from auth.users where id = $1", [finance.id]);
+  }
 });
 
 it("holds ambiguous creation until a complete search of the original sandbox proves it safe to release", async () => {

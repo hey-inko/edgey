@@ -18,7 +18,7 @@ export async function retryFinanceFailure(target: FinanceReplayTarget): Promise<
       return { ok: false, message: "This item is no longer eligible for retry. Reload to check its current status." };
     }
     revalidatePath("/admin/finance");
-    return { ok: true, message: "Retry requested. Processing is not connected yet." };
+    return { ok: true, message: "Retry queued." };
   } catch {
     return { ok: false, message: "Could not retry this item. Check the queue before trying again." };
   }

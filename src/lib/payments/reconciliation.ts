@@ -7,10 +7,12 @@ import { reconcileSession } from "./settle";
 import { paymentStore, type Order } from "./store";
 import { getStripe } from "./stripe";
 
-export async function replayStripeEvent(eventId: string) {
+export async function replayStripeEvent(eventId: string, expectedVersion?: string) {
   if (!stripeEventId.test(eventId)) return "not_replayable";
-  const { data, error } = await paymentStore().from("provider_events").select("*")
-    .eq("provider", "stripe").eq("event_id", eventId).eq("state", "failed").maybeSingle();
+  const query = paymentStore().from("provider_events").select("*")
+    .eq("provider", "stripe").eq("event_id", eventId).eq("state", "failed");
+  if (expectedVersion) query.eq("updated_at", expectedVersion);
+  const { data, error } = await query.maybeSingle();
   if (error) throw error;
   return data ? applyStripeEvent(getStripe(), data) : "not_replayable";
 }

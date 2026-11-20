@@ -93,9 +93,9 @@ async function deliver(claim: Claim): Promise<DeliveryStatus> {
   return result.status === "sent" ? finish("sent", result.id) : finish(result.status);
 }
 
-async function claimEmail(messageKey: MessageKey, orderId?: string) {
+async function claimEmail(messageKey: MessageKey, orderId?: string, expectedVersion?: string) {
   const { data, error } = await paymentStore().rpc("claim_outbox_email", {
-    p_message_key: messageKey, p_replay_order_id: orderId,
+    p_message_key: messageKey, p_replay_order_id: orderId, p_expected_updated_at: expectedVersion,
   });
   if (error) throw error;
   return data?.[0];
@@ -122,8 +122,8 @@ export function processRequestEmails() {
   return processEmails(["confirmation", "staff_notification"]);
 }
 
-export async function replayOrderConfirmation(orderId: string): Promise<DeliveryStatus | "not_replayable"> {
+export async function replayOrderConfirmation(orderId: string, expectedVersion?: string): Promise<DeliveryStatus | "not_replayable"> {
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(orderId)) return "not_replayable";
-  const claim = await claimEmail("order_confirmation", orderId);
+  const claim = await claimEmail("order_confirmation", orderId, expectedVersion);
   return claim?.lease_token ? deliver(claim) : "not_replayable";
 }

@@ -18,7 +18,6 @@ where payment_method = 'card' and fulfilment_status = 'awaiting_authorisation';
 create index provider_events_stripe_replay_idx on public.provider_events (stripe_replay_after)
 where provider = 'stripe' and state <> 'processed';
 
-grant select (stripe_reconciliation_error) on public.orders to authenticated;
 grant update (stripe_replay_after, stripe_reconciliation_error) on public.orders to service_role;
 grant update (stripe_replay_after) on public.provider_events to service_role;
 

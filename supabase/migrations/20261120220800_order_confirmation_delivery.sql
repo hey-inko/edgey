@@ -37,7 +37,9 @@ as $$
   select p_started_at + interval '23 hours 55 minutes';
 $$;
 
-create function public.claim_outbox_email(p_message_key text, p_replay_order_id uuid default null)
+create function public.claim_outbox_email(
+  p_message_key text, p_replay_order_id uuid default null, p_expected_updated_at timestamptz default null
+)
 returns setof public.order_outbox
 language plpgsql security definer set search_path = ''
 as $$
@@ -58,6 +60,7 @@ begin
     and (
       (p_replay_order_id is null and state = 'pending' and next_attempt_at <= claimed_at)
       or (order_id = p_replay_order_id and state = 'failed'
+        and (p_expected_updated_at is null or updated_at = p_expected_updated_at)
         and coalesce(last_error, '') not in ('delivery_unconfirmed', 'retry_window_expired'))
     )
   order by next_attempt_at, created_at, id
@@ -215,9 +218,9 @@ end;
 $$;
 
 revoke all on function private.outbox_email_send_deadline(timestamptz) from public, anon, authenticated, service_role;
-revoke all on function public.claim_outbox_email(text, uuid),
+revoke all on function public.claim_outbox_email(text, uuid, timestamptz),
   public.begin_outbox_email_send(uuid, uuid, text, text, text),
   public.finish_outbox_email(uuid, uuid, text, text) from public, anon, authenticated;
-grant execute on function public.claim_outbox_email(text, uuid),
+grant execute on function public.claim_outbox_email(text, uuid, timestamptz),
   public.begin_outbox_email_send(uuid, uuid, text, text, text),
   public.finish_outbox_email(uuid, uuid, text, text) to service_role;

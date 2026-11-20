@@ -10,7 +10,8 @@ import { fileProvider, resendProvider } from "@/lib/email/provider";
 import { requestReceipt } from "@/lib/email/request-email";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/email/outbox", () => ({ processOrderConfirmations: vi.fn(), processRequestEmails: vi.fn() }));
+vi.mock("@/lib/email/outbox", () => ({ processOrderConfirmations: vi.fn(), processRequestEmails: vi.fn(), replayOrderConfirmation: vi.fn() }));
+vi.mock("@/lib/admin/replay", () => ({ drainFinanceRetries: vi.fn(async () => ({ claimed: 0, retryLater: 0 })) }));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -139,7 +140,7 @@ test("requires server cron authentication before processing the outbox", async (
   vi.mocked(processOrderConfirmations).mockResolvedValue({ sent: 1, failed: 2, pending: 0 });
   const response = await GET(authorised());
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ sent: 1, failed: 2, pending: 0 });
+  expect(await response.json()).toEqual({ sent: 1, failed: 2, pending: 0, finance: { claimed: 0, retryLater: 0 } });
 });
 
 test("keeps order cron runnable when the separately protected request cron is not configured", async () => {
