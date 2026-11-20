@@ -21,7 +21,7 @@ hosted project or credentials are needed.
 pnpm install --frozen-lockfile
 pnpm db:start       # Start local Supabase and apply the migrations and draft seed
 pnpm db:env         # Write local settings to the ignored .env.local
-pnpm db:fixture     # Optional for development; required for catalogue integration tests
+pnpm db:fixture     # Published test catalogue for development and database/browser tests
 pnpm dev
 ```
 
@@ -42,7 +42,7 @@ pnpm test:db                       # With local Supabase and the staging fixture
 pnpm bench:search                  # 100 warm calls to the anonymous HTTP RPC
 pnpm build
 pnpm exec playwright install chromium
-pnpm test:e2e                       # Starts the production build on port 3100
+pnpm test:e2e                       # Uses the fixture and starts the production build on port 3100
 ```
 
 Run `pnpm tokens` to regenerate `src/app/tokens.css` from the design pack.
