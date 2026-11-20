@@ -83,6 +83,28 @@ test("presents every ambiguous configuration, and a distinct SKU preselects the 
   await expect(dialog.getByRole("button", { name: "45°", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("a search response does not overwrite newer typing", async ({ page }) => {
+  let markRequest!: () => void;
+  let releaseRequest!: () => void;
+  const seen = new Promise<void>((resolve) => { markRequest = resolve; });
+  const release = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await page.route((url) => url.searchParams.get("q") === "Foa", async (route) => {
+    markRequest();
+    await release;
+    await route.continue();
+  });
+
+  await page.goto("/blades");
+  const search = page.getByRole("searchbox");
+  await search.fill("Foa");
+  await seen;
+  await search.press("m");
+  releaseRequest();
+  await page.waitForURL((url) => url.searchParams.get("q") === "Foa");
+  await expect(search).toHaveValue("Foam");
+  await expect(page).toHaveURL(/\?q=Foam$/);
+});
+
 test("filters published tool types and materials and carries an unmatched code to the placeholder", async ({ page }) => {
   await page.goto("/blades");
   await expect(page.getByRole("heading", { name: "Blade catalogue" })).toBeVisible();

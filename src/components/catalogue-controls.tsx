@@ -6,6 +6,12 @@ import type { CatalogueFilters } from "@/lib/catalogue";
 
 type Option = { slug: string; name: string };
 
+function filterQuery(filters: CatalogueFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value.trim()) params.set(key, value.trim());
+  return params.toString();
+}
+
 // Search and filters. State lives in the address (?q=&type=&machine=&material=)
 // so results are server-rendered, shareable and work without JavaScript.
 export function CatalogueControls({
@@ -20,23 +26,17 @@ export function CatalogueControls({
   const router = useRouter();
   const pathname = usePathname();
   const [values, setValues] = useState(filters);
+  const [requested, setRequested] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // "Clear filters", "Show all blades" and the material index change the
-  // address from outside this component; follow it.
-  const [lastFilters, setLastFilters] = useState(filters);
-  if (
-    filters.q !== lastFilters.q ||
-    filters.type !== lastFilters.type ||
-    filters.machine !== lastFilters.machine ||
-    filters.material !== lastFilters.material
-  ) {
-    setLastFilters(filters);
-    setValues((current) => ({
-      ...filters,
-      q: filters.q && current.q.trim() === filters.q ? current.q : filters.q,
-    }));
+  const received = filterQuery(filters);
+  const [rendered, setRendered] = useState(received);
+  if (received !== rendered) {
+    setRendered(received);
+    const index = requested.indexOf(received);
+    if (index === -1) setValues(filters);
+    setRequested(index === -1 ? [] : requested.slice(index + 1));
   }
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [pathname]);
@@ -45,9 +45,9 @@ export function CatalogueControls({
     setValues(next);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      const params = new URLSearchParams();
-      for (const [key, value] of Object.entries(next)) if (value.trim()) params.set(key, value.trim());
-      const query = params.toString();
+      timer.current = null;
+      const query = filterQuery(next);
+      setRequested((pending) => [...pending.filter((prior) => prior !== query).slice(-7), query]);
       startTransition(() => router.replace(pathname + (query ? "?" + query : ""), { scroll: false }));
     }, delay);
   }
@@ -55,10 +55,18 @@ export function CatalogueControls({
   return (
     <form
       className="controls"
+      id="catalogue-controls"
       role="search"
       action={pathname + "#catalogue"}
       method="get"
       aria-busy={isPending}
+      onReset={(event) => {
+        event.preventDefault();
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        setRequested([]);
+        setValues({ q: "", type: "", machine: "", material: "" });
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         push(values, 0);
