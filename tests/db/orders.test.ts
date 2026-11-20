@@ -333,6 +333,10 @@ describe("order transactions", () => {
     const close = () => rpc("release_reservation", [unbound.id, "close", "closed"]);
     expect(await close()).toMatchObject({ fulfilment_status: "cancelled", checkout_session_id: null });
     expect(await close()).toMatchObject({ fulfilment_status: "cancelled" });
+    const lateSession = key("cs");
+    await pay(unbound, lateSession, key("pi"));
+    expect(await close()).toMatchObject({ fulfilment_status: "cancelled", payment_status: "paid", checkout_session_id: lateSession });
+    expect(await outbox(unbound)).toEqual([]);
     expect(await cancel(unbound)).toMatchObject({ fulfilment_status: "cancelled" });
     expect(await stock(item)).toEqual(quantity(2, 0));
 

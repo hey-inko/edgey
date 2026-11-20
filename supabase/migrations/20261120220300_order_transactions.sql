@@ -272,12 +272,16 @@ declare result public.orders := private.lock_order(p_order_id);
 begin
   if p_reason is null or p_reason not in ('expired', 'closed')
     or (p_session_id is not null and length(btrim(p_session_id)) not between 1 and 200)
-    or (p_reason = 'expired' and p_session_id is null)
-    or (result.checkout_session_id is not null and result.checkout_session_id is distinct from p_session_id) then
+    or (p_reason = 'expired' and p_session_id is null) then
     raise exception using errcode = '22023', message = 'invalid_reservation_release';
   end if;
-  if not private.begin_order_operation(p_order_id, 'release', p_operation_key, jsonb_build_array(p_reason, p_session_id))
-    or result.fulfilment_status <> 'awaiting_authorisation' then
+  if not private.begin_order_operation(p_order_id, 'release', p_operation_key, jsonb_build_array(p_reason, p_session_id)) then
+    return result;
+  end if;
+  if result.checkout_session_id is not null and result.checkout_session_id is distinct from p_session_id then
+    raise exception using errcode = '22023', message = 'invalid_reservation_release';
+  end if;
+  if result.fulfilment_status <> 'awaiting_authorisation' then
     return result;
   end if;
   if p_reason = 'expired' and clock_timestamp() < result.hold_expires_at then
