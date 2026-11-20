@@ -470,3 +470,14 @@ a.p-card { color: inherit; }
   .qty-row { gap: 8px; }
   .qty-input { width: 52px; padding-inline: 6px; }
 }
+@media (max-width: 370px) and (max-height: 700px) {
+  .product-grid { gap: 10px; }
+  .product-panel { padding: 12px; }
+  .figure-plate { aspect-ratio: 3.5; }
+  .figure-plate-plain { aspect-ratio: auto; min-height: 40px; }
+  .figure-note { margin-top: 6px; }
+  .product-panel h1 { font-size: 1.6rem; margin: 4px 0 12px; }
+  .product-panel .specs { font-size: .82rem; line-height: 1.35; gap: 4px 8px; padding-block: 8px; }
+  .product-panel .quantity-set { margin-top: 9px; margin-bottom: 6px; }
+  .product-panel .detail-total { margin-top: 10px; }
+}

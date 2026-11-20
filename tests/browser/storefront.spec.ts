@@ -148,8 +148,8 @@ test("direct visits render a standalone verified product with per-blade price br
 
 for (const width of [390, 320]) {
   test(`the home, catalogue and product fit at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 740 });
-    for (const route of ["/", "/blades", "/blades/edg-z10", "/blades/edg-mim-45", "/enquiry?q=5201345"]) {
+    await page.setViewportSize({ width, height: width === 320 ? 640 : 844 });
+    for (const route of ["/", "/blades", "/blades/edg-z10", "/blades/edg-mim-45?variant=EDG-MIM-A45", "/enquiry?q=5201345"]) {
       await page.goto(route);
       const overflows = () =>
         page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
