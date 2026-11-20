@@ -3,6 +3,7 @@ import { CatalogueSection } from "@/components/catalogue-section";
 import { MaterialIndex } from "@/components/material-index";
 import { readFilters, type RouteQuery } from "@/lib/catalogue";
 import { loadCatalogue } from "@/lib/catalogue/server";
+import { siteUrl } from "@/lib/catalogue/site-url";
 
 type Props = { searchParams: Promise<RouteQuery> };
 
@@ -12,8 +13,9 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     title: "Blade catalogue",
     description:
       "Find a replacement blade by the part number printed on the packet, by Edgey SKU, tool type, machine or the material you are cutting.",
-    alternates: { canonical: "/blades" },
-    robots: Object.values(filters).some(Boolean) ? { index: false, follow: true } : undefined,
+    ...(Object.values(filters).some(Boolean)
+      ? { robots: { index: false, follow: true } }
+      : { alternates: { canonical: siteUrl("/blades") } }),
   };
 }
 

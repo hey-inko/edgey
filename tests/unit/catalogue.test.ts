@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { buildCatalogueView, readFilters, type Family, type Variant } from "@/lib/catalogue";
+import { buildCatalogueView, productHref, queryValue, readFilters, type Family, type Variant } from "@/lib/catalogue";
 import { unitPricePence, withVatPence } from "@/lib/catalogue/display-prices";
 
 const materials = ["vinyl", "textile"].map((slug, sortOrder) => ({ slug, name: slug, sortOrder, swatch: null }));
@@ -54,4 +54,11 @@ test("the displayed price applies each break to every blade and rounds VAT on th
   expect([1, 4, 5, 9, 10].map((quantity) => unitPricePence(prices, quantity))).toEqual([2250, 2250, 1995, 1995, 1750]);
   expect(withVatPence(unitPricePence(prices, 5) * 5)).toBe(11970);
   expect(withVatPence(1598)).toBe(1918);
+});
+
+test("route inputs keep the first value, strip control characters and cap search length", () => {
+  expect(queryValue(["  SPB\u0000\t0030  ", "unrelated"])).toBe("SPB 0030");
+  expect(queryValue("\u0000\u007f")).toBe("");
+  expect(queryValue("a".repeat(100))).toHaveLength(80);
+  expect(productHref("a-family", "A / B")).toBe("/blades/a-family?variant=A%20%2F%20B");
 });

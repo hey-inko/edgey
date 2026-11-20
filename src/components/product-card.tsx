@@ -11,6 +11,7 @@ export function ProductCard({ card }: { card: CatalogueCard }) {
   const nameId = family.slug + "-card-name";
   const matchId = family.slug + "-card-match";
   const fitId = family.slug + "-card-fit";
+  const priceId = family.slug + "-card-price";
   const lowest = Math.min(...variants.map((variant) => variant.prices.oneToFour));
   const priceVaries = variants.some((variant) => variant.prices.oneToFour !== lowest);
   const fit = fitLine(card);
@@ -22,7 +23,7 @@ export function ProductCard({ card }: { card: CatalogueCard }) {
       scroll={false}
       data-proof={family.media.drawing ? family.media.proof : undefined}
       aria-labelledby={codeId + " " + nameId}
-      aria-describedby={match ? [matchId, fit ? fitId : ""].filter(Boolean).join(" ") : undefined}
+      aria-describedby={[match ? matchId : "", match && fit ? fitId : "", priceId].filter(Boolean).join(" ")}
     >
       <span className="p-card-image">
         {family.media.drawing ? (
@@ -42,7 +43,7 @@ export function ProductCard({ card }: { card: CatalogueCard }) {
         <span className="p-card-name" id={nameId}>{family.name}</span>
         {match && fit && <span className="p-card-fit" id={fitId}>{fit}</span>}
         <span className="p-card-foot">
-          <span>
+          <span id={priceId}>
             {priceVaries && "From "}
             <b>{formatPence(lowest)}</b> ex VAT / ea
             <span className="p-card-vat">{incVatLabel(lowest)}</span>

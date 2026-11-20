@@ -9,7 +9,6 @@ import tokens from "../../design-tokens.json";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL?.trim() || "http://localhost:3000"),
   title: { default: "Edgey — The cutting room", template: "%s | Edgey" },
   description:
     "Edgey’s digital cutting room. Explore replacement blades for print, packaging and display by tool type, material or part number.",

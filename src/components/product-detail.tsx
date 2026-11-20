@@ -143,7 +143,8 @@ export function ProductDetail({
             max={maxQuantity}
             step={1}
             value={quantityInput}
-            aria-invalid={quantityInput !== "" && !validQuantity ? true : undefined}
+            aria-invalid={!validQuantity || undefined}
+            aria-describedby={!validQuantity ? id + "-quantity-error" : undefined}
             onChange={(event) => setQuantityInput(event.target.value)}
           />
         </div>
@@ -159,7 +160,7 @@ export function ProductDetail({
             </span>
           </>
         ) : variant ? (
-          <span className="fine">Enter a positive whole quantity to see the total.</span>
+          <span className="fine" id={id + "-quantity-error"}>Enter a positive whole quantity to see the total.</span>
         ) : (
           <>
             <span><strong>From {formatPence(lowest)}</strong> <span className="fine">ex VAT / ea</span></span>

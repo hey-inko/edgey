@@ -48,3 +48,5 @@ pnpm test:e2e                       # Uses the fixture and starts the production
 Run `pnpm tokens` to regenerate `src/app/tokens.css` from the design pack.
 The storefront uses the anonymous/publishable key only. Supplier data, stock
 counts and unpublished mappings stay behind the database grants and RLS.
+Set `NEXT_PUBLIC_SITE_URL` to the deployed storefront origin to include
+absolute canonical and structured-data URLs; local development doesn't need it.

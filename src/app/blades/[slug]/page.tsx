@@ -1,4 +1,5 @@
 import { getFamily } from "@/lib/catalogue/server";
+import { siteUrl } from "@/lib/catalogue/site-url";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -30,11 +31,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const fits = models.length ? " for " + [brands.join(" and "), models.join(", ")].filter(Boolean).join(" ") : "";
   const title = family.familyCode + " " + family.name + fits;
   const description = family.description + " See verified fit, availability and UK trade price breaks.";
+  const url = siteUrl(productHref(family.slug));
   return {
     title,
     description,
-    alternates: { canonical: "/blades/" + family.slug },
-    openGraph: { title, description, type: "website", url: "/blades/" + family.slug },
+    alternates: { canonical: url },
+    openGraph: { title, description, type: "website", url },
   };
 }
 
@@ -170,8 +172,8 @@ function modelCodes(family: Family): string[] {
 // schema.org Product, or ProductGroup when the family has several variants.
 // Prices are the business price: GBP excluding VAT, flagged as such.
 function structuredData(family: Family) {
-  const url = "/blades/" + family.slug;
-  const image = family.media.drawing ? "/line-art/" + family.media.drawing : undefined;
+  const url = siteUrl(productHref(family.slug));
+  const image = family.media.drawing ? siteUrl("/line-art/" + family.media.drawing) : undefined;
   const product = (variant: Variant) => ({
     "@type": "Product",
     name: family.name + (family.variants.length > 1 ? ", " + variantLabel(variant) : ""),
@@ -180,12 +182,14 @@ function structuredData(family: Family) {
     category: family.toolType.name + " blade",
     brand: { "@type": "Brand", name: "Edgey" },
     image,
-    isAccessoryOrSparePartFor: variant.compatibility
-      .filter((record) => record.kind === "model")
-      .map((record) => ({ "@type": "Product", name: [record.brand?.name, record.code].filter(Boolean).join(" ") })),
+    additionalProperty: variant.compatibility.map((record) => ({
+      "@type": "PropertyValue",
+      name: "OEM reference",
+      value: [record.brand?.name, record.code].filter(Boolean).join(" "),
+    })),
     offers: {
       "@type": "Offer",
-      url: productHref(family.slug, family.variants.length > 1 ? variant.sku : null),
+      url: siteUrl(productHref(family.slug, family.variants.length > 1 ? variant.sku : null)),
       priceCurrency: "GBP",
       price: (variant.prices.oneToFour / 100).toFixed(2),
       priceSpecification: {

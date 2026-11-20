@@ -130,6 +130,7 @@ const listFamilies = cache(async (): Promise<Family[]> => {
 });
 
 export const getFamily = cache(async (slug: string): Promise<Family | null> => {
+  if (!/^[a-z0-9-]{1,80}$/.test(slug)) return null;
   const { data, error } = await publicClient().from("products").select(FAMILY_SELECT).eq("slug", slug).maybeSingle();
   if (error) throw new Error("Catalogue read failed: " + error.message);
   const row = data as unknown as FamilyRow | null;

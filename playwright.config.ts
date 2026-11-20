@@ -11,6 +11,7 @@ export default defineConfig({
   webServer: {
     command: `pnpm start --hostname 127.0.0.1 --port ${port}`,
     url: baseURL,
+    env: { NEXT_PUBLIC_SITE_URL: baseURL },
     reuseExistingServer: false,
   },
 });

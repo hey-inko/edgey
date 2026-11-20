@@ -127,7 +127,7 @@ test("filters published tool types and materials and carries an unmatched code t
   await expect(page.getByText("Nothing has been sent.", { exact: false })).toBeVisible();
 });
 
-test("direct visits render a standalone verified product with per-blade price breaks", async ({ page }) => {
+test("direct visits render a standalone verified product with per-blade price breaks", async ({ page, baseURL }) => {
   await page.goto("/blades/edg-z10");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Flat-stock drag blade", level: 1 })).toBeVisible();
@@ -137,13 +137,34 @@ test("direct visits render a standalone verified product with per-blade price br
   const breaks = page.getByRole("table", { name: "Price breaks per blade for EDG-Z10" });
   await expect(breaks.getByRole("row", { name: /5–9 blades £19\.95 £23\.94/ })).toBeVisible();
   const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
-  expect(JSON.parse(jsonLd ?? "{}")).toMatchObject({ "@type": "Product", sku: "EDG-Z10" });
+  expect(JSON.parse(jsonLd ?? "{}")).toMatchObject({
+    "@type": "Product",
+    sku: "EDG-Z10",
+    url: baseURL + "/blades/edg-z10",
+    image: baseURL + "/line-art/drag-line.svg",
+    offers: { url: baseURL + "/blades/edg-z10", priceCurrency: "GBP" },
+  });
   expect(await page.content()).not.toMatch(/PRIV-Z10-ALIAS|500-9802|FIXTURE-EDG-Z10/);
+  const quantity = page.getByLabel("Other quantity");
+  await quantity.fill("0");
+  await expect(quantity).toHaveAttribute("aria-invalid", "true");
+  await expect(quantity).toHaveAccessibleDescription("Enter a positive whole quantity to see the total.");
+  await quantity.fill("6");
+  await expect(page.locator(".detail-total")).toContainText("£119.70 ex VAT");
 
   await page.goto("/blades/edg-sum-drg?variant=EDG-SUM-DRG-60");
   await expect(page.getByRole("button", { name: "60° · Out of stock" })).toBeDisabled();
   await expect(page.getByText("Out of stock", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "36°", exact: true })).toBeEnabled();
+});
+
+test("malformed searches do not crash and an unknown product returns 404", async ({ page }) => {
+  expect((await page.goto("/blades?q=%00"))?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Blade catalogue" })).toBeVisible();
+  expect((await page.goto("/?q=52%00%0B01345"))?.status()).toBe(200);
+  await expect(page.getByRole("link", { name: /EDG-Z71/ })).toHaveCount(0);
+  expect((await page.goto("/blades/no-such-blade"))?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "We could not find that page" })).toBeVisible();
 });
 
 for (const width of [390, 320]) {

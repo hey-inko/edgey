@@ -8,6 +8,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 export function ProductDialog({ children }: { children: ReactNode }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
+  const backdropDown = useRef(false);
 
   useEffect(() => {
     const element = dialog.current;
@@ -24,8 +25,12 @@ export function ProductDialog({ children }: { children: ReactNode }) {
     <dialog
       ref={dialog}
       aria-labelledby="detail-title"
+      onPointerDown={(event) => {
+        backdropDown.current = event.target === event.currentTarget;
+      }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) event.currentTarget.close();
+        if (backdropDown.current && event.target === event.currentTarget) event.currentTarget.close();
+        backdropDown.current = false;
       }}
       onClose={() => router.back()}
     >

@@ -191,7 +191,11 @@ export function bladeCount(count: number): string {
 }
 
 export function queryValue(value: string | string[] | undefined): string {
-  return ((Array.isArray(value) ? value[0] : value) ?? "").trim().slice(0, 80);
+  return Array.from((Array.isArray(value) ? value[0] : value) ?? "", (character) => {
+    if (/\s/.test(character)) return " ";
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127 ? "" : character;
+  }).join("").trim().slice(0, 80);
 }
 
 export function productHref(slug: string, sku?: string | null): string {
