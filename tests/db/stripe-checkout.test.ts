@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vite
 import { POST as openCheckout } from "@/app/api/checkout/session/route";
 import { POST as stripeWebhook } from "@/app/api/webhooks/stripe/route";
 import { quoteCurrentSelection } from "@/lib/checkout/server";
+import { recordProviderEvent } from "@/lib/orders";
 import { reconcileStripePayments, replayStripeEvent } from "@/lib/payments/reconciliation";
 import { readCheckoutSuccess } from "@/lib/payments/success";
 
@@ -148,11 +149,11 @@ function paid(session: Stripe.Checkout.Session, amount = session.amount_total!, 
   return intentId;
 }
 
-function event(type: string, objectId: string) {
+function event(type: string, objectId: string, livemode = false) {
   const eventId = id("evt_");
   events.push(eventId);
   const body = JSON.stringify({
-    id: eventId, object: "event", livemode: false, type,
+    id: eventId, object: "event", livemode, type,
     data: { object: { id: objectId, client_secret: "unpersisted-test-client-secret", email: "hidden@example.test" } },
   });
   const signature = signer.webhooks.generateTestHeaderString({ payload: body, secret: webhookSecret });
@@ -206,6 +207,17 @@ it("recovers a timed-out create by discovering the same provider session before 
   expect(sessions.size).toBe(1);
 });
 
+it("creates one reservation for two simultaneous requests using the same attempt", async () => {
+  const input = await checkoutInput(await makeVariant(1), 1);
+  const responses = await Promise.all([submit(input), submit(input)]);
+  expect(responses.map((response) => response.status)).toEqual([200, 200]);
+  const results = await Promise.all(responses.map((response) => response.json()));
+  expect(results[0]).toEqual(results[1]);
+  expect(sessions.size).toBe(1);
+  const orderId = sessions.get(results[0].sessionId)!.client_reference_id!;
+  expect(await state(orderId)).toMatchObject({ reservation_state: "held", confirmations: 0 });
+});
+
 it("admits only one payable checkout for concurrent buyers competing for the last unit", async () => {
   const variantId = await makeVariant(1);
   const [first, second] = await Promise.all([checkoutInput(variantId, 1), checkoutInput(variantId, 1)]);
@@ -218,6 +230,9 @@ it("uses raw signature bytes and never persists unverified event data", async ()
   const invalid = event("checkout.session.completed", id("cs_test_"));
   expect((await invalid.deliver(" ")).status).toBe(400);
   expect(await eventState(invalid.eventId)).toBeUndefined();
+  const live = event("checkout.session.completed", id("cs_test_"), true);
+  expect((await live.deliver()).status).toBe(400);
+  expect(await eventState(live.eventId)).toBeUndefined();
   const unknown = event("customer.updated", id("cus_"));
   expect((await unknown.deliver()).status).toBe(200);
   expect(await eventState(unknown.eventId)).toEqual({
@@ -258,6 +273,38 @@ it("applies refund, invoice and crossed checkout events once and keeps success r
   expect(snapshot).not.toHaveProperty("email");
   expect(await readCheckoutSuccess(session.id)).toEqual(snapshot);
   expect(await state(orderId)).toEqual(order);
+});
+
+it("reconciles a durably received event after interruption without the original request", async () => {
+  const { session } = await checkout(await makeVariant(1), 1);
+  const orderId = session.client_reference_id!;
+  paid(session);
+  const { eventId } = event("checkout.session.completed", session.id);
+  await recordProviderEvent({
+    provider: "stripe", eventId, eventType: "checkout.session.completed", payload: { objectId: session.id },
+  });
+  expect(await readCheckoutSuccess(session.id)).toEqual({ kind: "pending" });
+  expect(await state(orderId)).toMatchObject({ reservation_state: "held", confirmations: 0 });
+  await db.query("update public.provider_events set stripe_replay_after = '1970-01-01' where event_id = $1", [eventId]);
+  expect(await reconcileStripePayments()).toMatchObject({ eventsChecked: 1, unresolvedEvents: 0 });
+  expect(await eventState(eventId)).toMatchObject({ state: "processed" });
+  expect(await state(orderId)).toMatchObject({ reservation_state: "allocated", confirmations: 1 });
+});
+
+it("holds unresolved session creation for finance rather than guessing that a timeout failed", async () => {
+  const input = await checkoutInput(await makeVariant(1), 1);
+  provider.create.mockRejectedValueOnce(new Error("provider timeout"));
+  expect((await submit(input)).status).toBe(502);
+  const { rows: [order] } = await db.query<{ id: string }>(`
+    update public.orders set hold_expires_at = date_trunc('second', now()) - interval '1 minute',
+      stripe_replay_after = '1970-01-01' where checkout_attempt_token = $1 returning id
+  `, [input.attemptToken]);
+  expect(await reconcileStripePayments()).toMatchObject({ unresolvedOrders: 1 });
+  expect(await state(order!.id)).toMatchObject({
+    reservation_state: "held", stripe_reconciliation_error: expect.stringMatching(/could not verify/i),
+  });
+  expect((await submit(input)).status).toBe(409);
+  expect(provider.create).toHaveBeenCalledTimes(1);
 });
 
 it("leaves an amount or currency mismatch held for staff rather than picking or emailing", async () => {
