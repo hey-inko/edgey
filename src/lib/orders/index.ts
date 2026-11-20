@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/database.types";
+import { orderReservationArgs } from "./reservation-input";
 
 export type CreateOrderInput = {
   attemptToken: string;
@@ -84,32 +85,8 @@ async function call<Name extends keyof Functions>(
 
 export function createOrderWithReservations(input: CreateOrderInput) {
   return call("create_order_with_reservations", {
-    p_attempt_token: input.attemptToken,
+    ...orderReservationArgs(input),
     p_buyer_id: input.buyerId,
-    p_lines: input.lines.map(({ variantId, quantity, unitPricePence }) => ({
-      variant_id: variantId,
-      quantity,
-      unit_price_pence: unitPricePence,
-    })),
-    p_contact: {
-      email: input.contact.email,
-      business_name: input.contact.businessName,
-      recipient_name: input.contact.recipientName,
-      buying_for_work: input.contact.buyingForWork,
-      phone: input.contact.phone,
-    },
-    p_address: input.address,
-    p_totals: {
-      goods_net_pence: input.totals.goodsNetPence,
-      delivery_net_pence: input.totals.deliveryNetPence,
-      vat_rate_bps: input.totals.vatRateBps,
-      vat_pence: input.totals.vatPence,
-      gross_pence: input.totals.grossPence,
-    },
-    p_hold_expires_at: input.holdExpiresAt,
-    p_delivery_service: input.deliveryService,
-    p_dispatch_date: input.promise.dispatchDate,
-    p_delivery_date: input.promise.deliveryDate,
   });
 }
 
