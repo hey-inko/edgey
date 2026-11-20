@@ -7,7 +7,7 @@ import styles from "./success.module.css";
 const copy = {
   confirmed: {
     heading: "Order confirmed",
-    details: "We’ll email your order confirmation and invoice access.",
+    details: "We’ll email your order confirmation, with the invoice link when it’s available.",
   },
   pending: {
     heading: "Confirming payment",

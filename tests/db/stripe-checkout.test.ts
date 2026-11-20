@@ -351,6 +351,18 @@ it("reconciles a durably received event after interruption without the original 
   expect(await state(orderId)).toMatchObject({ reservation_state: "allocated", confirmations: 1 });
 });
 
+it("finds a paid pending order well before expiry when Stripe never delivers its webhook", async () => {
+  const { session } = await checkout(await makeVariant(1), 1);
+  const orderId = session.client_reference_id!;
+  paid(session);
+  await db.query(`update public.orders set created_at = now() - interval '3 minutes',
+    stripe_replay_after = '1970-01-01' where id = $1`, [orderId]);
+  const result = await reconcileStripePayments();
+  expect(result).toMatchObject({ eventsChecked: 0, ordersChecked: 1, unresolvedOrders: 0 });
+  expect(await state(orderId)).toMatchObject({ reservation_state: "allocated", confirmations: 1 });
+  expect(await readCheckoutSuccess(session.id)).toMatchObject({ kind: "confirmed" });
+});
+
 it("holds ambiguous creation until a complete search of the original sandbox proves it safe to release", async () => {
   const input = await checkoutInput(await makeVariant(1), 1);
   provider.create.mockRejectedValueOnce(new Error("provider timeout"));

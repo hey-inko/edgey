@@ -272,6 +272,37 @@ test("a dropped response does not lose the submitted attempt on reload", async (
   await expect(page.getByText(/Card payment isn’t configured/)).toBeVisible();
 });
 
+test("hands the reviewed order to hosted Checkout and can close the saved attempt on return", async ({ page }) => {
+  await addZ10(page);
+  await selection(page).getByRole("link", { name: "Go to checkout" }).click();
+  await fillAddress(page);
+  await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
+  const sessionId = "cs_test_browserFixture";
+  const url = `https://checkout.stripe.com/c/pay/${sessionId}`;
+  let attempt: string | undefined;
+  await page.route(url, (route) => route.fulfill({ body: "Hosted Checkout fixture" }));
+  await page.route("**/api/checkout/session", async (route) => {
+    const request = route.request().postDataJSON();
+    if (request.action === "close") {
+      expect(request.attemptToken).toBe(attempt);
+      await route.fulfill({ json: { status: "closed" } });
+    } else {
+      attempt = request.attemptToken;
+      expect(request.lines).toEqual([{ variantId: expect.any(String), quantity: 5 }]);
+      expect(request).not.toHaveProperty("totals");
+      await route.fulfill({ json: { status: "payment", sessionId, url } });
+    }
+  });
+  await page.getByRole("button", { name: "Continue to payment" }).click();
+  await expect(page).toHaveURL(url);
+  await expect(page.getByText("Hosted Checkout fixture")).toBeVisible();
+  await page.goto("/checkout");
+  await expect(page.getByRole("button", { name: "Resume payment" })).toBeVisible();
+  await page.getByRole("button", { name: "Close previous checkout" }).click();
+  await expect(page.getByText(/The previous checkout is closed/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resume payment" })).toHaveCount(0);
+});
+
 for (const width of [1440, 390, 320]) {
   for (const theme of ["dark", "light"] as const) {
     test(`selection and checkout fit ${width}px in ${theme} with visible keyboard focus`, async ({ page }) => {
