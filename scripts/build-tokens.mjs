@@ -68,6 +68,15 @@ export function buildTokensCss() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  writeFileSync(new URL("src/app/tokens.css", root), buildTokensCss());
-  console.log("Wrote app/tokens.css");
+  const output = new URL("src/app/tokens.css", root);
+  const css = buildTokensCss();
+  if (process.argv.includes("--check")) {
+    if (readFileSync(output, "utf8") !== css) {
+      console.error("Theme tokens are out of date. Run pnpm tokens.");
+      process.exitCode = 1;
+    }
+  } else {
+    writeFileSync(output, css);
+    console.log("Wrote src/app/tokens.css");
+  }
 }

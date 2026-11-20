@@ -2,6 +2,7 @@
 -- Every variant is imported as draft with zero stock. Reference codes are
 -- unverified candidates: a listed OEM identity tells the catalogue owner which
 -- original to check and does not establish an Edgey fit.
+-- For local development and testing only. Do not run against a live project.
 -- Repeatable: run it again and descriptive data and prices are refreshed while
 -- publication status, approvals and stock are left alone.
 
@@ -79,7 +80,11 @@ insert into public.products (family_code, slug, name, tool_category, description
   ('EDG-GRP-CB', 'edg-grp-cb', 'Graphtec-pattern plotter blade', 'roll-plotter', 'Roll-plotter blade for vinyl, stencil film and flock.', '{}', 230)
 on conflict (family_code) do update set
   slug = excluded.slug, name = excluded.name, tool_category = excluded.tool_category,
-  description = excluded.description, media = excluded.media, sort_order = excluded.sort_order;
+  description = excluded.description, media = excluded.media, sort_order = excluded.sort_order
+where not exists (
+  select 1 from public.variants v
+  where v.product_id = products.id and v.publication_status <> 'draft'
+);
 
 -- Variants. A single-variant family reuses its family code as the SKU. Families
 -- whose label lists several angles or holders get one draft SKU per option.

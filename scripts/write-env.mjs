@@ -19,5 +19,6 @@ writeFileSync(
     "SUPABASE_DB_URL=" + status.DB_URL,
     "",
   ].join("\n"),
+  { mode: 0o600 },
 );
 console.log("Wrote .env.local for " + status.API_URL);

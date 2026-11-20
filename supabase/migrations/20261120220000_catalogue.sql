@@ -179,6 +179,10 @@ for each row execute function private.touch_updated_at();
 -- the columns granted below. Supplier identity, stock counts, evidence notes
 -- and review state stay with the service role.
 
+alter default privileges in schema public revoke all on tables from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke all on functions from anon, authenticated;
+
 alter table public.tool_categories enable row level security;
 alter table public.substrates enable row level security;
 alter table public.brands enable row level security;

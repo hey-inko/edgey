@@ -4,7 +4,11 @@ import { Client } from "pg";
 let db: Client;
 
 beforeAll(async () => {
-  db = new Client({ connectionString: process.env.SUPABASE_DB_URL });
+  const connectionString = process.env.SUPABASE_DB_URL;
+  if (!connectionString || !["127.0.0.1", "localhost"].includes(new URL(connectionString).hostname)) {
+    throw new Error("These tests need the local Supabase stack. Run pnpm db:start && pnpm db:env && pnpm db:fixture.");
+  }
+  db = new Client({ connectionString });
   await db.connect();
   await db.query("set role anon");
 });
@@ -109,6 +113,25 @@ test("unpublishing a variant or withdrawing a mapping takes effect immediately",
     expect(await search("3910301")).toEqual([]);
     expect(await search("3910306")).toEqual([]);
     expect(await search("EDG-Z16")).toHaveLength(1);
+  } finally {
+    await db.query("rollback");
+    await db.query("set role anon");
+  }
+});
+
+test("new public tables do not implicitly grant access to API roles", async () => {
+  await db.query("reset role");
+  await db.query("begin");
+  try {
+    await db.query("create table public.grants_probe (id integer)");
+    const { rows } = await db.query(`
+      select role, has_table_privilege(role, 'public.grants_probe', 'SELECT') as can_read
+      from unnest(array['anon', 'authenticated']) as role
+    `);
+    expect(rows).toEqual([
+      { role: "anon", can_read: false },
+      { role: "authenticated", can_read: false },
+    ]);
   } finally {
     await db.query("rollback");
     await db.query("set role anon");
