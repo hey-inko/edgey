@@ -32,6 +32,25 @@ approvals, stock and fit are fabricated for development; never use the fixture
 as catalogue evidence or apply it to a live project. `pnpm db:stop` stops
 local Supabase.
 
+### Staff desk
+
+Start and seed local Supabase as above, then create one account per staff role:
+
+```sh
+read -rsp 'Disposable local staff password (12+ chars): ' EDGEY_LOCAL_STAFF_PASSWORD
+echo
+export EDGEY_LOCAL_STAFF_PASSWORD
+node scripts/seed-admin.ts
+unset EDGEY_LOCAL_STAFF_PASSWORD
+```
+
+Open `/admin` and sign in with one of the printed test emails. The script
+refuses non-local Supabase URLs and never prints the password. Each run creates
+new users; a local database reset removes them. Playwright provisions separate
+test users and a paid fixture order without touching any external provider.
+In a deployed environment, issue verified Supabase Auth accounts separately
+and assign the minimum required role in `staff_members`; do not run this seed.
+
 ### Checks
 
 ```sh

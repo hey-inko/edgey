@@ -1,0 +1,49 @@
+@page warehouse-pick {
+  size: A4;
+  margin: 14mm;
+}
+
+@media print {
+  body:has(.warehouse-pick-list) > :not(.warehouse-pick-list, :has(.warehouse-pick-list)),
+  body :has(.warehouse-pick-list) > :not(.warehouse-pick-list, :has(.warehouse-pick-list)) {
+    display: none !important;
+  }
+
+  body:has(.warehouse-pick-list),
+  body :has(.warehouse-pick-list) {
+    display: block;
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: white;
+    color: black;
+  }
+
+  .warehouse-pick-list {
+    display: block;
+    page: warehouse-pick;
+    --line: #777;
+  }
+
+  .warehouse-pick-list * {
+    background: transparent !important;
+    color: black !important;
+    overflow: visible;
+  }
+
+  .warehouse-pick-list table {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .warehouse-pick-list thead {
+    display: table-header-group;
+  }
+
+  .warehouse-pick-list tr {
+    break-inside: avoid;
+  }
+}

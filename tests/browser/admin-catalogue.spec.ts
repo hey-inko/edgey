@@ -1,0 +1,68 @@
+import { expect, test } from "@playwright/test";
+import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
+import { signInStaff } from "./admin-fixtures";
+
+test("a catalogue operator approves and publishes a draft for public search", async ({ page }) => {
+  const staff = await createLocalAdminUser("catalogue");
+  await signInStaff(page, staff);
+  await page.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Catalogue" }).click();
+  await page.getByRole("link", { name: "EDG-Z11", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tight-corner drag blade" })).toBeVisible();
+  const variantPath = new URL(page.url()).pathname;
+  const db = localAdminClient();
+
+  await page.getByLabel("Supplier name").fill("Fixture Tooling");
+  await page.getByLabel("Supplier part number").fill("FIXTURE-Z11");
+  await page.getByRole("button", { name: "Save selling data" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
+
+  const variantReview = page.getByRole("button", { name: "Record variant review" }).locator("xpath=ancestor::form");
+  await variantReview.getByLabel("Review decision").selectOption("approve");
+  await variantReview.getByLabel("Evidence source").fill("Local test packet");
+  await variantReview.getByLabel("Evidence note").fill("Synthetic replacement configuration for browser tests only.");
+  await variantReview.getByRole("button", { name: "Record variant review" }).click();
+  await expect(variantReview.getByRole("status")).toHaveText("Approval recorded.");
+
+  const mapping = page.locator("details").filter({ has: page.locator("summary").getByText("3910309", { exact: true }) });
+  await mapping.locator("summary").click();
+  await mapping.getByLabel("Review decision").selectOption("approve");
+  await mapping.getByLabel("Evidence source").fill("Local OEM reference fixture");
+  await mapping.getByLabel("Evidence note").fill("Synthetic OEM match for browser tests only.");
+  await mapping.getByRole("button", { name: "Record review for 3910309" }).click();
+  await expect(mapping.getByRole("status")).toHaveText("Approval recorded.");
+
+  await page.getByRole("button", { name: "Publish variant", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Unpublish variant" })).toBeVisible();
+  expect((await db.from("variants").select("publication_status").eq("sku", "EDG-Z11").single()).data?.publication_status).toBe("published");
+
+  await page.goto("/blades?q=3910309");
+  await expect(page.getByRole("link", { name: /EDG-Z11 Tight-corner drag blade/ })).toContainText("Exact match · 3910309");
+  await page.goto(variantPath);
+  await page.getByRole("button", { name: "Unpublish variant" }).click();
+  await expect(page.getByRole("button", { name: "Publish variant", exact: true })).toBeVisible();
+  await page.goto("/blades?q=3910309");
+  await expect(page.getByRole("link", { name: "Ask us to match this blade" })).toBeVisible();
+});
+
+test("warehouse cannot use a stale catalogue mutation form", async ({ browser, page, baseURL }) => {
+  const db = localAdminClient();
+  const sku = "EDG-HTR040";
+  const before = await db.from("variants").select("id,supplier_part_number").eq("sku", sku).single();
+  if (before.error) throw before.error;
+  await signInStaff(page, await createLocalAdminUser("catalogue"));
+  await page.goto(`/admin/catalogue/${before.data.id}`);
+  await page.getByLabel("Supplier part number").fill("DENIED-STALE-FORM");
+
+  const warehouse = await browser.newContext({ baseURL });
+  try {
+    await signInStaff(await warehouse.newPage(), await createLocalAdminUser("warehouse"));
+    await page.context().clearCookies();
+    await page.context().addCookies(await warehouse.cookies());
+    await page.getByRole("button", { name: "Save selling data" }).click();
+    await expect(page).toHaveURL(/\/admin$/);
+    const after = await db.from("variants").select("id,supplier_part_number").eq("sku", sku).single();
+    expect(after.data).toEqual(before.data);
+  } finally {
+    await warehouse.close();
+  }
+});
