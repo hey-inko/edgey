@@ -343,6 +343,35 @@ describe("order transactions", () => {
     expect(await outbox(order)).toEqual([]);
   });
 
+  test("finance closes a mismatched capture once it has been fully refunded by the provider", async () => {
+    const item = await variant(await product(), 1);
+    const finance = await user("finance");
+    const warehouse = await user("warehouse");
+    const order = await createOrder([line(item)]);
+    const session = key("cs");
+    const intent = key("pi");
+    const refund = key("re");
+    const resolve = (actor = finance.id, paymentIntent = intent, refundId = refund) =>
+      rpc("resolve_refunded_payment_review", [order.id, paymentIntent, refundId, actor]);
+    await rejects(() => resolve(), "order_has_no_matching_payment_review");
+    await pay(order, session, intent, null, order.gross_pence, "USD");
+    await rejects(() => resolve(warehouse.id), "finance_role_required", "42501");
+    await rejects(() => resolve(finance.id, key("pi")), "order_has_no_matching_payment_review");
+    const resolved = {
+      fulfilment_status: "cancelled", payment_status: "refunded", payment_review_refund_id: refund,
+      payment_review_reason: "payment_amount_or_currency_mismatch", paid_pence: 0, refunded_pence: 0,
+    };
+    expect(await resolve()).toMatchObject(resolved);
+    expect(await resolve()).toMatchObject(resolved);
+    await rejects(() => resolve(finance.id, intent, key("re")), "payment_review_already_resolved");
+    expect(await pay(order, session, intent, null, order.gross_pence, "USD")).toMatchObject(resolved);
+    expect(await pay(order, session, intent)).toMatchObject(resolved);
+    expect(await reservations(order)).toEqual([{ variant_id: item.id, quantity: 1, state: "released" }]);
+    expect(await outbox(order)).toEqual([]);
+    expect(await stock(item)).toEqual(quantity(1, 0));
+    expect(await movements(item)).toEqual([movement(item, "reserve", order, 0, 1), movement(item, "release", order, 0, -1)]);
+  });
+
   test("closes an unbound hold before cancellation and releases a paid picking order exactly once", async () => {
     const actor = await user("warehouse");
     const item = await variant(await product(), 2);
@@ -575,7 +604,7 @@ describe("order transactions", () => {
     const names = [
       "bind_checkout_session", "cancel_order", "confirm_payment", "create_order_with_reservations", "dispatch_order",
       "enqueue_order_confirmation", "mark_provider_event", "receive_stock", "record_provider_event", "record_refund",
-      "record_return", "release_reservation", "restore_stock", "start_picking",
+      "record_return", "release_reservation", "resolve_refunded_payment_review", "restore_stock", "start_picking",
     ];
     const { rows } = await db.query(`
       select p.proname as name,

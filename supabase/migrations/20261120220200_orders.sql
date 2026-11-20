@@ -45,6 +45,7 @@ create table public.orders (
   payment_intent_id text unique,
   provider_invoice_id text unique,
   payment_review_reason text,
+  payment_review_refund_id text unique,
   po_number text check (length(btrim(po_number)) between 1 and 200),
   authorised_at timestamptz,
   dispatched_at timestamptz,

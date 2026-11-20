@@ -265,6 +265,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -308,6 +309,7 @@ export type Database = {
           payment_intent_id?: string | null;
           payment_method?: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason?: string | null;
+          payment_review_refund_id?: string | null;
           payment_status?: Database["public"]["Enums"]["order_payment_status"];
           phone?: string | null;
           po_number?: string | null;
@@ -350,6 +352,7 @@ export type Database = {
           payment_intent_id?: string | null;
           payment_method?: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason?: string | null;
+          payment_review_refund_id?: string | null;
           payment_status?: Database["public"]["Enums"]["order_payment_status"];
           phone?: string | null;
           po_number?: string | null;
@@ -781,6 +784,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -836,6 +840,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -897,6 +902,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -959,6 +965,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -1016,6 +1023,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -1165,6 +1173,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -1249,6 +1258,64 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
+          payment_status: Database["public"]["Enums"]["order_payment_status"];
+          phone: string | null;
+          po_number: string | null;
+          promised_dispatch_date: string;
+          provider_invoice_id: string | null;
+          recipient_name: string;
+          refunded_pence: number;
+          tracking_number: string | null;
+          updated_at: string;
+          vat_pence: number;
+          vat_rate_bps: number;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "orders";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      resolve_refunded_payment_review: {
+        Args: {
+          p_actor_id: string;
+          p_order_id: string;
+          p_payment_intent_id: string;
+          p_refund_id: string;
+        };
+        Returns: {
+          address_country: string;
+          address_line1: string;
+          address_line2: string | null;
+          address_postcode: string;
+          address_region: string | null;
+          address_town: string;
+          authorised_at: string | null;
+          business_name: string;
+          buyer_id: string | null;
+          buying_for_work: boolean;
+          carrier: string | null;
+          checkout_attempt_token: string;
+          checkout_session_id: string | null;
+          created_at: string;
+          currency: string;
+          delivery_net_pence: number;
+          delivery_service: string;
+          dispatched_at: string | null;
+          email: string;
+          estimated_delivery_date: string;
+          fulfilment_status: Database["public"]["Enums"]["order_fulfilment_status"];
+          goods_net_pence: number;
+          gross_pence: number;
+          hold_expires_at: string;
+          id: string;
+          paid_pence: number;
+          payment_intent_id: string | null;
+          payment_method: Database["public"]["Enums"]["order_payment_method"];
+          payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;
@@ -1341,6 +1408,7 @@ export type Database = {
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
           payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
           payment_status: Database["public"]["Enums"]["order_payment_status"];
           phone: string | null;
           po_number: string | null;

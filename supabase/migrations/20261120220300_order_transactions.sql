@@ -365,6 +365,9 @@ begin
     or (p_invoice_id is not null and result.provider_invoice_id is not null and result.provider_invoice_id <> p_invoice_id) then
     raise exception using errcode = '22023', message = 'payment_provider_identity_mismatch';
   end if;
+  if result.payment_review_refund_id is not null then
+    return result;
+  end if;
   if p_amount_pence <> result.gross_pence or upper(p_currency) <> result.currency then
     if result.paid_pence > 0 then
       raise exception using errcode = '22023', message = 'payment_amount_or_currency_mismatch';
@@ -402,6 +405,39 @@ begin
   if needs_allocation then
     perform public.enqueue_order_confirmation(p_order_id);
   end if;
+  return result;
+end;
+$$;
+
+create function public.resolve_refunded_payment_review(
+  p_order_id uuid, p_payment_intent_id text, p_refund_id text, p_actor_id uuid
+)
+returns public.orders
+language plpgsql security definer set search_path = ''
+as $$
+declare result public.orders := private.lock_order(p_order_id);
+begin
+  if not exists (select 1 from public.staff_members where user_id = p_actor_id and role = 'finance') then
+    raise exception using errcode = '42501', message = 'finance_role_required';
+  end if;
+  if result.payment_review_reason is distinct from 'payment_amount_or_currency_mismatch'
+    or result.paid_pence <> 0
+    or p_payment_intent_id is null or result.payment_intent_id is distinct from p_payment_intent_id
+    or result.fulfilment_status not in ('awaiting_authorisation', 'cancelled') then
+    raise exception using errcode = '22023', message = 'order_has_no_matching_payment_review';
+  end if;
+  if not private.begin_order_operation(p_order_id, 'resolve_refunded_payment_review', p_refund_id,
+    jsonb_build_array(p_actor_id, p_payment_intent_id)) then
+    return result;
+  end if;
+  if result.payment_review_refund_id is not null then
+    raise exception using errcode = '22023', message = 'payment_review_already_resolved';
+  end if;
+  if result.fulfilment_status = 'awaiting_authorisation' then
+    perform private.finish_reservations(p_order_id, 'held', 'release', p_actor_id);
+  end if;
+  update public.orders set payment_status = 'refunded', fulfilment_status = 'cancelled', payment_review_refund_id = p_refund_id
+  where id = p_order_id returning * into result;
   return result;
 end;
 $$;
@@ -646,6 +682,7 @@ revoke all on function
   public.release_reservation(uuid, text, text, text),
   public.enqueue_order_confirmation(uuid),
   public.confirm_payment(uuid, text, text, integer, text, timestamptz, date, date, text),
+  public.resolve_refunded_payment_review(uuid, text, text, uuid),
   public.record_refund(uuid, text, text, integer, text),
   public.cancel_order(uuid, text, uuid),
   public.start_picking(uuid, text, uuid),
@@ -663,6 +700,7 @@ grant execute on function
   public.release_reservation(uuid, text, text, text),
   public.enqueue_order_confirmation(uuid),
   public.confirm_payment(uuid, text, text, integer, text, timestamptz, date, date, text),
+  public.resolve_refunded_payment_review(uuid, text, text, uuid),
   public.record_refund(uuid, text, text, integer, text),
   public.cancel_order(uuid, text, uuid),
   public.start_picking(uuid, text, uuid),

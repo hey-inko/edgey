@@ -169,6 +169,20 @@ export function recordRefund(input: {
   });
 }
 
+export function resolveRefundedPaymentReview(input: {
+  orderId: string;
+  paymentIntentId: string;
+  refundId: string;
+  actorId: string;
+}) {
+  return call("resolve_refunded_payment_review", {
+    p_order_id: input.orderId,
+    p_payment_intent_id: input.paymentIntentId,
+    p_refund_id: input.refundId,
+    p_actor_id: input.actorId,
+  });
+}
+
 export function cancelOrder(input: WarehouseOrderOperation) {
   return call("cancel_order", {
     p_order_id: input.orderId,
