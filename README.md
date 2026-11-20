@@ -60,19 +60,24 @@ already-running local stack, restart it to pick up the local mail settings.
 
 On Vercel, set `NEXT_PUBLIC_SITE_URL` to the HTTPS storefront origin and
 allow that origin’s exact `/auth/confirm` URL in Supabase Auth. Enable email
-confirmation and configure the Supabase Auth sender. Set the server-only
+confirmation and configure the Supabase Auth sender and provider-side abuse
+limits. Open the link in the browser that requested it. Set the server-only
 `SUPABASE_SERVICE_ROLE_KEY` and `EDGEY_REQUEST_HASH_KEY` (at least 32 random
-bytes). Rate limits trust Vercel’s client IP header; requests without a trusted
-IP share an IP bucket. The outbox records request confirmations and staff
+bytes). Rate limits trust Vercel’s client IP header and do not accept hosted
+submissions when it’s missing; the local stack uses a shared IP bucket.
+Finder telemetry ignores prefetch and recognised crawlers and caps writes
+per IP and globally. The outbox records request confirmations and staff
 notifications; a later worker sends them. Trial requests make no delivery
 promise, and an approved application does not grant credit.
 
-Before accepting public submissions, publish the privacy notice and have
-operations approve retention periods. Schedule the service-only
+Before accepting public submissions, supply the HTTPS privacy notice URL as
+`EDGEY_PRIVACY_NOTICE_URL` and have operations approve retention periods.
+Set `EDGEY_PUBLIC_REQUESTS_ENABLED=true` only after scheduling the service-only
 `purge_request_data(p_enquiry_age, p_trial_age, p_trade_age, p_search_age)`
 RPC with explicit positive PostgreSQL intervals (for example, `90 days`).
 It removes expired rate windows, old Finder events and eligible requests
-with their outbox messages. Converted enquiries and approved trial and trade
+with their outbox messages. An in-review enquiry or trial is kept if it was
+updated within its retention period. Converted enquiries and approved trial and trade
 records are preserved for operational and audit use; operations must set
 their separate retention policy. Finder analytics keep published terms in
 normalised form and use keyed fingerprints for other code-like input only.

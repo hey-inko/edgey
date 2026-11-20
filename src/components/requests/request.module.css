@@ -2,6 +2,11 @@
   margin-block-end: 1.65rem;
 }
 
+.privacy {
+  margin-block-start: 1.25rem;
+  font-size: .88rem;
+}
+
 .form {
   position: relative;
   display: grid;

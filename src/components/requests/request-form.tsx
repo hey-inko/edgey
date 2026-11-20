@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState, type ChangeEvent } from "react";
-import { initialRequestFormState, type RequestFormState } from "@/lib/requests/forms";
+import { initialRequestFormState, requestTrapField, type RequestFormState } from "@/lib/requests/forms";
 import styles from "./request.module.css";
 
 export type RequestField = {
@@ -49,27 +49,27 @@ export function RequestForm({
 
   return (
     <>
+      {hasError && (
+        <div className={styles.notice}>
+          <h2 tabIndex={-1} ref={heading}>
+            {invalidFields.length ? "Check the form" : "We couldn’t send the form"}
+          </h2>
+          {state.message && <p>{state.message}</p>}
+          {!state.message && !invalidFields.length && <p>Please try again.</p>}
+          {invalidFields.length > 0 && (
+            <ul>
+              {invalidFields.map((field) => (
+                <li key={field.name}>
+                  <a href={`#${id}-${field.name}`} className="textlink">
+                    {state.errors?.[field.name]}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div role="status" aria-live="polite" aria-atomic="true">
-        {hasError && (
-          <div className={styles.notice}>
-            <h2 tabIndex={-1} ref={heading}>
-              {invalidFields.length ? "Check the form" : "We couldn’t send the form"}
-            </h2>
-            {state.message && <p>{state.message}</p>}
-            {!state.message && !invalidFields.length && <p>Please try again.</p>}
-            {invalidFields.length > 0 && (
-              <ul>
-                {invalidFields.map((field) => (
-                  <li key={field.name}>
-                    <a href={`#${id}-${field.name}`} className="textlink">
-                      {state.errors?.[field.name]}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
         {succeeded && (
           <div className={styles.notice}>
             <h2 tabIndex={-1} ref={heading}>{successTitle}</h2>
@@ -80,7 +80,7 @@ export function RequestForm({
       {(!succeeded || keepFormOnSuccess) && (
         <form action={formAction} noValidate className={styles.form}>
           {attempt && <input type="hidden" name="attemptId" value={attempt} />}
-          <input name="website" type="text" className={styles.trap} aria-hidden="true" tabIndex={-1} autoComplete="off" />
+          <input name={requestTrapField} type="text" className={styles.trap} aria-hidden="true" tabIndex={-1} autoComplete="off" />
           {fields.map((field) => {
             const fieldId = `${id}-${field.name}`;
             const error = hasError ? state.errors?.[field.name] : undefined;
@@ -108,7 +108,7 @@ export function RequestForm({
                 {field.type === "select" ? (
                   <div className="select-field">
                     <select {...inputProps}>
-                      <option value="">{field.required ? "Select a machine brand" : "Not specified"}</option>
+                      <option value="">{field.required ? "Choose an option" : "Not specified"}</option>
                       {field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                   </div>

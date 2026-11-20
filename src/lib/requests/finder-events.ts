@@ -4,13 +4,14 @@ import { after } from "next/server";
 import type { CatalogueView, SearchHit } from "@/lib/catalogue";
 import { serviceClient } from "@/lib/supabase/service";
 import { finderCodeForFingerprint, normaliseFinderCode, normaliseFinderWords, privateFinderQuery } from "./finder-query";
-import { requestFingerprint } from "./rate-limit";
+import { allowFinderEvent, requestFingerprint } from "./rate-limit";
 
 export async function recordFinderSearch(query: string, hits: SearchHit[], view: CatalogueView) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.EDGEY_REQUEST_HASH_KEY) return;
   const requestHeaders = await headers();
   if (requestHeaders.has("next-router-prefetch") || requestHeaders.has("next-router-segment-prefetch")
-    || requestHeaders.get("purpose") === "prefetch" || requestHeaders.get("sec-purpose")?.includes("prefetch")) return;
+    || requestHeaders.get("purpose") === "prefetch" || requestHeaders.get("sec-purpose")?.includes("prefetch")
+    || /bot\b|crawler|spider/i.test(requestHeaders.get("user-agent") ?? "")) return;
 
   const visible = view.cards.find((card) => card.match === "exact") ?? view.cards[0];
   const exact = hits.find((hit) => hit.matchType === "exact");
@@ -25,6 +26,7 @@ export async function recordFinderSearch(query: string, hits: SearchHit[], view:
 
   after(async () => {
     try {
+      if (!await allowFinderEvent()) return;
       const { error } = await serviceClient().rpc("record_finder_search", {
         p_outcome: outcome,
         p_normalised_query: normalisedQuery,

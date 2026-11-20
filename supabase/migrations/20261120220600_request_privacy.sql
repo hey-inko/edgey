@@ -1,5 +1,5 @@
 create table private.request_rate_limits (
-  scope text not null check (scope in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'trade_verify')),
+  scope text not null check (scope in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'finder')),
   dimension text not null check (dimension in ('ip', 'email')),
   key text not null check (key ~ '^[a-f0-9]{64}$'),
   attempts integer not null check (attempts > 0),
@@ -18,7 +18,7 @@ declare
   dimension_limit record;
   checked_at timestamptz := clock_timestamp();
 begin
-  if p_scope is null or p_scope not in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'trade_verify')
+  if p_scope is null or p_scope not in ('enquiry', 'trial', 'trade', 'trade_sign_in', 'finder')
     or p_ip_key is null or p_ip_key !~ '^[a-f0-9]{64}$'
     or p_email_key is null or p_email_key !~ '^[a-f0-9]{64}$' then
     raise exception using errcode = '22023', message = 'invalid_request_rate_limit_input';
@@ -26,8 +26,8 @@ begin
 
   for dimension_limit in
     select * from (values
-      (1, 'ip', p_ip_key, case when p_scope in ('trade_sign_in', 'trade_verify') then 20 else 10 end),
-      (2, 'email', p_email_key, case when p_scope in ('trade_sign_in', 'trade_verify') then 5 else 3 end)
+      (1, 'ip', p_ip_key, case p_scope when 'finder' then 120 when 'trade_sign_in' then 20 else 10 end),
+      (2, 'email', p_email_key, case p_scope when 'finder' then 10000 when 'trade_sign_in' then 5 else 3 end)
     ) as limits(lock_order, dimension, key, quota) order by lock_order
   loop
     insert into private.request_rate_limits as counter (scope, dimension, key, attempts, expires_at)
@@ -47,7 +47,7 @@ end;
 $$;
 
 comment on function public.consume_request_rate_limit(text, text, text) is
-  'Consume both HMAC-SHA256 dimensions atomically in rolling-start one-hour windows. Forms allow 10/IP and 3/email; trade sign-in and verification allow 20/IP and 5/email each. An unsuccessful admission consumes neither counter.';
+  'Consume two server-derived dimensions atomically in one-hour windows. Forms allow 10/IP and 3/email; sign-in allows 20/IP and 5/email; Finder allows 120/IP and 10,000 globally (the second dimension uses one constant key).';
 
 create table public.finder_search_events (
   id uuid primary key default gen_random_uuid(),
@@ -102,9 +102,11 @@ begin
     raise exception using errcode = '22023', message = 'invalid_request_retention_period';
   end if;
 
-  delete from public.enquiries where created_at < cutoff_now - p_enquiry_age and status <> 'converted';
+  delete from public.enquiries where created_at < cutoff_now - p_enquiry_age and status <> 'converted'
+    and (status <> 'in_review' or updated_at < cutoff_now - p_enquiry_age);
   get diagnostics enquiry_count = row_count;
-  delete from public.trial_requests where created_at < cutoff_now - p_trial_age and status <> 'approved';
+  delete from public.trial_requests where created_at < cutoff_now - p_trial_age and status <> 'approved'
+    and (status <> 'in_review' or updated_at < cutoff_now - p_trial_age);
   get diagnostics trial_count = row_count;
   delete from public.trade_applications where created_at < cutoff_now - p_trade_age and status <> 'approved';
   get diagnostics trade_count = row_count;

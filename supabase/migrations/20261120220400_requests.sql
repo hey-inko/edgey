@@ -69,7 +69,10 @@ alter table public.trial_requests enable row level security;
 alter table public.trade_applications enable row level security;
 revoke all on public.enquiries, public.trial_requests, public.trade_applications
 from public, anon, authenticated, service_role;
-grant select on public.enquiries, public.trial_requests, public.trade_applications to authenticated, service_role;
+grant select on public.enquiries, public.trial_requests to authenticated, service_role;
+grant select on public.trade_applications to service_role;
+grant select (id, buyer_id, email, buyer_name, company, billing_line1, billing_line2, billing_town,
+  billing_postcode, status, reviewed_at, created_at, updated_at) on public.trade_applications to authenticated;
 grant update (status, staff_notes) on public.enquiries, public.trial_requests to authenticated;
 
 create policy enquiries_read on public.enquiries for select to authenticated
@@ -171,7 +174,7 @@ declare
   existing public.trade_applications;
 begin
   select lower(btrim(email)) into verified_email from auth.users
-  where id = p_buyer_id and email_confirmed_at is not null;
+  where id = p_buyer_id and email_confirmed_at is not null and not is_anonymous;
   if verified_email is null then
     raise exception using errcode = '42501', message = 'verified_buyer_required';
   end if;
@@ -197,8 +200,7 @@ begin
     end if;
     return existing.id;
   end if;
-  select * into strict existing from public.trade_applications where buyer_id = p_buyer_id;
-  return existing.id;
+  raise exception using errcode = '23505', message = 'trade_application_exists';
 end;
 $$;
 

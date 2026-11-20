@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { Client } from "pg";
+import { requestTrapField } from "../../src/lib/requests/forms";
 
 test.use({ trace: "off" });
 
@@ -42,6 +43,7 @@ async function openSignInLink(page: Page, email: string) {
     return false;
   }, { message: "The local inbox receives a Supabase sign-in link" }).toBe(true);
   await page.goto(link!.href, { waitUntil: "domcontentloaded" });
+  return link!;
 }
 
 test("carries an unmatched code into a keyboard-accessible compatibility enquiry", async ({ page }) => {
@@ -117,7 +119,8 @@ test("records exact, suggested and unmatched searches without retaining private 
     const { rows } = await db.query<{ since: Date }>("select clock_timestamp() as since");
     const since = rows[0]?.since;
     if (!since) throw new Error("Could not read the local database clock.");
-    for (const query of ["3910-301", "vinyl", "EDG-NOT-8927345", emailFor("search")]) {
+    const privateEmail = emailFor("search");
+    for (const query of ["3910-301", "vinyl", "EDG-NOT-8927345", privateEmail]) {
       await page.goto("/blades?q=" + encodeURIComponent(query));
     }
     await expect.poll(async () => {
@@ -125,6 +128,7 @@ test("records exact, suggested and unmatched searches without retaining private 
         "select outcome, normalised_query, query_fingerprint from public.finder_search_events where created_at >= $1",
         [since],
       );
+      expect(JSON.stringify(rows)).not.toContain(privateEmail);
       return rows;
     }).toEqual(expect.arrayContaining([
       { outcome: "exact", normalised_query: "3910301", query_fingerprint: null },
@@ -137,7 +141,7 @@ test("records exact, suggested and unmatched searches without retaining private 
   }
 });
 
-test("requires email verification and remembers an application as pending", async ({ page }) => {
+test("requires email verification and remembers an application as pending", async ({ page, browser }) => {
     const email = emailFor("trade");
     await page.goto("/trade");
     const address = page.getByRole("textbox", { name: "Work email" });
@@ -149,10 +153,19 @@ test("requires email verification and remembers an application as pending", asyn
     await address.fill(email);
     await send.press("Enter");
     await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
-    await openSignInLink(page, email);
+    const link = await openSignInLink(page, email);
 
     await expect(page).toHaveURL(/\/trade$/);
     await expect(page.getByText(/one named buyer/)).toBeVisible();
+    const isolatedContext = await browser.newContext();
+    try {
+      const replay = await isolatedContext.newPage();
+      await replay.goto(link.href);
+      await expect(replay.getByRole("heading", { name: "We couldn’t verify the sign-in link" })).toBeVisible();
+      await expect(replay.getByRole("textbox", { name: "Buyer name" })).toHaveCount(0);
+    } finally {
+      await isolatedContext.close();
+    }
     const buyer = page.getByRole("textbox", { name: "Buyer name" });
     const submit = page.getByRole("button", { name: "Submit application" });
     await submit.press("Enter");
@@ -172,6 +185,28 @@ test("requires email verification and remembers an application as pending", asyn
     await expect(page.getByRole("textbox", { name: "Work email" })).toBeVisible();
 });
 
+test("reports a blocked honeypot submission and an email rate limit without a false receipt", async ({ page }) => {
+  const email = emailFor("rate-limit");
+  for (let index = 0; index < 5; index++) {
+    await page.goto("/sample-pack");
+    await page.getByRole("combobox", { name: "Machine brand" }).selectOption("jwei");
+    await page.getByRole("textbox", { name: "OEM code" }).fill("unknown");
+    await page.getByRole("textbox", { name: "Work email" }).fill(email);
+    await page.getByRole("textbox", { name: "Company" }).fill("Proof Room");
+    await page.getByRole("textbox", { name: "Postcode" }).fill("SW1A 1AA");
+    const submit = page.getByRole("button", { name: "Request trial blades" });
+    if (index === 0) await page.locator(`input[name="${requestTrapField}"]`).evaluate((input: HTMLInputElement) => { input.value = "filled"; });
+    await submit.press("Enter");
+    if (index === 0) {
+      await expect(page.getByText(/Reload the page and try again/)).toBeVisible();
+    } else if (index === 4) {
+      await expect(page.getByText(/Too many requests/)).toBeVisible();
+    } else {
+      await expect(page.getByRole("heading", { name: "Trial request received" })).toBeVisible();
+    }
+  }
+});
+
 for (const width of [320, 390, 1440]) {
   test(`request pages fit in light and dark at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 320 ? 640 : 900 });
@@ -184,6 +219,11 @@ for (const width of [320, 390, 1440]) {
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+        if (width === 320) {
+          await page.evaluate(() => { document.documentElement.style.fontSize = "125%"; });
+          expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+          await expect(page.getByRole("navigation", { name: "Footer" }).getByRole("link", { name: "Trade accounts" })).toBeVisible();
+        }
       }
     }
   });

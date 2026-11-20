@@ -19,3 +19,8 @@ export type RequestFormState = {
 
 export const initialRequestFormState: RequestFormState = { status: "idle" };
 export type EnquiryKind = "compatibility" | "delivery";
+export const requestTrapField = "contactHint";
+export const blockedSubmission: RequestFormState = {
+  status: "error",
+  message: "The form couldn’t be submitted. Reload the page and try again.",
+};

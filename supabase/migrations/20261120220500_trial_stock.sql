@@ -33,6 +33,35 @@ create table public.trial_allocations (
 );
 create index trial_allocations_variant_idx on public.trial_allocations (variant_id);
 
+create function private.check_trial_unit_count()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  trial_id uuid := case when tg_op = 'DELETE' then old.trial_request_id else new.trial_request_id end;
+begin
+  if exists (
+    select 1 from public.trial_fulfilments as f
+    where f.trial_request_id = any(array[trial_id, case when tg_op = 'UPDATE' then old.trial_request_id end])
+      and f.state in ('allocated', 'dispatched')
+      and (select coalesce(sum(a.quantity), 0) from public.trial_allocations as a
+        where a.trial_request_id = f.trial_request_id) <> 2
+  ) then
+    raise exception using errcode = '23514', message = 'two_trial_units_required';
+  end if;
+  return null;
+end;
+$$;
+revoke all on function private.check_trial_unit_count() from public, anon, authenticated, service_role;
+
+create constraint trigger trial_fulfilment_unit_count
+after insert or update on public.trial_fulfilments deferrable initially deferred
+for each row execute function private.check_trial_unit_count();
+
+create constraint trigger trial_allocation_unit_count
+after insert or update or delete on public.trial_allocations deferrable initially deferred
+for each row execute function private.check_trial_unit_count();
+
 alter table public.stock_movements
   add column trial_request_id uuid,
   add foreign key (trial_request_id, variant_id) references public.trial_allocations (trial_request_id, variant_id),

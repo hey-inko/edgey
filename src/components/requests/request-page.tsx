@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { requestAvailability, requestsUnavailable } from "@/lib/requests/availability";
 import styles from "./request.module.css";
 
 export function RequestPage({
@@ -12,6 +13,7 @@ export function RequestPage({
   intro: ReactNode;
   children: ReactNode;
 }) {
+  const availability = requestAvailability();
   return (
     <main id="main-content" tabIndex={-1} className="frame simple-page">
       <header className={styles.pageHeader}>
@@ -22,7 +24,15 @@ export function RequestPage({
         <h1>{title}</h1>
         <p className="muted">{intro}</p>
       </header>
-      {children}
+      {availability.enabled ? (
+        <>
+          {children}
+          <p className={`muted ${styles.privacy}`}>
+            We use the details you give us to process your request and reply.
+            {"privacyUrl" in availability && <> <a className="textlink" href={availability.privacyUrl}>Privacy notice</a></>}
+          </p>
+        </>
+      ) : <p role="status" className={styles.notice}>{requestsUnavailable}</p>}
     </main>
   );
 }

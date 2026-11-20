@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseUkPostcode } from "@/lib/commerce/coverage";
-import { MACHINE_BRANDS, type RequestFormState } from "./forms";
+import { MACHINE_BRANDS, requestTrapField, type RequestFormState } from "./forms";
 
 function text(label: string, max: number, multiline = false) {
   return optionalText(max, multiline).min(1, `Enter ${label}.`);
@@ -76,5 +76,5 @@ export function formErrors(error: z.ZodError): RequestFormState {
 }
 
 export function caughtInHoneypot(form: FormData): boolean {
-  return form.getAll("website").some((value) => value !== "");
+  return form.getAll(requestTrapField).some((value) => value !== "");
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { requestTrapField } from "@/lib/requests/forms";
 import { finderCodeForFingerprint, normaliseFinderCode, normaliseFinderWords, privateFinderQuery } from "@/lib/requests/finder-query";
 import {
   caughtInHoneypot,
@@ -63,9 +64,9 @@ describe("request validation", () => {
   });
 
   it("detects a populated honeypot even with a duplicate empty value", () => {
-    const form = submission({ website: "" });
+    const form = submission({ [requestTrapField]: "" });
     expect(caughtInHoneypot(form)).toBe(false);
-    form.append("website", "filled");
+    form.append(requestTrapField, "filled");
     expect(caughtInHoneypot(form)).toBe(true);
   });
 });

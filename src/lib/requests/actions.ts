@@ -2,7 +2,8 @@
 
 import { getVerifiedBuyer } from "@/lib/auth/server";
 import { serviceClient } from "@/lib/supabase/service";
-import type { EnquiryKind, RequestFormState } from "./forms";
+import { requestAvailability, requestsUnavailable } from "./availability";
+import { blockedSubmission, type EnquiryKind, type RequestFormState } from "./forms";
 import {
   caughtInHoneypot,
   compatibilitySchema,
@@ -19,14 +20,21 @@ const received: RequestFormState = { status: "success" };
 async function submit(
   scope: "enquiry" | "trial" | "trade",
   email: string,
-  save: () => PromiseLike<{ error: unknown; data: unknown }>,
+  save: () => PromiseLike<{ error: { message: string } | null; data: unknown }>,
 ): Promise<RequestFormState> {
+  if (!requestAvailability().enabled) return { status: "error", message: requestsUnavailable };
   try {
     if (!await allowRequest(scope, email)) {
       return { status: "error", message: "Too many requests. Please try again later." };
     }
     const { error, data } = await save();
     if (!error && data) return received;
+    if (scope === "trade" && error?.message === "trade_application_exists") {
+      return { status: "error", message: "You already have an application. Reload this page to see its status." };
+    }
+    if (error?.message === "request_attempt_conflict") {
+      return { status: "error", message: "This form was already used with different details. Reload the page and try again." };
+    }
   } catch {
   }
   return { status: "error", message: "We couldn’t save your request. Please try again shortly." };
@@ -35,7 +43,7 @@ async function submit(
 export async function submitEnquiry(
   kind: EnquiryKind, _previous: RequestFormState, form: FormData,
 ): Promise<RequestFormState> {
-  if (caughtInHoneypot(form)) return received;
+  if (caughtInHoneypot(form)) return blockedSubmission;
   if (kind === "delivery") {
     const input = readForm(deliveryEnquirySchema, form);
     if (!input.success) return formErrors(input.error);
@@ -54,7 +62,7 @@ export async function submitEnquiry(
 }
 
 export async function submitTrialRequest(_previous: RequestFormState, form: FormData): Promise<RequestFormState> {
-  if (caughtInHoneypot(form)) return received;
+  if (caughtInHoneypot(form)) return blockedSubmission;
   const input = readForm(trialSchema, form);
   if (!input.success) return formErrors(input.error);
   const { attemptId, email, company, machineBrand, oemCode, postcode } = input.data;
@@ -65,7 +73,7 @@ export async function submitTrialRequest(_previous: RequestFormState, form: Form
 }
 
 export async function submitTradeApplication(_previous: RequestFormState, form: FormData): Promise<RequestFormState> {
-  if (caughtInHoneypot(form)) return received;
+  if (caughtInHoneypot(form)) return blockedSubmission;
   const input = readForm(tradeSchema, form);
   if (!input.success) return formErrors(input.error);
   const buyer = await getVerifiedBuyer();

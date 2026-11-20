@@ -2,13 +2,15 @@
 
 import { redirect } from "next/navigation";
 import { allowRequest } from "@/lib/requests/rate-limit";
-import type { RequestFormState } from "@/lib/requests/forms";
+import { requestAvailability, requestsUnavailable } from "@/lib/requests/availability";
+import { blockedSubmission, type RequestFormState } from "@/lib/requests/forms";
 import { caughtInHoneypot, formErrors, readForm, signInSchema } from "@/lib/requests/validation";
 import { sessionClient } from "./server";
 import { storefrontUrl } from "./supabase";
 
 export async function sendTradeSignInLink(_previous: RequestFormState, form: FormData): Promise<RequestFormState> {
-  if (caughtInHoneypot(form)) return { status: "success" };
+  if (!requestAvailability().enabled) return { status: "error", message: requestsUnavailable };
+  if (caughtInHoneypot(form)) return blockedSubmission;
   const input = readForm(signInSchema, form);
   if (!input.success) return formErrors(input.error);
   try {
@@ -20,7 +22,10 @@ export async function sendTradeSignInLink(_previous: RequestFormState, form: For
       email: input.data.email,
       options: { emailRedirectTo },
     });
-    if (!error || error.code === "over_email_send_rate_limit") return { status: "success" };
+    if (!error) return { status: "success" };
+    if (error.code === "over_email_send_rate_limit") {
+      return { status: "error", message: "Wait a minute before requesting another sign-in link." };
+    }
   } catch {
   }
   return { status: "error", message: "We couldn’t send the sign-in link. Please try again shortly." };

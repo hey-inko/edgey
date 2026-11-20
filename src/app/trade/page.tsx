@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 const applicationStatus = {
   pending: { title: "Application pending", detail: "We’ll email you after we’ve reviewed your application." },
-  approved: { title: "Application approved" },
-  rejected: { title: "Application not approved" },
+  approved: { title: "Application approved", detail: "Trade credit and Net 30 aren’t available yet." },
+  rejected: { title: "Application not approved", detail: "We’ll contact you by email about the decision." },
 } satisfies Record<string, { title: string; detail?: string }>;
 
 export default async function TradePage({ searchParams }: {
