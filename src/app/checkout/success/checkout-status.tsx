@@ -36,8 +36,10 @@ const maxAutomaticChecks = 10;
 
 export function CheckoutStatus({ kind }: { kind: keyof typeof copy }) {
   const router = useRouter();
-  const [checking, startTransition] = useTransition();
+  const [automaticChecking, startAutomaticCheck] = useTransition();
+  const [manualChecking, startManualCheck] = useTransition();
   const [checks, setChecks] = useState(0);
+  const checking = automaticChecking || manualChecking;
   const canRetry = kind === "pending" || kind === "unavailable";
   const automaticChecksEnded = kind === "pending" && checks >= maxAutomaticChecks && !checking;
 
@@ -47,14 +49,15 @@ export function CheckoutStatus({ kind }: { kind: keyof typeof copy }) {
       if (document.visibilityState !== "visible") return;
       window.clearInterval(timer);
       setChecks((count) => count + 1);
-      startTransition(() => router.refresh());
+      startAutomaticCheck(() => router.refresh());
     }, pollIntervalMs);
     return () => window.clearInterval(timer);
   }, [checking, checks, kind, router]);
 
   function checkAgain() {
+    if (checking) return;
     setChecks(0);
-    startTransition(() => router.refresh());
+    startManualCheck(() => router.refresh());
   }
 
   return (
@@ -62,11 +65,13 @@ export function CheckoutStatus({ kind }: { kind: keyof typeof copy }) {
       <div role="status" aria-live="polite" aria-atomic="true">
         <h1>{copy[kind].heading}</h1>
         <p className={styles.message}>
-          {automaticChecksEnded ? "This is taking longer than expected. You can check again below. You don’t need to pay again." : copy[kind].details}
+          {manualChecking ? "Checking payment status…" : automaticChecksEnded
+            ? "This is taking longer than expected. You can check again below. You don’t need to pay again."
+            : copy[kind].details}
         </p>
       </div>
       {canRetry && (
-        <button className={`textlink ${styles.retry}`} type="button" onClick={checkAgain} disabled={checking}>
+        <button className={`textlink ${styles.retry}`} type="button" onClick={checkAgain} aria-disabled={checking}>
           Check payment status
         </button>
       )}

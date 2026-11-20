@@ -13,7 +13,7 @@
   min-height: var(--edgey-primary-min-height);
 }
 
-.retry:disabled {
+.retry[aria-disabled="true"] {
   color: var(--edgey-text-muted);
   cursor: default;
 }

@@ -125,8 +125,17 @@ test("requires server cron authentication before processing the outbox", async (
   expect((await GET(new Request(url))).status).toBe(401);
   expect((await GET(new Request(url, { headers: { authorization: "Bearer wrong-cron" } }))).status).toBe(401);
   expect(processOrderConfirmations).not.toHaveBeenCalled();
+  vi.stubEnv("EMAIL_PROVIDER", undefined);
+  vi.stubEnv("RESEND_API_KEY", undefined);
+  const authorised = () => new Request(url, { headers: { authorization: "Bearer test-cron" } });
+  const unconfigured = await GET(authorised());
+  expect(unconfigured.status).toBe(503);
+  expect(await unconfigured.json()).toEqual({ error: "RESEND_API_KEY is not configured." });
+  expect(processOrderConfirmations).not.toHaveBeenCalled();
+  vi.stubEnv("RESEND_API_KEY", "test-key");
+  vi.stubEnv("EMAIL_FROM", "Edgey <orders@example.test>");
   vi.mocked(processOrderConfirmations).mockResolvedValue({ sent: 1, failed: 2, pending: 0 });
-  const response = await GET(new Request(url, { headers: { authorization: "Bearer test-cron" } }));
+  const response = await GET(authorised());
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ sent: 1, failed: 2, pending: 0 });
 });
