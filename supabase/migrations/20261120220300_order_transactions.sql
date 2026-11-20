@@ -28,6 +28,9 @@ returns boolean
 language plpgsql set search_path = ''
 as $$
 begin
+  if coalesce(length(btrim(p_key)), 0) not between 1 and 200 then
+    raise exception using errcode = '22023', message = 'invalid_operation_key';
+  end if;
   insert into private.order_operations (order_id, action, operation_key, input)
   values (p_order_id, p_action, p_key, p_input)
   on conflict do nothing;
@@ -124,11 +127,8 @@ begin
   end if;
   perform pg_advisory_xact_lock(hashtextextended('order-attempt:' || p_attempt_token, 0));
   select * into result from public.orders where checkout_attempt_token = p_attempt_token;
-  if found then
-    if result.buyer_id is distinct from p_buyer_id then
-      raise exception using errcode = '22023', message = 'attempt_owner_mismatch';
-    end if;
-    return result;
+  if found and result.buyer_id is distinct from p_buyer_id then
+    raise exception using errcode = '22023', message = 'attempt_owner_mismatch';
   end if;
 
   if coalesce(jsonb_typeof(p_lines), '') <> 'array' then
@@ -149,9 +149,6 @@ begin
   ) then
     raise exception using errcode = '22023', message = 'duplicate_variant';
   end if;
-  if p_hold_expires_at is null or not isfinite(p_hold_expires_at) or p_hold_expires_at <= clock_timestamp() then
-    raise exception using errcode = '22023', message = 'invalid_hold_expiry';
-  end if;
   if exists (
     select 1 from unnest(array['email','business_name','recipient_name']) as k
     where jsonb_typeof(p_contact->k) is distinct from 'string'
@@ -168,6 +165,35 @@ begin
   ) then
     raise exception using errcode = '22023', message = 'invalid_order_address';
   end if;
+  postcode := upper(regexp_replace(p_address->>'postcode', '[[:space:]]', '', 'g'));
+  postcode := left(postcode, -3) || ' ' || right(postcode, 3);
+
+  if result.id is not null then
+    if (result.email, result.business_name, result.recipient_name, result.phone,
+        result.address_line1, result.address_line2, result.address_town, result.address_region,
+        result.address_postcode, result.address_country, result.delivery_service) is distinct from (
+          btrim(p_contact->>'email'), btrim(p_contact->>'business_name'), btrim(p_contact->>'recipient_name'),
+          nullif(btrim(p_contact->>'phone'), ''), btrim(p_address->>'line1'), nullif(btrim(p_address->>'line2'), ''),
+          btrim(p_address->>'town'), nullif(btrim(p_address->>'region'), ''), postcode,
+          upper(btrim(p_address->>'country')), btrim(p_delivery_service)
+        )
+      or jsonb_array_length(p_lines) <> (select count(*) from public.order_items where order_id = result.id)
+      or exists (
+        select 1 from jsonb_array_elements(p_lines) as l
+        where not exists (
+          select 1 from public.order_items
+          where order_id = result.id and variant_id = (l->>'variant_id')::uuid and quantity = (l->>'quantity')::integer
+        )
+      ) then
+      raise exception using errcode = '22023', message = 'attempt_payload_mismatch';
+    end if;
+    return result;
+  end if;
+
+  p_hold_expires_at := date_trunc('second', p_hold_expires_at);
+  if p_hold_expires_at is null or not isfinite(p_hold_expires_at) or p_hold_expires_at <= clock_timestamp() then
+    raise exception using errcode = '22023', message = 'invalid_hold_expiry';
+  end if;
   if exists (
     select 1 from unnest(array['goods_net_pence','delivery_net_pence','vat_rate_bps','vat_pence','gross_pence']) as k
     where jsonb_typeof(p_totals->k) is distinct from 'number' or (p_totals->>k) !~ '^[0-9]{1,10}$'
@@ -175,8 +201,6 @@ begin
     raise exception using errcode = '22023', message = 'invalid_order_totals';
   end if;
 
-  postcode := upper(regexp_replace(p_address->>'postcode', '[[:space:]]', '', 'g'));
-  postcode := left(postcode, -3) || ' ' || right(postcode, 3);
   insert into public.orders (
     checkout_attempt_token, buyer_id, email, business_name, recipient_name, phone, buying_for_work,
     address_line1, address_line2, address_town, address_region, address_postcode, address_country,
@@ -250,7 +274,7 @@ as $$
 declare result public.orders := private.lock_order(p_order_id);
 begin
   if coalesce(length(btrim(p_session_id)), 0) not between 1 and 200
-    or p_expires_at is distinct from result.hold_expires_at then
+    or date_trunc('second', p_expires_at) is distinct from result.hold_expires_at then
     raise exception using errcode = '22023', message = 'checkout_session_does_not_match_hold';
   end if;
   if result.checkout_session_id = p_session_id then
@@ -283,6 +307,9 @@ begin
   end if;
   if result.fulfilment_status <> 'awaiting_authorisation' then
     return result;
+  end if;
+  if result.payment_review_reason is not null then
+    raise exception using errcode = '22023', message = 'payment_review_required';
   end if;
   if p_reason = 'expired' and clock_timestamp() < result.hold_expires_at then
     raise exception using errcode = '22023', message = 'hold_not_expired';
@@ -317,7 +344,7 @@ $$;
 
 create function public.confirm_payment(
   p_order_id uuid, p_session_id text, p_payment_intent_id text, p_amount_pence integer, p_currency text,
-  p_invoice_id text default null, p_dispatch_date date default null, p_delivery_date date default null
+  p_paid_at timestamptz, p_dispatch_date date, p_delivery_date date, p_invoice_id text default null
 )
 returns public.orders
 language plpgsql security definer set search_path = ''
@@ -326,9 +353,9 @@ declare
   result public.orders := private.lock_order(p_order_id);
   needs_allocation boolean := result.fulfilment_status = 'awaiting_authorisation';
 begin
-  if result.payment_method <> 'card' or p_amount_pence is distinct from result.gross_pence
-    or upper(p_currency) is distinct from result.currency then
-    raise exception using errcode = '22023', message = 'payment_amount_or_currency_mismatch';
+  if result.payment_method <> 'card' or p_amount_pence is null or p_amount_pence < 0
+    or coalesce(p_currency, '') !~ '^[A-Za-z]{3}$' then
+    raise exception using errcode = '22023', message = 'invalid_card_payment';
   end if;
   if coalesce(length(btrim(p_session_id)), 0) not between 1 and 200
     or coalesce(length(btrim(p_payment_intent_id)), 0) not between 1 and 200
@@ -338,14 +365,27 @@ begin
     or (p_invoice_id is not null and result.provider_invoice_id is not null and result.provider_invoice_id <> p_invoice_id) then
     raise exception using errcode = '22023', message = 'payment_provider_identity_mismatch';
   end if;
-  if (p_dispatch_date is null) <> (p_delivery_date is null) then
-    raise exception using errcode = '22023', message = 'incomplete_delivery_promise';
+  if p_amount_pence <> result.gross_pence or upper(p_currency) <> result.currency then
+    if result.paid_pence > 0 then
+      raise exception using errcode = '22023', message = 'payment_amount_or_currency_mismatch';
+    end if;
+    if result.payment_review_reason is distinct from 'payment_amount_or_currency_mismatch' then
+      update public.orders set checkout_session_id = p_session_id, payment_intent_id = p_payment_intent_id,
+        payment_review_reason = 'payment_amount_or_currency_mismatch'
+      where id = p_order_id returning * into result;
+    end if;
+    return result;
   end if;
-  if result.payment_intent_id is not null then
+  if result.paid_pence > 0 then
     if result.provider_invoice_id is null and p_invoice_id is not null then
       update public.orders set provider_invoice_id = p_invoice_id where id = p_order_id returning * into result;
     end if;
     return result;
+  end if;
+  if p_paid_at is null or not isfinite(p_paid_at)
+    or p_dispatch_date is null or not isfinite(p_dispatch_date)
+    or p_delivery_date is null or not isfinite(p_delivery_date) or p_delivery_date < p_dispatch_date then
+    raise exception using errcode = '22023', message = 'invalid_payment_time_or_delivery_promise';
   end if;
   if needs_allocation then
     update public.stock_reservations set state = 'allocated' where order_id = p_order_id and state = 'held';
@@ -354,9 +394,9 @@ begin
   set payment_status = 'paid', paid_pence = p_amount_pence, checkout_session_id = p_session_id,
       payment_intent_id = p_payment_intent_id, provider_invoice_id = p_invoice_id,
       fulfilment_status = case when needs_allocation then 'ready_to_pick' else fulfilment_status end,
-      authorised_at = case when needs_allocation then clock_timestamp() else authorised_at end,
-      promised_dispatch_date = case when needs_allocation then coalesce(p_dispatch_date, promised_dispatch_date) else promised_dispatch_date end,
-      estimated_delivery_date = case when needs_allocation then coalesce(p_delivery_date, estimated_delivery_date) else estimated_delivery_date end,
+      authorised_at = case when needs_allocation then p_paid_at else authorised_at end,
+      promised_dispatch_date = case when needs_allocation then p_dispatch_date else promised_dispatch_date end,
+      estimated_delivery_date = case when needs_allocation then p_delivery_date else estimated_delivery_date end,
       payment_review_reason = case when fulfilment_status = 'cancelled' then 'payment_after_reservation_released' else null end
   where id = p_order_id returning * into result;
   if needs_allocation then
@@ -420,8 +460,13 @@ as $$
 declare result public.orders := private.lock_order(p_order_id);
 begin
   perform private.require_warehouse(p_actor_id);
-  if not private.begin_order_operation(p_order_id, 'pick', p_operation_key, jsonb_build_array(p_actor_id))
-    or result.fulfilment_status = 'picking' then
+  if not private.begin_order_operation(p_order_id, 'pick', p_operation_key, jsonb_build_array(p_actor_id)) then
+    return result;
+  end if;
+  if result.payment_status in ('refunded', 'voided') then
+    raise exception using errcode = '22023', message = 'order_payment_not_collectible';
+  end if;
+  if result.fulfilment_status = 'picking' then
     return result;
   end if;
   if result.fulfilment_status <> 'ready_to_pick' then
@@ -455,6 +500,9 @@ begin
   end if;
   if result.fulfilment_status <> 'picking' then
     raise exception using errcode = '22023', message = 'order_not_picking';
+  end if;
+  if result.payment_status in ('refunded', 'voided') then
+    raise exception using errcode = '22023', message = 'order_payment_not_collectible';
   end if;
   perform private.finish_reservations(p_order_id, 'allocated', 'dispatch', p_actor_id);
   update public.orders
@@ -597,7 +645,7 @@ revoke all on function
   public.bind_checkout_session(uuid, text, timestamptz),
   public.release_reservation(uuid, text, text, text),
   public.enqueue_order_confirmation(uuid),
-  public.confirm_payment(uuid, text, text, integer, text, text, date, date),
+  public.confirm_payment(uuid, text, text, integer, text, timestamptz, date, date, text),
   public.record_refund(uuid, text, text, integer, text),
   public.cancel_order(uuid, text, uuid),
   public.start_picking(uuid, text, uuid),
@@ -614,7 +662,7 @@ grant execute on function
   public.bind_checkout_session(uuid, text, timestamptz),
   public.release_reservation(uuid, text, text, text),
   public.enqueue_order_confirmation(uuid),
-  public.confirm_payment(uuid, text, text, integer, text, text, date, date),
+  public.confirm_payment(uuid, text, text, integer, text, timestamptz, date, date, text),
   public.record_refund(uuid, text, text, integer, text),
   public.cancel_order(uuid, text, uuid),
   public.start_picking(uuid, text, uuid),

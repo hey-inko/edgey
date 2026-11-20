@@ -77,7 +77,8 @@ const line = (item: Variant, quantity = 1, unitPrice = 1000): Line => ({
 
 function createOrder(
   lines: Line[],
-  { token = randomUUID(), buyer = null as string | null, email = "guest@example.test" } = {},
+  { token = randomUUID(), buyer = null as string | null, email = "guest@example.test", postcode = "sw1a1aa",
+    expiresAt = new Date(Date.now() + 31 * 60 * 1000) } = {},
   client = db,
 ) {
   const delivery = 695;
@@ -88,7 +89,7 @@ function createOrder(
     token,
     JSON.stringify(lines),
     JSON.stringify({ email, business_name: "Test Fabrication", recipient_name: "Test Buyer", buying_for_work: true }),
-    JSON.stringify({ line1: "1 Test Street", town: "London", postcode: "sw1a1aa", country: "GB" }),
+    JSON.stringify({ line1: "1 Test Street", town: "London", postcode, country: "GB" }),
     JSON.stringify({
       goods_net_pence: net,
       delivery_net_pence: delivery,
@@ -96,7 +97,7 @@ function createOrder(
       vat_pence: tax,
       gross_pence: net + delivery + tax,
     }),
-    new Date(Date.now() + 30 * 60 * 1000),
+    expiresAt,
     "Standard",
     "2099-01-05",
     "2099-01-06",
@@ -107,8 +108,10 @@ function createOrder(
 const bind = (order: Order, session: string, client = db) =>
   rpc("bind_checkout_session", [order.id, session, order.hold_expires_at], client);
 
-const pay = (order: Order, session: string, intent: string, invoice: string | null = null) =>
-  rpc("confirm_payment", [order.id, session, intent, order.gross_pence, "GBP", invoice]);
+const paidAt = new Date("2026-11-20T15:30:00.000Z");
+const pay = (order: Order, session: string, intent: string, invoice: string | null = null,
+  amount = order.gross_pence, currency = "GBP") =>
+  rpc("confirm_payment", [order.id, session, intent, amount, currency, paidAt, "2099-01-06", "2099-01-07", invoice]);
 
 const stock = (item: Variant) => one(db, `
   select stock_on_hand, stock_reserved, availability from public.variants where id = $1
@@ -177,6 +180,10 @@ describe("order transactions", () => {
     const lines = [line(selected, 5, 900)];
     const order = await asRole("service_role", null, () => createOrder(lines, { token }));
     expect(await createOrder(lines, { token })).toMatchObject({ id: order.id });
+    expect(await createOrder([line(selected, 5, 901)], { token, postcode: "SW1A 1AA", expiresAt: new Date(0) }))
+      .toMatchObject({ id: order.id, goods_net_pence: 4500 });
+    await rejects(() => createOrder([line(selected, 4)], { token }), "attempt_payload_mismatch");
+    await rejects(() => createOrder(lines, { token, postcode: "SW1A 2AA" }), "attempt_payload_mismatch");
     expect(order).toMatchObject({
       buyer_id: null, fulfilment_status: "awaiting_authorisation", payment_status: "pending",
       address_postcode: "SW1A 1AA", delivery_service: "Standard",
@@ -241,19 +248,27 @@ describe("order transactions", () => {
 
   test("reconciles amount, currency and session before allocation and enqueues one confirmation across replays", async () => {
     const item = await variant(await product(), 1);
-    const order = await createOrder([line(item)]);
+    const expiresAt = new Date(Math.floor(Date.now() / 1000) * 1000 + 31 * 60 * 1000 + 999);
+    const order = await createOrder([line(item)], { expiresAt });
+    expect(order.hold_expires_at.getTime()).toBe(expiresAt.getTime() - 999);
     const session = key("cs");
     const intent = key("pi");
     const invoice = key("in");
     await rejects(() => rpc("enqueue_order_confirmation", [order.id]), "order_not_authorised");
     await rejects(() => rpc("bind_checkout_session", [order.id, session, new Date(0)]), "checkout_session_does_not_match_hold");
-    expect(await bind(order, session)).toMatchObject({ checkout_session_id: session });
+    expect(await rpc("bind_checkout_session", [order.id, session, expiresAt])).toMatchObject({ checkout_session_id: session });
     expect(await bind(order, session)).toMatchObject({ checkout_session_id: session });
     await rejects(() => bind(order, key("cs")), "checkout_session_conflict");
-    await rejects(() => rpc("confirm_payment", [order.id, session, intent, order.gross_pence - 1, "GBP"]),
-      "payment_amount_or_currency_mismatch");
-    await rejects(() => rpc("confirm_payment", [order.id, session, intent, order.gross_pence, "USD"]),
-      "payment_amount_or_currency_mismatch");
+    const mismatch = {
+      payment_review_reason: "payment_amount_or_currency_mismatch",
+      checkout_session_id: session, payment_intent_id: intent, payment_status: "pending",
+      fulfilment_status: "awaiting_authorisation", paid_pence: 0,
+    };
+    expect(await pay(order, session, intent, null, order.gross_pence - 1)).toMatchObject(mismatch);
+    expect(await pay(order, session, intent, null, order.gross_pence, "USD")).toMatchObject(mismatch);
+    await db.query("update public.orders set hold_expires_at = now() - interval '1 minute' where id = $1", [order.id]);
+    await rejects(() => rpc("release_reservation", [order.id, "expiry-review", "expired", session]), "payment_review_required");
+    await rejects(() => rpc("release_reservation", [order.id, "close-review", "closed", session]), "payment_review_required");
     await rejects(() => pay(order, key("cs"), intent), "payment_provider_identity_mismatch");
     expect(await reservations(order)).toEqual([{ variant_id: item.id, quantity: 1, state: "held" }]);
     expect(await outbox(order)).toEqual([]);
@@ -267,7 +282,11 @@ describe("order transactions", () => {
     await recordEvent(firstEvent);
     expect(await pay(order, session, intent)).toMatchObject({
       fulfilment_status: "ready_to_pick", payment_status: "paid", paid_pence: order.gross_pence,
+      payment_review_reason: null, authorised_at: paidAt,
     });
+    expect(await one(db, `
+      select promised_dispatch_date::text, estimated_delivery_date::text from public.orders where id = $1
+    `, [order.id])).toEqual({ promised_dispatch_date: "2099-01-06", estimated_delivery_date: "2099-01-07" });
     await rpc("mark_provider_event", ["stripe", firstEvent, "processed"]);
     await recordEvent(secondEvent);
     expect(await pay(order, session, intent, invoice)).toMatchObject({ provider_invoice_id: invoice });
@@ -363,7 +382,10 @@ describe("order transactions", () => {
   test("dispatches once and keeps refunds, returned units, and inspected stock independent", async () => {
     const actor = await user("warehouse");
     const finance = await user("finance");
-    const item = await variant(await product(), 2);
+    const item = await variant(await product(), 0);
+    const seed = key("receipt");
+    await rejects(() => rpc("receive_stock", [item.id, seed, 2, finance.id]), "warehouse_role_required", "42501");
+    await rpc("receive_stock", [item.id, seed, 2, actor.id]);
     const order = await createOrder([line(item, 2)]);
     const session = key("cs");
     const intent = key("pi");
@@ -408,11 +430,14 @@ describe("order transactions", () => {
     expect(await stock(item)).toEqual(quantity(0, 0));
 
     const returned = { id: returnId, order_id: order.id, variant_id: item.id, quantity: 1, restored_quantity: 0 };
+    await rejects(() => rpc("record_return", [order.id, returnId, finance.id, item.id, 1, "Uninspected"]),
+      "warehouse_role_required", "42501");
     expect(await recordReturn()).toMatchObject(returned);
     expect(await recordReturn()).toMatchObject(returned);
     await rejects(() => recordReturn(randomUUID(), 2), "return_exceeds_dispatched_quantity");
     expect(await stock(item)).toEqual(quantity(0, 0));
     const restore = (operation: string) => rpc("restore_stock", [returnId, operation, actor.id, 1]);
+    await rejects(() => rpc("restore_stock", [returnId, "inspect", finance.id, 1]), "warehouse_role_required", "42501");
     expect(await restore("inspect")).toMatchObject({ ...returned, restored_quantity: 1 });
     expect(await restore("inspect")).toMatchObject({ ...returned, restored_quantity: 1 });
     await rejects(() => restore("inspect-again"), "restore_exceeds_returned_quantity");
@@ -426,11 +451,43 @@ describe("order transactions", () => {
     await rejects(() => receive(3), "operation_key_conflict");
     expect(await stock(item)).toEqual(quantity(3, 0));
     expect(await movements(item)).toEqual([
+      movement(item, "receive", null, 2, 0),
       movement(item, "reserve", order, 0, 2),
       movement(item, "dispatch", order, -2, -2),
       movement(item, "restore", order, 1, 0),
       movement(item, "receive", null, 2, 0),
     ]);
+    expect(await one(db, `
+      select
+        v.stock_on_hand = (select sum(on_hand_delta) from public.stock_movements where variant_id = v.id) as on_hand_matches,
+        v.stock_reserved = (select sum(reserved_delta) from public.stock_movements where variant_id = v.id) as reserved_matches,
+        v.stock_reserved = (select coalesce(sum(quantity), 0) from public.stock_reservations
+          where variant_id = v.id and state in ('held', 'allocated')) as reservations_match
+      from public.variants v where v.id = $1
+    `, [item.id])).toEqual({ on_hand_matches: true, reserved_matches: true, reservations_match: true });
+  });
+
+  test("full refunds block new picking and dispatch without silently changing stock", async () => {
+    const actor = await user("warehouse");
+    const item = await variant(await product(), 2);
+    for (const pickBeforeRefund of [false, true]) {
+      const order = await createOrder([line(item)]);
+      const intent = key("pi");
+      await pay(order, key("cs"), intent);
+      if (pickBeforeRefund) await rpc("start_picking", [order.id, "pick", actor.id]);
+      expect(await rpc("record_refund", [order.id, key("re"), intent, order.gross_pence, "GBP"])).toMatchObject({
+        fulfilment_status: pickBeforeRefund ? "picking" : "ready_to_pick", payment_status: "refunded",
+      });
+      if (pickBeforeRefund) {
+        await rejects(() => rpc("dispatch_order", [order.id, "dispatch", actor.id, "Carrier", "TRACK-1"]),
+          "order_payment_not_collectible");
+      } else {
+        await rejects(() => rpc("start_picking", [order.id, "pick-refunded", actor.id]), "order_payment_not_collectible");
+      }
+      expect(await stock(item)).toEqual(quantity(2, 1));
+      await rpc("cancel_order", [order.id, "cancel", actor.id]);
+      expect(await stock(item)).toEqual(quantity(2, 0));
+    }
   });
 
   test("keeps the first provider payload, allows recovery after failure and treats processed as terminal", async () => {
@@ -465,8 +522,10 @@ describe("order transactions", () => {
     const otherOrder = await createOrder([line(item)], { buyer: other.id, email: other.email });
     const guest = await createOrder([line(item)], { email: buyer.email });
     await pay(guest, key("cs"), key("pi"));
+    const eventId = key("evt");
+    await rpc("record_provider_event", ["stripe", eventId, "checkout.session.completed", "{}"]);
     const ids = [own.id, otherOrder.id, guest.id];
-    const checkRead = async (identity: string, readable: string[]) => {
+    const checkRead = async (identity: string, readable: string[], staffRole?: "warehouse" | "finance" | "catalogue") => {
       await asRole("authenticated", identity, async () => {
         const orders = await db.query("select id from public.orders where id = any($1::uuid[]) order by id", [ids]);
         const items = await db.query(`
@@ -474,19 +533,33 @@ describe("order transactions", () => {
         `, [ids]);
         expect(orders.rows.map(({ id }) => id)).toEqual([...readable].sort());
         expect(items.rows.map(({ order_id }) => order_id)).toEqual([...readable].sort());
+        expect((await db.query("select user_id, role from public.staff_members")).rows)
+          .toEqual(staffRole ? [{ user_id: identity, role: staffRole }] : []);
+        expect((await db.query("select order_id from public.stock_reservations where order_id = any($1::uuid[])", [ids])).rowCount)
+          .toBe(staffRole === "warehouse" ? 3 : 0);
+        expect((await db.query("select id from public.stock_movements where variant_id = $1", [item.id])).rowCount)
+          .toBe(staffRole === "warehouse" ? 3 : 0);
+        expect((await db.query("select order_id from public.order_outbox where order_id = $1", [guest.id])).rowCount)
+          .toBe(staffRole === "finance" ? 1 : 0);
+        expect((await db.query("select event_id from public.provider_events where provider = 'stripe' and event_id = $1", [eventId])).rowCount)
+          .toBe(staffRole === "finance" ? 1 : 0);
       });
     };
     await checkRead(buyer.id, [own.id]);
     await checkRead(other.id, [otherOrder.id]);
-    await checkRead(actor.id, [guest.id]);
-    await checkRead(finance.id, ids);
-    await checkRead(catalogue.id, []);
+    await checkRead(actor.id, [guest.id], "warehouse");
+    await checkRead(finance.id, ids, "finance");
+    await checkRead(catalogue.id, [], "catalogue");
 
     await asRole("anon", null, async () => {
       await rejects(() => db.query("select id from public.orders where id = $1", [guest.id]),
         "permission denied for table orders", "42501");
       await rejects(() => db.query("select order_id from public.order_items where order_id = $1", [guest.id]),
         "permission denied for table order_items", "42501");
+    });
+    await asRole("authenticated", finance.id, async () => {
+      await rejects(() => db.query("select payload from public.provider_events where event_id = $1", [eventId]),
+        "permission denied for table provider_events", "42501");
     });
     await asRole("authenticated", buyer.id, async () => {
       await rejects(() => db.query("update public.orders set fulfilment_status = 'cancelled' where id = $1", [own.id]),
@@ -541,6 +614,15 @@ describe("order transactions", () => {
     expect(stockWrites).toEqual({
       stock_insert: false, stock_update: false, reserved_update: false, catalogue_update: true, item_update: false,
     });
+    const { rows: privateGrants } = await db.query(`
+      select p.proname, r.role
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      cross join unnest(array['anon', 'authenticated', 'service_role']) r(role)
+      where n.nspname = 'private' and p.proname in (
+        'lock_order', 'require_warehouse', 'begin_order_operation', 'apply_stock_movement', 'finish_reservations'
+      ) and has_function_privilege(r.role, p.oid, 'EXECUTE')
+    `);
+    expect(privateGrants).toEqual([]);
   });
 });
 

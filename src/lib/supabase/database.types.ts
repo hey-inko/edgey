@@ -859,10 +859,11 @@ export type Database = {
         Args: {
           p_amount_pence: number;
           p_currency: string;
-          p_delivery_date?: string;
-          p_dispatch_date?: string;
+          p_delivery_date: string;
+          p_dispatch_date: string;
           p_invoice_id?: string;
           p_order_id: string;
+          p_paid_at: string;
           p_payment_intent_id: string;
           p_session_id: string;
         };

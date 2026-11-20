@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { expect, test, vi } from "vitest";
-import { markProviderEvent, recordProviderEvent } from "@/lib/orders";
+import {
+  createOrderWithReservations,
+  markProviderEvent,
+  recordProviderEvent,
+} from "@/lib/orders";
 
 vi.mock("server-only", () => ({}));
 
@@ -44,6 +48,44 @@ test("the server wrapper calls local PostgREST and returns a typed event row", a
         payload: {},
       }),
     ).toEqual(processed);
+    const { rows } = await db.query<{ id: string; price_1_4_pence: number }>(
+      "select id, price_1_4_pence from public.variants where sku = 'EDG-SUM-DRG-60'",
+    );
+    const soldOut = rows[0]!;
+    const net = soldOut.price_1_4_pence;
+    const tax = Math.round(net * 0.2);
+    await expect(
+      createOrderWithReservations({
+        attemptToken: randomUUID(),
+        lines: [{ variantId: soldOut.id, quantity: 1, unitPricePence: net }],
+        contact: {
+          email: "guest@example.test",
+          businessName: "Test Fabrication",
+          recipientName: "Test Buyer",
+          buyingForWork: true,
+        },
+        address: {
+          line1: "1 Test Street",
+          town: "London",
+          postcode: "SW1A 1AA",
+          country: "GB",
+        },
+        totals: {
+          goodsNetPence: net,
+          deliveryNetPence: 0,
+          vatRateBps: 2000,
+          vatPence: tax,
+          grossPence: net + tax,
+        },
+        holdExpiresAt: new Date(Date.now() + 31 * 60 * 1000).toISOString(),
+        deliveryService: "Standard",
+        promise: { dispatchDate: "2099-01-06", deliveryDate: "2099-01-07" },
+      }),
+    ).rejects.toMatchObject({
+      code: "P0001",
+      message: "insufficient_stock",
+      details: soldOut.id,
+    });
   } finally {
     try {
       await db.query(

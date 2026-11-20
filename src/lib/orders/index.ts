@@ -43,9 +43,10 @@ export type ConfirmPaymentInput = {
   sessionId: string;
   paymentIntentId: string;
   amountPence: number;
-  currency: "GBP" | "gbp";
+  currency: string;
+  paidAt: string;
   invoiceId?: string;
-  promise?: CreateOrderInput["promise"];
+  promise: CreateOrderInput["promise"];
 };
 
 type WarehouseOrderOperation = {
@@ -145,9 +146,10 @@ export function confirmPayment(input: ConfirmPaymentInput) {
     p_payment_intent_id: input.paymentIntentId,
     p_amount_pence: input.amountPence,
     p_currency: input.currency,
+    p_paid_at: input.paidAt,
     p_invoice_id: input.invoiceId,
-    p_dispatch_date: input.promise?.dispatchDate,
-    p_delivery_date: input.promise?.deliveryDate,
+    p_dispatch_date: input.promise.dispatchDate,
+    p_delivery_date: input.promise.deliveryDate,
   });
 }
 
