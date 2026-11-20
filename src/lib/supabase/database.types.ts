@@ -291,7 +291,6 @@ export type Database = {
           lease_until?: string | null;
           message_key: string;
           next_attempt_at?: string;
-          order_id: string;
           order_id?: string | null;
           provider_message_id?: string | null;
           send_in_flight?: boolean;
@@ -1211,20 +1210,26 @@ export type Database = {
         };
         Returns: string;
       };
-      begin_order_confirmation_send: {
-        Args: { p_order_id: string; p_lease_token: string; p_provider?: string; p_payload?: string };
+      begin_outbox_email_send: {
+        Args: {
+          p_outbox_id: string;
+          p_lease_token: string;
+          p_provider?: string;
+          p_payload?: string;
+          p_recipient_fingerprint?: string;
+        };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
       };
-      claim_order_confirmation: {
-        Args: { p_replay_order_id?: string };
+      claim_outbox_email: {
+        Args: { p_message_key: string; p_replay_order_id?: string };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
       };
       close_unstarted_stripe_checkout: {
         Args: { p_order_id: string };
         Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
-      finish_order_confirmation: {
-        Args: { p_order_id: string; p_lease_token: string; p_outcome: string; p_provider_message_id?: string };
+      finish_outbox_email: {
+        Args: { p_outbox_id: string; p_lease_token: string; p_outcome: string; p_provider_message_id?: string };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
       };
       prepare_stripe_checkout: {

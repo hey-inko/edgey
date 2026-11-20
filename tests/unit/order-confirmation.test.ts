@@ -3,12 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { GET } from "@/app/api/cron/order-confirmations/route";
+import { GET as getRequestEmails } from "@/app/api/cron/request-emails/route";
 import { hostedStripeInvoice, renderConfirmation } from "@/lib/email/confirmation";
-import { processOrderConfirmations } from "@/lib/email/outbox";
+import { processOrderConfirmations, processRequestEmails } from "@/lib/email/outbox";
 import { fileProvider, resendProvider } from "@/lib/email/provider";
+import { requestReceipt } from "@/lib/email/request-email";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/email/outbox", () => ({ processOrderConfirmations: vi.fn() }));
+vi.mock("@/lib/email/outbox", () => ({ processOrderConfirmations: vi.fn(), processRequestEmails: vi.fn() }));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -138,4 +140,47 @@ test("requires server cron authentication before processing the outbox", async (
   const response = await GET(authorised());
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ sent: 1, failed: 2, pending: 0 });
+});
+
+test("keeps order cron runnable when the separately protected request cron is not configured", async () => {
+  vi.stubEnv("CRON_SECRET", "test-cron");
+  vi.stubEnv("EMAIL_PROVIDER", "resend");
+  vi.stubEnv("RESEND_API_KEY", "test-key");
+  vi.stubEnv("EMAIL_FROM", "Edgey <orders@example.test>");
+  vi.stubEnv("EDGEY_REQUEST_HASH_KEY", undefined);
+  vi.stubEnv("REQUEST_STAFF_EMAIL", "staff@example.test,other@example.test");
+  const url = "https://example.test/api/cron/request-emails";
+  const headers = { authorization: "Bearer test-cron" };
+  const request = () => new Request(url, { headers });
+  expect((await getRequestEmails(new Request(url))).status).toBe(401);
+  expect((await getRequestEmails(request())).status).toBe(503);
+
+  vi.stubEnv("EDGEY_REQUEST_HASH_KEY", "test-only-request-key-with-thirty-two-bytes");
+  expect(await (await getRequestEmails(request())).json()).toEqual({
+    error: "REQUEST_STAFF_EMAIL must be one valid email address.",
+  });
+  expect(processRequestEmails).not.toHaveBeenCalled();
+  vi.mocked(processOrderConfirmations).mockResolvedValue({ sent: 1, failed: 0, pending: 0 });
+  expect((await GET(new Request("https://example.test/api/cron/order-confirmations", { headers }))).status).toBe(200);
+
+  vi.stubEnv("REQUEST_STAFF_EMAIL", "staff@example.test");
+  vi.mocked(processRequestEmails).mockResolvedValue({ sent: 1, failed: 0, pending: 0 });
+  expect(await (await getRequestEmails(request())).json()).toEqual({ sent: 1, failed: 0, pending: 0 });
+  expect(processRequestEmails).toHaveBeenCalledOnce();
+});
+
+test("receipt fingerprints are insensitive to mailbox casing and neutral copy contains no request details", () => {
+  vi.stubEnv("EDGEY_REQUEST_HASH_KEY", "test-only-request-key-with-thirty-two-bytes");
+  const first = requestReceipt("from@example.test", "Buyer@Example.Test")!;
+  const second = requestReceipt("from@example.test", "buyer@example.test")!;
+  expect(first.recipientFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(first.recipientFingerprint).toBe(second.recipientFingerprint);
+  expect(first.recipientFingerprint).not.toBe(requestReceipt("from@example.test", "other@example.test")!.recipientFingerprint);
+  expect(JSON.parse(first.payload)).toMatchObject({
+    to: ["Buyer@Example.Test"],
+    subject: "Edgey received a request",
+    text: "We received a request submitted using this email address.\n\nIf you didn’t make the request, you can ignore this email.",
+  });
+  expect(first.payload).not.toContain(first.recipientFingerprint);
+  expect(requestReceipt("from@example.test", "buyer@example.test,other@example.test")).toBeNull();
 });

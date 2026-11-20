@@ -155,8 +155,9 @@ are counted by outcome without keeping the query.
   Set its signing secret as `STRIPE_WEBHOOK_SECRET` and redeploy. If staging
   uses deployment protection, allow Stripe to reach this endpoint. Validate
   card and eligible Apple Pay/Google Pay on supported devices; do not use live
-  keys or real buyer details in this build.
-- Schedule both GET paths on the staging host every minute using a scheduler
+  keys or real buyer details in this build. Check the sandbox’s successful
+  payment email setting if you want Stripe to email its own invoice links.
+- Schedule the order GET paths on the staging host every minute using a scheduler
   that sends `Authorization: Bearer $CRON_SECRET`. For Vercel Cron, deploy a
   staging project with staging as its production deployment, a plan that
   supports one-minute schedules, and set `CRON_SECRET` in its production
@@ -166,7 +167,8 @@ are counted by outcome without keeping the query.
   {
     "crons": [
       { "path": "/api/cron/stripe-reconciliation", "schedule": "* * * * *" },
-      { "path": "/api/cron/order-confirmations", "schedule": "* * * * *" }
+      { "path": "/api/cron/order-confirmations", "schedule": "* * * * *" },
+      { "path": "/api/cron/request-emails", "schedule": "* * * * *" }
     ]
   }
   ```
@@ -176,6 +178,13 @@ are counted by outcome without keeping the query.
   recipients. Keep the account and sender configuration stable while sends
   are pending. JSON files from the development provider contain buyer details
   and must not be committed or shared.
+- Enable the separate `/api/cron/request-emails` schedule when request intake
+  is ready. It needs `EDGEY_REQUEST_HASH_KEY` and a single controlled mailbox
+  in `REQUEST_STAFF_EMAIL`. Across enquiries, samples and trade applications,
+  at most one neutral receipt is attempted per email address in a rolling 24
+  hours. Suppressed receipts are recorded as `recipient_throttled`. Staff
+  notices contain only the request type and reference, so staff open the
+  request in their signed-in queue to read its details.
 - A Stripe event is acknowledged after durable storage; an application failure
   remains visible on `provider_events` for the reconciliation job or finance
   replay. Review `orders.stripe_reconciliation_error` and

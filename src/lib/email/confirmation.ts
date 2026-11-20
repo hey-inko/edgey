@@ -1,5 +1,6 @@
 import { formatGbp } from "@/lib/commerce/money";
 import type { Database } from "@/lib/supabase/database.types";
+import { isSingleMailbox } from "./address";
 
 type Order = Pick<
   Database["public"]["Tables"]["orders"]["Row"],
@@ -37,7 +38,7 @@ export function hostedStripeInvoice(value: string | null | undefined) {
 export function renderConfirmation(
   order: Order, items: OrderItem[], from: string, hostedInvoice: string | null,
 ) {
-  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+$/i.test(order.email) || !items.length) {
+  if (!isSingleMailbox(order.email) || !items.length) {
     throw new Error("Cannot render the order confirmation.");
   }
 
