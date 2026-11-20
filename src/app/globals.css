@@ -490,6 +490,7 @@ a.p-card { color: inherit; }
 .selection-code, .selection-figures, .selection-totals dd, .checkout-amount strong { font-family: var(--mono); }
 .selection-figures { font-size: .83rem; }
 .tray-row .remove-btn { font-size: .85rem; }
+.tray-row .remove-btn, .tray-quantity .textlink, .checkout-section-head .textlink { display: inline-flex; align-items: center; min-height: 24px; }
 .tray-quantity { margin: 5px 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 9px; font-size: .82rem; }
 .tray-quantity .qty-input { width: 72px; max-width: 100%; }
 .tray-quantity .textlink { font-size: inherit; }
@@ -539,6 +540,7 @@ a.p-card { color: inherit; }
 @media (max-width: 490px) {
   .tray-row { grid-template-columns: 38px minmax(0,1fr) auto; gap: 8px; padding-block: 11px; }
   .tray-plate { height: 42px; }
+  .qty-input { font-size: 1rem; }
 }
 @media (max-width: 370px) {
   .checkout-field-pair { grid-template-columns: minmax(0,1fr); }

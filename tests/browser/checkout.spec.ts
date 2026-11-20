@@ -82,6 +82,17 @@ test("blocked storage leaves the in-memory selection usable across navigation", 
   await expect(page.getByRole("region", { name: "Order summary" })).toContainText("1 × £22.50 = £22.50");
 });
 
+test("selection changes in another tab update the masthead and preserve both additions", async ({ page, context }) => {
+  await addZ10(page);
+  await selection(page).getByRole("button", { name: "Continue browsing" }).click();
+  const other = await context.newPage();
+  await addZ10(other, "1");
+  await expect(page.getByRole("button", { name: "Open selection, 6 blades" })).toBeVisible();
+  await page.getByRole("button", { name: "1", exact: true }).click();
+  await page.getByRole("button", { name: "Add to selection" }).click();
+  await expect(selection(other)).toContainText("7 × £19.95 = £139.65");
+});
+
 test("stale selections identify unavailable lines and require acceptance before checkout", async ({ page }) => {
   if (!process.env.SUPABASE_DB_URL) loadEnvFile(".env.local");
   const db = new Client({ connectionString: process.env.SUPABASE_DB_URL });
@@ -121,9 +132,10 @@ test("checkout validates before payment and retains the same attempt until a mat
 
   await pay.click();
   await expect(page.getByLabel("Business name")).toHaveAccessibleDescription("Enter your business name.");
+  await expect(page.getByLabel("Business name")).toBeFocused();
   await fillAddress(page, "BT1 5GS");
   const enquiry = page.getByRole("link", { name: "Ask us about delivery" });
-  await expect(enquiry).toHaveAttribute("href", "/enquiry?topic=delivery");
+  await expect(enquiry).toHaveAttribute("href", "/enquiry?kind=delivery&postcode=BT1%205GS");
   await expect(page.getByLabel("Postcode")).toHaveAccessibleDescription("Online delivery isn’t available for this postcode.");
   await expect(pay).toBeDisabled();
   await expect(amount).toHaveCount(0);
@@ -147,6 +159,7 @@ test("checkout validates before payment and retains the same attempt until a mat
   await expect.poll(() => tokens.length).toBe(2);
   await expect(complete).toBeVisible();
   expect(tokens[1]).toEqual(tokens[0]);
+  await page.evaluate(() => Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true }));
   await page.getByLabel("Address line 1").fill("12 Sample Street");
   await expect(complete).toHaveCount(0);
   await pay.click();
@@ -168,6 +181,59 @@ test("checkout validates before payment and retains the same attempt until a mat
   await expect(complete).toBeVisible();
   expect(tokens).toHaveLength(4);
   expect(tokens[3]).not.toEqual(tokens[2]);
+
+  const storedAttempt = await page.evaluate(() => sessionStorage.getItem("edgey-checkout-attempt-v1"));
+  expect(JSON.parse(storedAttempt ?? "{}")).toEqual({ token: tokens[3], quoteKey: expect.any(String), fingerprint: expect.any(String) });
+  expect(storedAttempt).not.toMatch(/London|example\.com|Sample Street|SW1A/i);
+  await page.reload();
+  await fillAddress(page);
+  await page.getByLabel("Address line 1").fill("12 Sample Street");
+  await expect(summary).toContainText("Next working day");
+  await pay.click();
+  await expect(complete).toBeVisible();
+  expect(tokens).toHaveLength(5);
+  expect(tokens[4]).toEqual(tokens[3]);
+});
+
+test("a new price must be reviewed and uses a new attempt token", async ({ page }) => {
+  if (!process.env.SUPABASE_DB_URL) loadEnvFile(".env.local");
+  const db = new Client({ connectionString: process.env.SUPABASE_DB_URL });
+  await db.connect();
+  const sku = "EDG-SUM-TAN-36";
+  let price: number | undefined;
+  try {
+    await page.goto("/blades/edg-sum-tan?variant=" + sku);
+    await page.getByRole("button", { name: "Add to selection" }).click();
+    await selection(page).getByRole("link", { name: "Go to checkout" }).click();
+    await fillAddress(page);
+    await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
+    const tokens: string[] = [];
+    page.on("request", (request) => {
+      const token = request.method() === "POST" && request.postData()?.match(/"attemptToken":"([\da-f-]+)"/)?.[1];
+      if (token) tokens.push(token);
+    });
+    const pay = page.getByRole("button", { name: "Continue to payment" });
+    await pay.click();
+    const complete = page.getByText("Payment is not connected in this build.");
+    await expect(complete).toBeVisible();
+    const { rows } = await db.query<{ prior: number }>(
+      "update public.variants set price_1_4_pence = price_1_4_pence + 10 where sku = $1 returning price_1_4_pence - 10 as prior",
+      [sku],
+    );
+    price = rows[0]?.prior;
+    expect(price).toBeDefined();
+    await pay.click();
+    await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Your quote has changed.");
+    await expect(complete).toHaveCount(0);
+    await pay.click();
+    await expect(complete).toBeVisible();
+    expect(tokens).toHaveLength(3);
+    expect(tokens[1]).toEqual(tokens[0]);
+    expect(tokens[2]).not.toEqual(tokens[0]);
+  } finally {
+    if (price !== undefined) await db.query("update public.variants set price_1_4_pence = $1 where sku = $2", [price, sku]);
+    await db.end();
+  }
 });
 
 for (const width of [1440, 390, 320]) {
@@ -202,6 +268,19 @@ for (const width of [1440, 390, 320]) {
         }
       }
       await checkout.click();
+      if (width === 390 && theme === "dark") {
+        const postcode = page.getByLabel("Postcode");
+        const summary = page.getByRole("region", { name: "Order summary" });
+        await expect(summary).toContainText("£153.84");
+        const top = () => postcode.evaluate((input) => input.getBoundingClientRect().top + window.scrollY);
+        const originalTop = await top();
+        await postcode.fill("SW1");
+        expect(await top()).toBe(originalTop);
+        await expect(summary).toContainText("£153.84");
+        await expect(postcode).not.toHaveAttribute("aria-invalid");
+        await postcode.blur();
+        await expect(postcode).toHaveAccessibleDescription("Enter a full UK postcode, for example SW1A 1AA.");
+      }
       await fillAddress(page);
       await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
       expect(await rootWidth()).toBe(width);

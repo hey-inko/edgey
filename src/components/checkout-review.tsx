@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { checkoutReview } from "@/app/checkout/actions";
+import { forgetCheckoutAttempt, materialValue, prepareCheckoutToken } from "@/lib/checkout/attempt-token";
 import type { CheckoutFields } from "@/lib/checkout/types";
-import { formatGbp, type LineRequest } from "@/lib/commerce";
+import { formatGbp, parseUkPostcode, type LineRequest } from "@/lib/commerce";
 import { useSelection } from "./selection-provider";
 import { DispatchEstimate, SelectionLinePrice, SelectionTotals } from "./selection-summary";
 import { useSelectionQuote } from "./use-selection-quote";
@@ -30,41 +31,38 @@ const fields = {
 type FieldName = keyof typeof fields;
 type SubmitResult = Awaited<ReturnType<typeof checkoutReview>>;
 
-function materialValue(name: keyof CheckoutFields, value: string | boolean) {
-  if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  if (name === "email") {
-    const at = trimmed.lastIndexOf("@");
-    return trimmed.slice(0, at + 1) + trimmed.slice(at + 1).toLowerCase();
-  }
-  if (name === "postcode") return trimmed.replace(/\s+/g, "").toUpperCase();
-  return trimmed.normalize("NFC").replace(/\s+/g, " ");
-}
-
 export function CheckoutReview() {
   const { hydrated, lines, revision, replace, open } = useSelection();
   const id = useId();
   const [values, setValues] = useState(initialFields);
+  const [postcodeBlurred, setPostcodeBlurred] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ lines: LineRequest[]; value: SubmitResult } | null>(null);
-  const attempt = useRef<{ token: string; revision: number } | null>(null);
+  const attempt = useRef<{ token: string; revision: number; quoteKey: string } | null>(null);
   const submitLock = useRef(false);
   const feedback = useRef<HTMLDivElement>(null);
   const summaryTitle = useRef<HTMLHeadingElement>(null);
-  const postcode = values.postcode.trim();
-  const { quote, pending, retry } = useSelectionQuote(lines, hydrated && lines.length > 0, postcode || undefined);
+  const parsedPostcode = parseUkPostcode(values.postcode);
+  const postcode = parsedPostcode.ok ? parsedPostcode.value.normalised : undefined;
+  const { quote, pending, previousQuote, retry } = useSelectionQuote(lines, hydrated && lines.length > 0, postcode);
   const response = result?.lines === lines ? result.value : undefined;
-  const shown = response?.status === "review" ? response.quote : quote;
+  const shown = response?.status === "review" ? response.quote : quote ?? (pending ? previousQuote : undefined);
   const priced = shown?.status === "ok" ? shown : null;
   const basket = priced?.basket;
   const corrections = priced?.corrections ?? [];
   const errors = response?.status === "invalid" ? response.errors : {};
-  const coverageError = priced?.coverage === "invalid" ? "Enter a full UK postcode, for example SW1A 1AA."
-    : priced?.coverage === "unsupported" ? "Online delivery isn’t available for this postcode."
+  const unsupported = !pending && priced?.coverage === "unsupported";
+  const coverageError = postcodeBlurred && values.postcode.trim() && !parsedPostcode.ok
+    ? "Enter a full UK postcode, for example SW1A 1AA."
+    : unsupported ? "Online delivery isn’t available for this postcode."
       : undefined;
 
   function change<K extends keyof CheckoutFields>(name: K, value: CheckoutFields[K]) {
-    if (materialValue(name, values[name]) !== materialValue(name, value)) attempt.current = null;
+    if (submitLock.current) return;
+    if (attempt.current && materialValue(name, values[name]) !== materialValue(name, value)) {
+      attempt.current = null;
+      forgetCheckoutAttempt();
+    }
     setValues((current) => ({ ...current, [name]: value }));
     setResult(null);
   }
@@ -80,15 +78,22 @@ export function CheckoutReview() {
           name={name}
           type={config.type ?? "text"}
           autoComplete={config.autoComplete}
+          autoCapitalize={name === "email" ? "none" : name === "postcode" ? "characters" : undefined}
+          spellCheck={name === "email" || name === "postcode" ? false : undefined}
           required={!config.optional}
           value={values[name]}
+          readOnly={submitting}
           aria-invalid={!!error || undefined}
           aria-describedby={error ? id + name + "-error" : undefined}
+          onFocus={name === "postcode" ? () => setPostcodeBlurred(false) : undefined}
+          onBlur={name === "postcode" ? () => setPostcodeBlurred(true) : undefined}
           onChange={(event) => change(name, event.target.value)}
         />
         {error && <p className="fine" id={id + name + "-error"}>{error}</p>}
-        {name === "postcode" && priced?.coverage === "unsupported" && (
-          <Link className="textlink" href="/enquiry?topic=delivery">Ask us about delivery</Link>
+        {name === "postcode" && unsupported && (
+          <Link className="textlink" prefetch={false} href={`/enquiry?kind=delivery&postcode=${encodeURIComponent(postcode ?? "")}`}>
+            Ask us about delivery
+          </Link>
         )}
       </div>
     );
@@ -96,15 +101,23 @@ export function CheckoutReview() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitLock.current || !priced || !basket || corrections.length || priced.coverage === "unsupported") return;
+    if (submitLock.current || pending || !priced || !basket || corrections.length || unsupported) return;
     const form = event.currentTarget;
-    const token = attempt.current?.revision === revision ? attempt.current.token : crypto.randomUUID();
-    attempt.current = { token, revision };
     submitLock.current = true;
     setSubmitting(true);
     let invalid = false;
     try {
+      const { quoteKey } = priced;
+      const current = attempt.current;
+      const reusable = current?.revision === revision && current.quoteKey === quoteKey ? current.token : undefined;
+      const prepared = await prepareCheckoutToken(quoteKey, values, reusable);
+      if (!prepared.stillCurrent()) return;
+      const { token } = prepared;
+      attempt.current = { token, revision, quoteKey };
       const value = await checkoutReview({ attemptToken: token, lines, fields: values, quoteKey: priced.quoteKey });
+      if (!prepared.stillCurrent()) return;
+      if (value.status === "payment-unavailable") await prepared.remember();
+      if (!prepared.stillCurrent()) return;
       invalid = value.status === "invalid";
       setResult({ lines, value });
     } catch {
@@ -140,10 +153,10 @@ export function CheckoutReview() {
           </button>
         </div>
         <div role="status">
-          {pending && response?.status !== "review" && <p className="fine">Checking prices and delivery…</p>}
+          {pending && response?.status !== "review" && <p className={basket ? "sr" : "fine"}>Checking prices and delivery…</p>}
           {shown?.status === "error" && <p className="fine">{shown.message}</p>}
           {response?.status === "review" && <p className="fine">{response.message}</p>}
-          {corrections.length > 0 && (
+          {!pending && corrections.length > 0 && (
             <div className="selection-notice">
               <p>Review the changes to your selection before continuing.</p>
               <ul>{corrections.map((message, index) => <li key={index}>{message}</li>)}</ul>
@@ -155,7 +168,7 @@ export function CheckoutReview() {
           retry();
         }}>Retry prices</button>}
         {basket && priced && (
-          <>
+          <div aria-busy={pending}>
             <ul className="selection-lines checkout-lines">
               {basket.lines.map((line) => (
                 <li className="tray-line" key={line.variantId}>
@@ -168,9 +181,9 @@ export function CheckoutReview() {
             <SelectionTotals quote={priced} />
             {priced.coverage === "unchecked" && <p className="fine">Delivery and the total are estimates until you enter your postcode.</p>}
             <DispatchEstimate quote={priced} />
-          </>
+          </div>
         )}
-        {corrections.length > 0 && priced && (
+        {!pending && corrections.length > 0 && priced && (
           <button type="button" className="secondary tray-action" onClick={() => {
             summaryTitle.current?.focus();
             setResult(null);
@@ -180,7 +193,7 @@ export function CheckoutReview() {
       </section>
 
       <form className="checkout-panel checkout-form" onSubmit={submit} noValidate>
-        <fieldset disabled={submitting}>
+        <fieldset>
           <legend>Business and contact</legend>
           {field("businessName")}
           {field("email")}
@@ -191,6 +204,7 @@ export function CheckoutReview() {
                 name="buyingForWork"
                 required
                 checked={values.buyingForWork}
+                aria-disabled={submitting || undefined}
                 aria-invalid={!!errors.buyingForWork || undefined}
                 aria-describedby={errors.buyingForWork ? id + "-business-error" : undefined}
                 onChange={(event) => change("buyingForWork", event.target.checked)}
@@ -200,7 +214,7 @@ export function CheckoutReview() {
             {errors.buyingForWork && <p className="fine" id={id + "-business-error"}>{errors.buyingForWork}</p>}
           </div>
         </fieldset>
-        <fieldset disabled={submitting}>
+        <fieldset>
           <legend>Delivery address</legend>
           {field("recipientName")}
           {field("line1")}
@@ -214,7 +228,8 @@ export function CheckoutReview() {
             <p className="checkout-amount"><span>{priced.coverage === "unchecked" ? "Estimated total inc VAT" : "Total inc VAT"}</span>
               <strong>{formatGbp(basket.totalGrossPence)}</strong></p>
           )}
-          <button type="submit" className="primary full" disabled={submitting || !basket || corrections.length > 0 || priced?.coverage === "unsupported"}>
+          <button type="submit" className="primary full" aria-disabled={submitting || undefined}
+            disabled={!submitting && (pending || !basket || corrections.length > 0 || unsupported)}>
             {submitting ? "Checking checkout…" : "Continue to payment"}
           </button>
           <div role="status" ref={feedback} tabIndex={-1} className="checkout-feedback">

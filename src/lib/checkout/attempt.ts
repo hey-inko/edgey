@@ -13,7 +13,7 @@ type PricedQuote = OpenQuote & {
 
 function snapshot(attemptToken: string, fields: ValidFields, quote: PricedQuote, now: Date): CreateOrderInput {
   const { basket, dispatchDate, estimatedDeliveryDate } = quote;
-  const holdExpiresAt = new Date((Math.floor(now.getTime() / 1000) + 32 * 60) * 1000).toISOString();
+  const holdExpiresAt = new Date((Math.floor(now.getTime() / 1000) + 35 * 60) * 1000).toISOString();
   return {
     attemptToken,
     lines: basket.lines.map(({ variantId, quantity, unitNetPence }) => ({ variantId, quantity, unitPricePence: unitNetPence })),
@@ -55,7 +55,7 @@ export async function prepareCheckoutAttempt(input: unknown, deps: QuoteDependen
 
   const validation = validateCheckoutFields(input.fields);
   if (!validation.ok) {
-    return { status: "invalid", errors: validation.errors, message: "Check the highlighted details before continuing." };
+    return { status: "invalid", errors: validation.errors, message: "Check the fields with error messages before continuing." };
   }
 
   const { fields } = validation;

@@ -149,6 +149,18 @@ describe("selection quote", () => {
     expect(deps.lookup).not.toHaveBeenCalled();
   });
 
+  it("rejects invisible formatting and overlong email parts before querying stock", async () => {
+    const deps = dependencies();
+    const invalid = await prepareCheckoutAttempt({
+      ...input([line(1)], ""),
+      fields: { ...fields, businessName: "Hidden\u202E text", recipientName: "Name\u200B", email: "a".repeat(65) + "@example.com" },
+    }, deps);
+    expect(invalid).toMatchObject({ status: "invalid", errors: {
+      businessName: expect.any(String), recipientName: expect.any(String), email: expect.any(String),
+    } });
+    expect(deps.lookup).not.toHaveBeenCalled();
+  });
+
   it.each([
     [undefined, "unchecked", undefined, "2026-07-20"],
     [" sw1a1aa ", "covered", "SW1A 1AA", "2026-07-20"],
@@ -248,7 +260,7 @@ describe("checkout attempt", () => {
       contact: { email: "sales@acme.example", businessName: "Acme Print", recipientName: "Zoë Smith", buyingForWork: true },
       address: { line1: "10 High Street", line2: undefined, town: "London", region: "Greater London", postcode: "SW1A 1AA", country: "GB" },
       totals: { goodsNetPence: 9975, deliveryNetPence: 695, vatRateBps: 2000, vatPence: 2134, grossPence: 12804 },
-      holdExpiresAt: "2026-07-17T15:01:00.000Z",
+      holdExpiresAt: "2026-07-17T15:04:00.000Z",
       deliveryService: "Next working day",
       promise: { dispatchDate: "2026-07-17", deliveryDate: "2026-07-20" },
     } });

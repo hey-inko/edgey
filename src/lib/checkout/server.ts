@@ -18,7 +18,11 @@ const lookup: QuoteDependencies["lookup"] = async (ids) => {
     .select("id,sku,option_label,price_1_4_pence,price_5_9_pence,price_10_plus_pence,stock_on_hand,stock_reserved,products!inner(photo:media->>photo)")
     .eq("publication_status", "published")
     .in("id", ids);
-  if (error || !data) throw new Error("Checkout variant lookup failed.");
+  if (error || !data) {
+    const code = error?.code;
+    console.error("Checkout variant lookup failed", code && /^[A-Z0-9]{5,10}$/.test(code) ? code : "unknown");
+    throw new Error("Checkout variant lookup failed.");
+  }
 
   return data.map((row) => {
     if (!Number.isSafeInteger(row.stock_on_hand) || !Number.isSafeInteger(row.stock_reserved) ||

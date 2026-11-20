@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { forgetCheckoutAttempt } from "@/lib/checkout/attempt-token";
 import type { LineRequest } from "@/lib/commerce";
 
 const storageKey = "edgey-storefront-selection-v1";
@@ -22,6 +23,12 @@ function restore(): LineRequest[] {
   } catch {
     return empty;
   }
+}
+
+function sameLines(previous: LineRequest[], next: LineRequest[]) {
+  return previous.length === next.length && previous.every((line, index) =>
+    line.variantId === next[index]?.variantId && line.quantity === next[index]?.quantity
+  );
 }
 
 type Selection = {
@@ -49,15 +56,29 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       current.current = restored;
       setStored(restored);
     });
-    return () => cancelAnimationFrame(frame);
+    function sync(event: StorageEvent) {
+      if (event.key !== storageKey && event.key !== null) return;
+      const now = current.current;
+      const lines = restore();
+      if (!now || sameLines(now.lines, lines)) return;
+      const next = { lines, revision: now.revision + 1 };
+      forgetCheckoutAttempt();
+      current.current = next;
+      setStored(next);
+    }
+
+    window.addEventListener("storage", sync);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   function replace(lines: LineRequest[]) {
     const now = current.current;
-    if (!now || (now.lines.length === lines.length && now.lines.every((line, index) =>
-      line.variantId === lines[index]?.variantId && line.quantity === lines[index]?.quantity
-    ))) return;
+    if (!now || sameLines(now.lines, lines)) return;
     const next = { lines, revision: now.revision + 1 };
+    forgetCheckoutAttempt();
     current.current = next;
     setStored(next);
     try {

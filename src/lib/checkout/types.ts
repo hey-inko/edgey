@@ -28,6 +28,13 @@ export type CheckoutFields = {
   postcode: string;
 };
 
+export type CheckoutAttemptInput = {
+  attemptToken: string;
+  lines: readonly LineRequest[];
+  fields: CheckoutFields;
+  quoteKey: string;
+};
+
 export type CheckoutReviewResult =
   | { status: "payment-unavailable" }
   | { status: "invalid"; errors: Partial<Record<keyof CheckoutFields, string>>; message: string }
