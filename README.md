@@ -11,3 +11,40 @@ Start with [design.md](design.md) and open [Edgey-preview.html](Edgey-preview.ht
 | `design-tokens.json` | Reusable values for colour roles, type, proof names, responsive thresholds and characteristic angles. |
 | `assets/` | The master wordmark, favicon, editable board study, five proof textures and four catalogue drawings. |
 | `figures/` | Wordmark construction, paired drawing states, proof families and card composition. |
+
+## Local storefront
+
+Use Node 24, the pnpm version in `package.json` and a running Docker engine. No
+hosted project or credentials are needed.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm db:start       # Start local Supabase and apply the migrations and draft seed
+pnpm db:env         # Write local settings to the ignored .env.local
+pnpm db:fixture     # Optional for development; required for catalogue integration tests
+pnpm dev
+```
+
+The app runs at http://localhost:3000. `pnpm db:reset` resets the **local**
+database and reloads the 23 draft families with zero stock. Run
+`pnpm db:fixture` again after a reset if you want published test data. Those
+approvals, stock and fit are fabricated for development; never use the fixture
+as catalogue evidence or apply it to a live project. `pnpm db:stop` stops
+local Supabase.
+
+### Checks
+
+```sh
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm test:db                       # With local Supabase and the staging fixture
+pnpm bench:search                  # 100 warm calls to the anonymous HTTP RPC
+pnpm build
+pnpm exec playwright install chromium
+pnpm test:e2e                       # Starts the production build on port 3100
+```
+
+Run `pnpm tokens` to regenerate `src/app/tokens.css` from the design pack.
+The storefront uses the anonymous/publishable key only. Supplier data, stock
+counts and unpublished mappings stay behind the database grants and RLS.

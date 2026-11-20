@@ -1,0 +1,94 @@
+/* Generated from design-tokens.json by scripts/build-tokens.mjs. Do not edit by hand. */
+:root,
+[data-theme="dark"] {
+  --edgey-page: #141617;
+  --edgey-text: #f2f1ec;
+  --edgey-text-muted: #b5b8b6;
+  --edgey-rule: #404549;
+  --edgey-utility-panel: #282c2e;
+  --edgey-catalogue: #17191b;
+  --edgey-product-card: #1e2123;
+  --edgey-product-plate: #292d30;
+  --edgey-field: #1e2123;
+  --edgey-drawing-plate: #1d2022;
+  --edgey-drawing-controls: #202325;
+  --edgey-primary-fill: #eeeee8;
+  --edgey-primary-text: #191b1c;
+  --edgey-focus: #9be3f9;
+  --edgey-hero-full-stop: #a5a9aa;
+  --edgey-footer: #191b1c;
+  --edgey-drawing-contour: #bbbfba;
+  --edgey-drawing-core-fill: #454643;
+  --edgey-drawing-ridge: #9c9e93;
+  --edgey-drawing-core-outline-mode: #323739;
+  --edgey-drawing-dots: #53595c;
+}
+[data-theme="light"] {
+  --edgey-page: #fafaf8;
+  --edgey-text: #232627;
+  --edgey-text-muted: #5b605e;
+  --edgey-rule: #d1d3cd;
+  --edgey-utility-panel: #f2f3ef;
+  --edgey-catalogue: #fdfdfb;
+  --edgey-product-card: #fdfdfb;
+  --edgey-product-plate: #f0f2ee;
+  --edgey-field: #fafbf8;
+  --edgey-drawing-plate: #f5f6f2;
+  --edgey-drawing-controls: #f9faf7;
+  --edgey-primary-fill: #292c2b;
+  --edgey-primary-text: #ffffff;
+  --edgey-focus: #215dad;
+  --edgey-hero-full-stop: #7a7f79;
+  --edgey-footer: #f1f3ee;
+  --edgey-drawing-contour: #454a44;
+  --edgey-drawing-core-fill: #e9e6de;
+  --edgey-drawing-ridge: #858075;
+  --edgey-drawing-core-outline-mode: #f7f8f5;
+  --edgey-drawing-dots: #c8cec5;
+}
+:root {
+  --edgey-font-sans: Inter, "Helvetica Neue", Arial, sans-serif;
+  --edgey-font-mono: "IBM Plex Mono", SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  --edgey-body-size: 16px;
+  --edgey-body-leading: 1.5;
+  --edgey-h1-size: clamp(3.6rem, 6.55vw, 7.35rem);
+  --edgey-h1-compact-size: clamp(3.6rem, 11.5vw, 5.7rem);
+  --edgey-h1-weight: 480;
+  --edgey-h1-leading: 0.975;
+  --edgey-h1-tracking: -0.068em;
+  --edgey-h2-size: clamp(2.05rem, 3.15vw, 3.35rem);
+  --edgey-h2-weight: 480;
+  --edgey-h2-leading: 1.07;
+  --edgey-h2-tracking: -0.064em;
+  --edgey-overline-size: 0.77rem;
+  --edgey-overline-weight: 450;
+  --edgey-overline-leading: 1.4;
+  --edgey-overline-tracking: 0.064em;
+  --edgey-frame-max: 1400px;
+  --edgey-gutter-total: clamp(40px, 9vw, 160px);
+  --edgey-hero-columns: minmax(0, 0.83fr) minmax(0, 1.17fr);
+  --edgey-hero-gap: clamp(30px, 5vw, 80px);
+  --edgey-card-plate-ratio: 1.94;
+  --edgey-radius: 0;
+  --edgey-border-width: 1px;
+  --edgey-primary-min-height: 44px;
+  --edgey-field-height: 41px;
+  --edgey-hatch-angle: 127deg;
+  --edgey-hatch-pitch: 4px;
+  --edgey-hatch-stripe: 1px;
+  --edgey-end-cap: 27px;
+  --edgey-end-cap-hover: 31px;
+  --edgey-end-cap-compact: 19px;
+  --edgey-focus-width: 2px;
+  --edgey-card-lift: -2px;
+  --edgey-card-transition: 0.2s ease;
+  --edgey-card-clip: polygon(67% 0,100% 0,100% 100%,38% 100%);
+  --edgey-footer-citron-clip: polygon(0 0,74% 0,55% 100%,0 100%);
+  --edgey-wordmark-header-width: clamp(126px, 11vw, 166px);
+  --edgey-wordmark-footer-width: clamp(205px, 28vw, 420px);
+  --edgey-proof-prism: url("/proofs/proof-prism.webp");
+  --edgey-proof-coral: url("/proofs/proof-coral.webp");
+  --edgey-proof-cyan: url("/proofs/proof-cyan.webp");
+  --edgey-proof-lime: url("/proofs/proof-lime.webp");
+  --edgey-proof-violet: url("/proofs/proof-violet.webp");
+}
