@@ -12,7 +12,11 @@ import {
   type Family,
   type Variant,
 } from "@/lib/catalogue";
-import { formatPence, incVatLabel, PRICE_BREAKS, unitPricePence, VAT_RATE_PERCENT, withVatPence } from "@/lib/catalogue/display-prices";
+import { formatPence, PRICE_BREAKS, VAT_RATE_PERCENT, type PriceTiers } from "@/lib/catalogue/display-prices";
+import { formatGbp } from "@/lib/commerce";
+import { useSelection } from "./selection-provider";
+import { formatDispatchDate } from "./selection-summary";
+import { useSelectionQuote } from "./use-selection-quote";
 
 const availabilityWords = { in_stock: "In stock", out_of_stock: "Out of stock" } as const;
 
@@ -23,11 +27,11 @@ export function ProductDetail({
   family,
   initialSku,
   mode,
+  grossBreaks,
 }: {
   family: Family;
   initialSku: string | null;
-  mode: "dialog" | "page";
-}) {
+} & ({ mode: "dialog"; grossBreaks?: never } | { mode: "page"; grossBreaks: Record<string, PriceTiers> })) {
   const id = useId();
   const preselected =
     family.variants.find((variant) => variant.sku === initialSku) ??
@@ -36,6 +40,7 @@ export function ProductDetail({
   const [quantityInput, setQuantityInput] = useState("1");
   const variant = family.variants.find((candidate) => candidate.sku === sku) ?? null;
   const Heading = mode === "dialog" ? "h2" : "h1";
+  const { add, open, hydrated } = useSelection();
 
   function choose(next: Variant) {
     setSku(next.sku);
@@ -43,16 +48,20 @@ export function ProductDetail({
   }
 
   const materials = (variant ? variant.substrates : familySubstrates(family)).map((substrate) => substrate.name);
-  const lowest = Math.min(...family.variants.map((candidate) => candidate.prices.oneToFour));
   const quantity = Number(quantityInput);
-  const maxUnit = Math.max(...family.variants.map((candidate) => candidate.prices.oneToFour));
-  const maxQuantity = Math.floor(Number.MAX_SAFE_INTEGER / (maxUnit * 100));
+  const maxQuantity = 2_147_483_647;
   const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= maxQuantity;
-  const unit = variant && validQuantity ? unitPricePence(variant.prices, quantity) : null;
-  const total = unit === null ? null : unit * quantity;
+  const variantId = variant?.id;
+  const lines = variantId && validQuantity ? [{ variantId, quantity }] : [];
+  const { quote, pending, retry } = useSelectionQuote(lines, lines.length > 0);
+  const priced = quote?.status === "ok" ? quote : null;
+  const line = priced?.corrections.length ? undefined : priced?.basket?.lines[0];
+  const gross = variant && grossBreaks?.[variant.sku];
   const blocked = !variant
     ? "Choose a variant before adding this blade."
-    : variant.availability === "out_of_stock"
+    : priced?.corrections.length
+      ? priced.corrections.join(" ")
+      : !priced && variant.availability === "out_of_stock"
       ? "This variant is out of stock and cannot be added."
       : null;
 
@@ -90,7 +99,11 @@ export function ProductDetail({
         <dt>Materials</dt>
         <dd>{materials.join(", ") || "Ask us"}</dd>
         <dt>Availability</dt>
-        <dd>{variant ? availabilityWords[variant.availability] : "Choose a variant"}</dd>
+        <dd>{variant ? (priced ? priced.lines.length ? "In stock" : "Out of stock" : availabilityWords[variant.availability]) : "Choose a variant"}</dd>
+        <dt>Dispatch</dt>
+        <dd>{priced?.dispatchDate ? formatDispatchDate(priced.dispatchDate) : "Estimate unavailable"}</dd>
+        <dt>Estimated delivery</dt>
+        <dd>{priced?.estimatedDeliveryDate ? `${formatDispatchDate(priced.estimatedDeliveryDate)} · provisional` : "Check at checkout"}</dd>
       </dl>
 
       {family.variants.length > 1 && (
@@ -117,7 +130,7 @@ export function ProductDetail({
       )}
 
       {variant && <fieldset className="quantity-set">
-        <legend>Quantity</legend>
+        <legend><label htmlFor={id + "-qty"}>Quantity</label></legend>
         <div className="qty-row">
           <div className="qty-options">
             {PRICE_BREAKS.map((priceBreak) => (
@@ -131,9 +144,6 @@ export function ProductDetail({
               </button>
             ))}
           </div>
-          <label className="field-label" htmlFor={id + "-qty"}>
-            Other <span className="sr">quantity</span>
-          </label>
           <input
             id={id + "-qty"}
             className="qty-input"
@@ -151,32 +161,37 @@ export function ProductDetail({
       </fieldset>}
 
       <div className="detail-total" aria-live="polite">
-        {total !== null && unit !== null ? (
+        {line && priced?.basket ? (
           <>
-            <span><strong>{formatPence(total)}</strong> <span className="fine">ex VAT</span></span>
+            <span><strong>{formatGbp(line.lineNetPence)}</strong> <span className="fine">ex VAT</span></span>
             <span className="fine detail-prices">
-              <span>{formatPence(unit)} each · ex VAT</span>
-              <span>{incVatLabel(total)}</span>
+              <span>{formatGbp(line.unitNetPence)} each · ex VAT</span>
+              <span>{formatGbp(line.lineGrossPence)} inc VAT ({priced.basket.vatRateBasisPoints / 100}%)</span>
             </span>
+            {line.savingPence > 0 && <span className="fine">Quantity saving: {formatGbp(line.savingPence)} ex VAT</span>}
+            {line.savingPrompt && <span className="fine">{line.savingPrompt.message}</span>}
           </>
-        ) : variant ? (
+        ) : variant && !validQuantity ? (
           <span className="fine" id={id + "-quantity-error"}>Enter a positive whole quantity to see the total.</span>
-        ) : (
-          <>
-            <span><strong>From {formatPence(lowest)}</strong> <span className="fine">ex VAT / ea</span></span>
-            <span className="fine detail-prices">
-              <span>{incVatLabel(lowest)}</span>
-            </span>
-          </>
-        )}
+        ) : pending ? <span className="fine">Checking current price…</span> : null}
       </div>
 
-      <button type="button" className="primary full" disabled aria-describedby={id + "-add-note"}>
+      <button type="button" className="primary full" disabled={!line || !hydrated}
+        aria-describedby={blocked || quote?.status === "error" ? id + "-add-note" : undefined}
+        onClick={(event) => {
+          if (!line) return;
+          add(line.variantId, line.quantity);
+          if (mode === "dialog") event.currentTarget.closest("dialog")?.close();
+          open(mode === "page" ? event.currentTarget : undefined);
+        }}>
         Add to selection
       </button>
-      <p className="fine" id={id + "-add-note"}>
-        {blocked ?? "Adding blades to a selection is not available yet."}
-      </p>
+      <div role="status">
+        {(blocked || quote?.status === "error") && (
+          <p className="fine" id={id + "-add-note"}>{quote?.status === "error" ? quote.message : blocked}</p>
+        )}
+      </div>
+      {quote?.status === "error" && <button type="button" className="textlink" onClick={retry}>Retry price</button>}
 
       {mode === "dialog" && (
         <p className="fine">
@@ -186,7 +201,7 @@ export function ProductDetail({
         </p>
       )}
 
-      {mode === "page" && variant && (
+      {variant && gross && (
         <div className="table-scroll">
           <table className="data-table breaks">
             <caption>Price breaks per blade for {variant.sku}</caption>
@@ -206,7 +221,7 @@ export function ProductDetail({
                 <tr key={priceBreak.from}>
                   <th scope="row">{priceBreak.label} blades</th>
                   <td className="num">{formatPence(variant.prices[priceBreak.tier])}</td>
-                  <td className="num">{formatPence(withVatPence(variant.prices[priceBreak.tier]))}</td>
+                  <td className="num">{formatPence(gross[priceBreak.tier])}</td>
                 </tr>
               ))}
             </tbody>

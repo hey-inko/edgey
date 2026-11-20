@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Masthead } from "@/components/masthead";
 import { SearchShortcut } from "@/components/search-shortcut";
+import { SelectionDialog } from "@/components/selection-dialog";
+import { SelectionProvider } from "@/components/selection-provider";
 import { SiteFooter } from "@/components/site-footer";
 import { SkipLink } from "@/components/skip-link";
 import { WordmarkSprite } from "@/components/wordmark";
@@ -26,9 +28,12 @@ export default function RootLayout({ children, modal }: { children: ReactNode; m
       <body id="top">
         <WordmarkSprite />
         <SkipLink />
-        <Masthead />
-        {children}
-        {modal}
+        <SelectionProvider>
+          <Masthead />
+          {children}
+          {modal}
+          <SelectionDialog />
+        </SelectionProvider>
         <SiteFooter />
         <SearchShortcut />
       </body>
