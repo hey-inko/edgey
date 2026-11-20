@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vite
 import { drainFinanceRetries, requestFinanceReplay } from "@/lib/admin/replay";
 import { POST as openCheckout } from "@/app/api/checkout/session/route";
 import { POST as stripeWebhook } from "@/app/api/webhooks/stripe/route";
+import { getBuyerSession } from "@/lib/auth/server";
 import { quoteCurrentSelection } from "@/lib/checkout/server";
 import { recordProviderEvent } from "@/lib/orders";
 import { reconcileStripePayments, replayStripeEvent } from "@/lib/payments/reconciliation";
@@ -15,6 +16,7 @@ const provider = vi.hoisted(() => ({
   create: vi.fn(), list: vi.fn(), session: vi.fn(), intent: vi.fn(), invoice: vi.fn(), refund: vi.fn(), expire: vi.fn(), account: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/auth/server", () => ({ getBuyerSession: vi.fn() }));
 vi.mock("@/lib/payments/stripe", () => ({
   getStripe: () => ({
     accounts: { retrieveCurrent: provider.account },
@@ -54,6 +56,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.mocked(getBuyerSession).mockResolvedValue({ status: "guest" });
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", origin);
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", webhookSecret);
   vi.stubEnv("EDGEY_REQUEST_HASH_KEY", randomUUID() + randomUUID());
@@ -206,6 +209,25 @@ it("creates one order and session on replay after its last stock is held, with t
   const changed = await submit({ ...input, fields: { ...fields, line1: "2 Sample Street" } });
   expect(changed.status).toBe(409);
   expect(sessions.size).toBe(1);
+});
+
+it("does not attach the verified buyer to a guest Stripe attempt", async () => {
+  vi.mocked(getBuyerSession).mockResolvedValue({ status: "verified", buyer: { id: randomUUID(), email: fields.email } });
+  const { input, session } = await checkout(await makeVariant(1), 1);
+  expect(getBuyerSession).toHaveBeenCalledOnce();
+  expect(await state(session.client_reference_id!)).toMatchObject({ buyer_id: null, reservation_state: "held" });
+  expect(await submit({ action: "resume", attemptToken: input.attemptToken })).toMatchObject({ status: 200 });
+});
+
+it("rejects a new Stripe attempt when the buyer cookie cannot be verified", async () => {
+  vi.mocked(getBuyerSession).mockResolvedValue({ status: "unverified" });
+  const input = await checkoutInput(await makeVariant(1), 1);
+  const response = await submit(input);
+  expect(response.status).toBe(422);
+  expect(await response.json()).toMatchObject({ status: "error", message: expect.stringContaining("couldn’t verify your sign-in") });
+  expect(provider.create).not.toHaveBeenCalled();
+  const order = await db.query("select id from public.orders where checkout_attempt_token = $1", [input.attemptToken]);
+  expect(order.rowCount).toBe(0);
 });
 
 it("recovers a timed-out create by discovering the same provider session before retrying", async () => {
