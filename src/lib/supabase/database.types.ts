@@ -158,23 +158,32 @@ export type Database = {
           kind: string;
           requested_at: string;
           requested_by: string;
+          result: string | null;
           target_id: string;
           target_updated_at: string;
+          worker_token: string | null;
+          worker_until: string | null;
         };
         ComputedFields: never;
         Insert: {
           kind: string;
           requested_at?: string;
           requested_by: string;
+          result?: string | null;
           target_id: string;
           target_updated_at: string;
+          worker_token?: string | null;
+          worker_until?: string | null;
         };
         Update: {
           kind?: string;
           requested_at?: string;
           requested_by?: string;
+          result?: string | null;
           target_id?: string;
           target_updated_at?: string;
+          worker_token?: string | null;
+          worker_until?: string | null;
         };
         Relationships: [];
       };
@@ -257,11 +266,23 @@ export type Database = {
       };
       order_outbox: {
         Row: {
+          attempt_count: number;
           created_at: string;
+          delivery_uncertain: boolean;
           enquiry_id: string | null;
           id: string;
+          last_error: string | null;
+          lease_token: string | null;
+          lease_until: string | null;
           message_key: string;
+          next_attempt_at: string;
           order_id: string | null;
+          provider_message_id: string | null;
+          send_in_flight: boolean;
+          send_payload: string | null;
+          send_provider: string | null;
+          send_started_at: string | null;
+          sent_at: string | null;
           state: Database["public"]["Enums"]["order_message_state"];
           trade_application_id: string | null;
           trial_request_id: string | null;
@@ -269,22 +290,46 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          attempt_count?: number;
           created_at?: string;
+          delivery_uncertain?: boolean;
           enquiry_id?: string | null;
           id?: string;
+          last_error?: string | null;
+          lease_token?: string | null;
+          lease_until?: string | null;
           message_key: string;
+          next_attempt_at?: string;
           order_id?: string | null;
+          provider_message_id?: string | null;
+          send_in_flight?: boolean;
+          send_payload?: string | null;
+          send_provider?: string | null;
+          send_started_at?: string | null;
+          sent_at?: string | null;
           state?: Database["public"]["Enums"]["order_message_state"];
           trade_application_id?: string | null;
           trial_request_id?: string | null;
           updated_at?: string;
         };
         Update: {
+          attempt_count?: number;
           created_at?: string;
+          delivery_uncertain?: boolean;
           enquiry_id?: string | null;
           id?: string;
+          last_error?: string | null;
+          lease_token?: string | null;
+          lease_until?: string | null;
           message_key?: string;
+          next_attempt_at?: string;
           order_id?: string | null;
+          provider_message_id?: string | null;
+          send_in_flight?: boolean;
+          send_payload?: string | null;
+          send_provider?: string | null;
+          send_started_at?: string | null;
+          sent_at?: string | null;
           state?: Database["public"]["Enums"]["order_message_state"];
           trade_application_id?: string | null;
           trial_request_id?: string | null;
@@ -406,6 +451,11 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
           updated_at: string;
           vat_pence: number;
@@ -451,6 +501,11 @@ export type Database = {
           provider_invoice_id?: string | null;
           recipient_name: string;
           refunded_pence?: number;
+          stripe_checkout_account_id?: string | null;
+          stripe_checkout_request?: Json | null;
+          stripe_checkout_started_at?: string | null;
+          stripe_reconciliation_error?: string | null;
+          stripe_replay_after?: string;
           tracking_number?: string | null;
           updated_at?: string;
           vat_pence: number;
@@ -495,6 +550,11 @@ export type Database = {
           provider_invoice_id?: string | null;
           recipient_name?: string;
           refunded_pence?: number;
+          stripe_checkout_account_id?: string | null;
+          stripe_checkout_request?: Json | null;
+          stripe_checkout_started_at?: string | null;
+          stripe_reconciliation_error?: string | null;
+          stripe_replay_after?: string;
           tracking_number?: string | null;
           updated_at?: string;
           vat_pence?: number;
@@ -559,6 +619,7 @@ export type Database = {
           provider: string;
           received_at: string;
           state: Database["public"]["Enums"]["provider_event_state"];
+          stripe_replay_after: string;
           updated_at: string;
         };
         ComputedFields: never;
@@ -570,6 +631,7 @@ export type Database = {
           provider: string;
           received_at?: string;
           state?: Database["public"]["Enums"]["provider_event_state"];
+          stripe_replay_after?: string;
           updated_at?: string;
         };
         Update: {
@@ -580,6 +642,7 @@ export type Database = {
           provider?: string;
           received_at?: string;
           state?: Database["public"]["Enums"]["provider_event_state"];
+          stripe_replay_after?: string;
           updated_at?: string;
         };
         Relationships: [];
@@ -1158,6 +1221,48 @@ export type Database = {
           p_variant_ids: string[];
         };
         Returns: string;
+      };
+      begin_outbox_email_send: {
+        Args: {
+          p_outbox_id: string;
+          p_lease_token: string;
+          p_provider?: string;
+          p_payload?: string;
+          p_recipient_fingerprint?: string;
+        };
+        Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
+      };
+      claim_outbox_email: {
+        Args: { p_message_key: string; p_replay_order_id?: string; p_expected_updated_at?: string };
+        Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
+      };
+      claim_finance_retries: {
+        Args: { p_kind: string };
+        Returns: Database["public"]["Tables"]["finance_retry_requests"]["Row"][];
+      };
+      finish_finance_retry: {
+        Args: { p_kind: string; p_target_id: string; p_worker_token: string; p_result: string };
+        Returns: undefined;
+      };
+      close_missing_checkout_attempt: {
+        Args: { p_attempt_token: string };
+        Returns: boolean;
+      };
+      close_unbound_stripe_checkout: {
+        Args: { p_order_id: string; p_account_id?: string; p_close_now?: boolean };
+        Returns: Database["public"]["Tables"]["orders"]["Row"];
+      };
+      consume_checkout_rate_limit: {
+        Args: { p_scope: string; p_ip_key: string; p_email_key: string };
+        Returns: boolean;
+      };
+      finish_outbox_email: {
+        Args: { p_outbox_id: string; p_lease_token: string; p_outcome: string; p_provider_message_id?: string };
+        Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
+      };
+      prepare_stripe_checkout: {
+        Args: { p_order_id: string; p_request: Json; p_account_id: string };
+        Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
       bind_checkout_session: {
         Args: {

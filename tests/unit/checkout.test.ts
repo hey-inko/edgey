@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkoutReview, quoteSelection } from "@/app/checkout/actions";
+import { quoteSelection } from "@/app/checkout/actions";
 import { prepareCheckoutAttempt } from "@/lib/checkout/attempt";
 import { quoteSelectionWith, type QuoteDependencies } from "@/lib/checkout/quote";
+import { startCheckoutAttempt } from "@/lib/checkout/server";
 import type { CheckoutFields, QuoteResult } from "@/lib/checkout/types";
 import type { LineRequest } from "@/lib/commerce";
 
@@ -302,7 +303,9 @@ describe("live checkout adapter", () => {
     expect(new Headers(init?.headers).get("apikey")).toBe("fake-service-role-key");
     expect(quote.photos).toEqual({ [z10Id]: "oscillating.webp" });
     expect(JSON.stringify(quote)).not.toMatch(/75321|4098|71223|service-role|stock_on_hand|stock_reserved/);
-    expect(await checkoutReview(input([line(5)], quote.quoteKey))).toEqual({ status: "payment-unavailable" });
+    expect(await startCheckoutAttempt(input([line(5)], quote.quoteKey))).toMatchObject({
+      status: "ready", orderInput: { totals: { grossPence: 12804 } },
+    });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[1]?.[1]?.method).toBe("GET");
   });

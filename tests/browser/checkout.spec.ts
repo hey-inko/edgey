@@ -161,7 +161,7 @@ test("checkout validates before payment and retains the same attempt until a mat
     if (token) tokens.push(token);
   });
   await pay.click();
-  const complete = page.getByText("Payment is not connected in this build.");
+  const complete = page.getByText(/Card payment isn’t configured/);
   await expect(complete).toBeVisible();
   await pay.click();
   await expect.poll(() => tokens.length).toBe(2);
@@ -222,7 +222,7 @@ test("a new price must be reviewed and uses a new attempt token", async ({ page 
     });
     const pay = page.getByRole("button", { name: "Continue to payment" });
     await pay.click();
-    const complete = page.getByText("Payment is not connected in this build.");
+    const complete = page.getByText(/Card payment isn’t configured/);
     await expect(complete).toBeVisible();
     const { rows } = await db.query<{ prior: number }>(
       "update public.variants set price_1_4_pence = price_1_4_pence + 10 where sku = $1 returning price_1_4_pence - 10 as prior",
@@ -249,7 +249,7 @@ test("a dropped response does not lose the submitted attempt on reload", async (
   await selection(page).getByRole("link", { name: "Go to checkout" }).click();
   await fillAddress(page);
   await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
-  const checkoutUrl = (url: URL) => url.pathname === "/checkout";
+  const checkoutUrl = (url: URL) => url.pathname === "/api/checkout/session";
   let lostToken: string | undefined;
   await page.route(checkoutUrl, async (route) => {
     const request = route.request();
@@ -269,7 +269,38 @@ test("a dropped response does not lose the submitted attempt on reload", async (
   const request = page.waitForRequest((request) => request.method() === "POST" && !!request.postData()?.includes("attemptToken"));
   await pay.click();
   expect((await request).postData()).toContain(`"attemptToken":"${lostToken}"`);
-  await expect(page.getByText("Payment is not connected in this build.")).toBeVisible();
+  await expect(page.getByText(/Card payment isn’t configured/)).toBeVisible();
+});
+
+test("hands the reviewed order to hosted Checkout and can close the saved attempt on return", async ({ page }) => {
+  await addZ10(page);
+  await selection(page).getByRole("link", { name: "Go to checkout" }).click();
+  await fillAddress(page);
+  await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Next working day");
+  const sessionId = "cs_test_browserFixture";
+  const url = `https://checkout.stripe.com/c/pay/${sessionId}`;
+  let attempt: string | undefined;
+  await page.route(url, (route) => route.fulfill({ body: "Hosted Checkout fixture" }));
+  await page.route("**/api/checkout/session", async (route) => {
+    const request = route.request().postDataJSON();
+    if (request.action === "close") {
+      expect(request.attemptToken).toBe(attempt);
+      await route.fulfill({ json: { status: "closed" } });
+    } else {
+      attempt = request.attemptToken;
+      expect(request.lines).toEqual([{ variantId: expect.any(String), quantity: 5 }]);
+      expect(request).not.toHaveProperty("totals");
+      await route.fulfill({ json: { status: "payment", sessionId, url } });
+    }
+  });
+  await page.getByRole("button", { name: "Continue to payment" }).click();
+  await expect(page).toHaveURL(url);
+  await expect(page.getByText("Hosted Checkout fixture")).toBeVisible();
+  await page.goto("/checkout");
+  await expect(page.getByRole("button", { name: "Resume payment" })).toBeVisible();
+  await page.getByRole("button", { name: "Close previous checkout" }).click();
+  await expect(page.getByText(/The previous checkout is closed/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resume payment" })).toHaveCount(0);
 });
 
 for (const width of [1440, 390, 320]) {

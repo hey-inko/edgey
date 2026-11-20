@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { checkoutReview } from "@/app/checkout/actions";
+import type { CheckoutSessionResult } from "@/app/api/checkout/session/route";
+import { captureCheckoutSelection, rememberCheckoutSelection } from "@/app/checkout/success/selection-handoff";
 import { forgetCheckoutAttempt, materialValue, prepareCheckoutToken } from "@/lib/checkout/attempt-token";
 import type { CheckoutFields } from "@/lib/checkout/types";
 import { formatGbp, parseUkPostcode, type LineRequest } from "@/lib/commerce";
+import { readActivePayment, storeActivePayment, type ActivePayment } from "@/lib/payments/checkout-attempt-client";
 import { useSelection } from "./selection-provider";
 import { DispatchEstimate, SelectionLinePrice, SelectionTotals } from "./selection-summary";
 import { useSelectionQuote } from "./use-selection-quote";
@@ -29,7 +31,16 @@ const fields = {
 }>;
 
 type FieldName = keyof typeof fields;
-type SubmitResult = Awaited<ReturnType<typeof checkoutReview>>;
+type SubmitResult = Exclude<CheckoutSessionResult, { status: "payment" } | { status: "closed" }>;
+
+async function paymentRequest(input: unknown): Promise<CheckoutSessionResult> {
+  const response = await fetch("/api/checkout/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return response.json();
+}
 
 export function CheckoutReview() {
   const { hydrated, lines, revision, replace, open } = useSelection();
@@ -37,6 +48,7 @@ export function CheckoutReview() {
   const [values, setValues] = useState(initialFields);
   const [postcodeBlurred, setPostcodeBlurred] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [active, setActive] = useState<ActivePayment | null>(null);
   const [result, setResult] = useState<{ lines: LineRequest[]; value: SubmitResult } | null>(null);
   const attempt = useRef<{ token: string; revision: number; quoteKey: string } | null>(null);
   const submitLock = useRef(false);
@@ -57,6 +69,11 @@ export function CheckoutReview() {
     ? "Enter a full UK postcode, for example SW1A 1AA."
     : unsupported ? "Online delivery isn’t available for this postcode."
       : undefined;
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setActive(readActivePayment()));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     if (!response) return;
@@ -119,14 +136,71 @@ export function CheckoutReview() {
       const prepared = await prepareCheckoutToken(quoteKey, values, reusable);
       if (!prepared.stillCurrent()) return;
       const { token } = prepared;
+      if (active?.previousToken && token !== active.token) {
+        setResult({ lines, value: { status: "error", message: "Close the previous checkout before starting a new payment." } });
+        return;
+      }
       attempt.current = { token, revision, quoteKey };
+      const capture = await captureCheckoutSelection(lines);
       await prepared.remember();
       if (!prepared.stillCurrent()) return;
-      const value = await checkoutReview({ attemptToken: token, lines, fields: values, quoteKey: priced.quoteKey });
-      if (!prepared.stillCurrent()) return;
+      const previousToken = active?.token === token ? active.previousToken : active?.token;
+      changeActive({ token, previousToken });
+      const value = await paymentRequest({
+        attemptToken: token, lines, fields: values, quoteKey,
+        supersedesAttemptToken: previousToken,
+      });
+      if (value.status === "payment") {
+        changeActive({ token, sessionId: value.sessionId });
+        await rememberCheckoutSelection(value.sessionId, capture);
+        if (prepared.stillCurrent()) window.location.assign(value.url);
+        return;
+      }
+      if (!("attemptPending" in value && value.attemptPending)) changeActive(active);
+      if (!prepared.stillCurrent() || value.status === "closed") return;
+      if ("attemptClosed" in value && value.attemptClosed) {
+        attempt.current = null;
+        forgetCheckoutAttempt();
+        if (active?.token === token) changeActive(null);
+        retry();
+      }
       setResult({ lines, value });
     } catch {
       setResult({ lines, value: { status: "error", message: "We couldn’t review your checkout. Try again." } });
+    } finally {
+      submitLock.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  function changeActive(value: ActivePayment | null) {
+    storeActivePayment(value);
+    setActive(value);
+  }
+
+  async function recover(action: "resume" | "close") {
+    if (!active || submitLock.current) return;
+    submitLock.current = true;
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const capture = await captureCheckoutSelection(lines);
+      const value = await paymentRequest({ action, attemptToken: active.token, supersedesAttemptToken: active.previousToken });
+      if (value.status === "payment") {
+        changeActive({ token: active.token, sessionId: value.sessionId });
+        await rememberCheckoutSelection(value.sessionId, capture);
+        window.location.assign(value.url);
+      } else if (value.status === "closed" || ("attemptClosed" in value && value.attemptClosed)) {
+        changeActive(null);
+        attempt.current = null;
+        forgetCheckoutAttempt();
+        retry();
+        setResult({ lines, value: { status: "error", message: "The previous checkout is closed. Review your selection to start again." } });
+      } else {
+        setResult({ lines, value });
+      }
+    } catch {
+      setResult({ lines, value: { status: "error", message: "We couldn’t verify the previous checkout. Try again." } });
     } finally {
       submitLock.current = false;
       setSubmitting(false);
@@ -149,7 +223,7 @@ export function CheckoutReview() {
       <section className="checkout-panel checkout-summary" aria-labelledby={id + "-summary"}>
         <div className="checkout-section-head">
           <h2 id={id + "-summary"} ref={summaryTitle} tabIndex={-1}>Order summary</h2>
-          <button type="button" className="textlink" aria-haspopup="dialog" onClick={(event) => open(event.currentTarget)}>
+          <button type="button" className="textlink" aria-haspopup="dialog" disabled={submitting} onClick={(event) => open(event.currentTarget)}>
             Edit selection
           </button>
         </div>
@@ -225,6 +299,14 @@ export function CheckoutReview() {
           <p className="fine">Delivery country: United Kingdom</p>
         </fieldset>
         <div className="checkout-payment">
+          {active && (
+            <div className="selection-notice">
+              <p>There’s a previous payment attempt in this tab.</p>
+              <button type="button" className="textlink" disabled={submitting} onClick={() => recover("resume")}>Resume payment</button>
+              {" · "}
+              <button type="button" className="textlink" disabled={submitting} onClick={() => recover("close")}>Close previous checkout</button>
+            </div>
+          )}
           {basket && (priced.coverage === "covered" || priced.coverage === "unchecked") && (
             <p className="checkout-amount"><span>{priced.coverage === "unchecked" ? "Estimated total inc VAT" : "Total inc VAT"}</span>
               <strong>{formatGbp(basket.totalGrossPence)}</strong></p>
@@ -234,12 +316,7 @@ export function CheckoutReview() {
             {submitting ? "Checking checkout…" : "Continue to payment"}
           </button>
           <div role="status" ref={feedback} tabIndex={-1} className="checkout-feedback">
-            {response?.status === "payment-unavailable" ? (
-              <div className="selection-notice">
-                <p><strong>Payment is not connected in this build.</strong></p>
-                <p>No order was placed and you haven’t been charged.</p>
-              </div>
-            ) : (response?.status === "invalid" || response?.status === "error" || response?.status === "review") && (
+            {response && (
               <p className="fine">{response.message}</p>
             )}
           </div>

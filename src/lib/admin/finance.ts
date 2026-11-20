@@ -18,13 +18,13 @@ export async function financeOverview(db: SupabaseClient<Database>, pages: {
       .in("payment_status", ["paid", "partially_paid", "partially_refunded"])
       .gt("paid_pence", 0)
       .order("created_at", { ascending: false }).order("id").range(...adminRange(pages.captures)),
-    serviceClient().from("orders").select("id,business_name,payment_review_reason,payment_status,payment_review_refund_id")
-      .not("payment_review_reason", "is", null).is("payment_review_refund_id", null)
+    serviceClient().from("orders").select("id,business_name,payment_review_reason,payment_status,stripe_reconciliation_error")
+      .or("payment_review_reason.not.is.null,stripe_reconciliation_error.not.is.null").is("payment_review_refund_id", null)
       .order("updated_at", { ascending: false }).order("id").range(...adminRange(pages.reviews)),
     db.from("provider_events").select("provider,event_id,event_type,state,last_error,updated_at")
       .eq("state", "failed").order("updated_at", { ascending: false }).order("provider").order("event_id")
       .range(...adminRange(pages.events)),
-    db.from("order_outbox").select("order_id,message_key,state,updated_at")
+    db.from("order_outbox").select("order_id,message_key,state,last_error,updated_at")
       .eq("message_key", "order_confirmation").not("order_id", "is", null)
       .in("state", ["pending", "failed"])
       .order("state", { ascending: false }).order("updated_at", { ascending: false }).order("order_id")

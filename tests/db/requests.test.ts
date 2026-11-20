@@ -256,7 +256,9 @@ describe("request data and permissions", () => {
       select column_name from information_schema.columns where table_schema = 'public' and table_name = 'order_outbox'
     `)).rows;
     expect(columns.map(({ column_name }) => column_name).sort()).toEqual([
-      "created_at", "enquiry_id", "id", "message_key", "order_id", "state", "trade_application_id", "trial_request_id", "updated_at",
+      "attempt_count", "created_at", "delivery_uncertain", "enquiry_id", "id", "last_error", "lease_token", "lease_until",
+      "message_key", "next_attempt_at", "order_id", "provider_message_id", "send_in_flight", "send_payload", "send_provider",
+      "send_started_at", "sent_at", "state", "trade_application_id", "trial_request_id", "updated_at",
     ]);
   });
 

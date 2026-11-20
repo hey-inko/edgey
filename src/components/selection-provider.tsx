@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { persistSelectionChange } from "@/app/checkout/success/selection-handoff";
 import { forgetCheckoutAttempt } from "@/lib/checkout/attempt-token";
 import type { LineRequest } from "@/lib/commerce";
 
@@ -36,6 +37,7 @@ type Selection = {
   hydrated: boolean;
   revision: number;
   replace: (lines: LineRequest[]) => void;
+  clearIf: (matches: (lines: readonly LineRequest[]) => boolean) => boolean;
   setQuantity: (variantId: string, quantity: number) => void;
   add: (variantId: string, quantity: number) => void;
   open: (from?: HTMLElement) => void;
@@ -48,6 +50,7 @@ const SelectionContext = createContext<Selection | null>(null);
 export function SelectionProvider({ children }: { children: ReactNode }) {
   const [stored, setStored] = useState<{ lines: LineRequest[]; revision: number }>();
   const current = useRef(stored);
+  const latestWrite = useRef<object | null>(null);
   const [opened, setOpened] = useState<Selection["opened"]>(null);
 
   useEffect(() => {
@@ -78,12 +81,28 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     const now = current.current;
     if (!now || sameLines(now.lines, lines)) return;
     const next = { lines, revision: now.revision + 1 };
+    latestWrite.current = next;
     forgetCheckoutAttempt();
     current.current = next;
     setStored(next);
-    try {
+    persistSelectionChange(() => {
       localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(lines.map(({ variantId, quantity }) => [variantId, quantity]))));
-    } catch {}
+      if (latestWrite.current === next && current.current && current.current !== next) {
+        const synced = { lines, revision: current.current.revision + 1 };
+        current.current = synced;
+        setStored(synced);
+      }
+    });
+  }
+
+  function clearIf(matches: (lines: readonly LineRequest[]) => boolean) {
+    const now = current.current;
+    if (!now || now !== stored || !matches(now.lines) || !matches(restore())) return false;
+    localStorage.removeItem(storageKey);
+    const next = { lines: empty, revision: now.revision + 1 };
+    current.current = next;
+    setStored(next);
+    return true;
   }
 
   function setQuantity(variantId: string, quantity: number) {
@@ -100,6 +119,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       hydrated: !!stored,
       revision: stored?.revision ?? 0,
       replace,
+      clearIf,
       setQuantity,
       add: (variantId, quantity) => {
         const previous = current.current?.lines.find((line) => line.variantId === variantId)?.quantity ?? 0;
