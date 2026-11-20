@@ -13,3 +13,11 @@ export function privateFinderQuery(query: string): boolean {
     || /^[+()\d .-]{9,}$/.test(query) && query.replace(/\D/g, "").length >= 9
     || parseUkPostcode(query).ok;
 }
+
+export function finderCodeForFingerprint(query: string): string | undefined {
+  if (privateFinderQuery(query) || !/^[a-z0-9][a-z0-9 ._-]{1,30}[a-z0-9]$/i.test(query)) return;
+  const words = query.split(/ +/);
+  if (words.length > 1 && words.some((word) => /^[a-z]{3,}$/i.test(word))) return;
+  const code = normaliseFinderCode(query);
+  if (/\d/.test(code)) return code;
+}

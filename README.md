@@ -75,5 +75,6 @@ It removes expired rate windows, old Finder events and eligible requests
 with their outbox messages. Converted enquiries and approved trial and trade
 records are preserved for operational and audit use; operations must set
 their separate retention policy. Finder analytics keep published terms in
-normalised form, use keyed fingerprints for other potentially useful terms,
-and keep outcome only for email-, phone- or postcode-like input.
+normalised form and use keyed fingerprints for other code-like input only.
+Unrecognised free text and input resembling an email, phone or postcode
+are counted by outcome without keeping the query.

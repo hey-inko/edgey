@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import type { CatalogueView, SearchHit } from "@/lib/catalogue";
 import { serviceClient } from "@/lib/supabase/service";
-import { normaliseFinderCode, normaliseFinderWords, privateFinderQuery } from "./finder-query";
+import { finderCodeForFingerprint, normaliseFinderCode, normaliseFinderWords, privateFinderQuery } from "./finder-query";
 import { requestFingerprint } from "./rate-limit";
 
 export async function recordFinderSearch(query: string, hits: SearchHit[], view: CatalogueView) {
@@ -20,18 +20,15 @@ export async function recordFinderSearch(query: string, hits: SearchHit[], view:
   const words = normaliseFinderWords(query);
   const publicLabel = labels.flatMap(({ name, slug }) => [normaliseFinderWords(name), normaliseFinderWords(slug)])
     .find((label) => label === words);
-  const privateQuery = privateFinderQuery(query);
-  const normalisedQuery = matchedCode || (!privateQuery ? publicLabel : undefined);
-  const fingerprintInput = /\d/.test(words) && /^[a-z0-9 ]+$/.test(words)
-    ? normaliseFinderCode(words)
-    : words;
+  const normalisedQuery = matchedCode || (!privateFinderQuery(query) ? publicLabel : undefined);
+  const fingerprintInput = normalisedQuery ? undefined : finderCodeForFingerprint(query);
 
   after(async () => {
     try {
       const { error } = await serviceClient().rpc("record_finder_search", {
         p_outcome: outcome,
         p_normalised_query: normalisedQuery,
-        p_query_fingerprint: !normalisedQuery && !privateQuery && fingerprintInput && process.env.EDGEY_REQUEST_HASH_KEY
+        p_query_fingerprint: fingerprintInput && process.env.EDGEY_REQUEST_HASH_KEY
           ? requestFingerprint("search", fingerprintInput)
           : undefined,
       });

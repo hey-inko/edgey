@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { Client } from "pg";
 
 test.use({ trace: "off" });
 
@@ -103,6 +105,36 @@ test("requests a trial with exactly five fields and no delivery promise", async 
   await submit.press("Enter");
   await expect(page.getByRole("heading", { name: "Trial request received" })).toBeFocused();
   await expect(page.getByRole("status")).toContainText("No delivery has been arranged");
+});
+
+test("records exact, suggested and unmatched searches without retaining private text", async ({ page }) => {
+  if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+  const connectionString = process.env.SUPABASE_DB_URL;
+  if (!connectionString) throw new Error("Run pnpm db:env before running browser tests.");
+  const db = new Client({ connectionString });
+  await db.connect();
+  try {
+    const { rows } = await db.query<{ since: Date }>("select clock_timestamp() as since");
+    const since = rows[0]?.since;
+    if (!since) throw new Error("Could not read the local database clock.");
+    for (const query of ["3910-301", "vinyl", "EDG-NOT-8927345", emailFor("search")]) {
+      await page.goto("/blades?q=" + encodeURIComponent(query));
+    }
+    await expect.poll(async () => {
+      const { rows } = await db.query(
+        "select outcome, normalised_query, query_fingerprint from public.finder_search_events where created_at >= $1",
+        [since],
+      );
+      return rows;
+    }).toEqual(expect.arrayContaining([
+      { outcome: "exact", normalised_query: "3910301", query_fingerprint: null },
+      { outcome: "suggested", normalised_query: "vinyl", query_fingerprint: null },
+      { outcome: "unmatched", normalised_query: null, query_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      { outcome: "unmatched", normalised_query: null, query_fingerprint: null },
+    ]));
+  } finally {
+    await db.end();
+  }
 });
 
 test("requires email verification and remembers an application as pending", async ({ page }) => {

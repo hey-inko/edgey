@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normaliseFinderCode, normaliseFinderWords, privateFinderQuery } from "@/lib/requests/finder-query";
+import { finderCodeForFingerprint, normaliseFinderCode, normaliseFinderWords, privateFinderQuery } from "@/lib/requests/finder-query";
 import {
   caughtInHoneypot,
   compatibilitySchema,
@@ -78,5 +78,13 @@ describe("Finder analytics privacy", () => {
 
   it.each(["buyer@example.com", "+44 (0)20 7123 4567", "SW1A 1AA", "www.example.com"])("redacts direct personal input %s", (query) => {
     expect(privateFinderQuery(query)).toBe(true);
+    expect(finderCodeForFingerprint(query)).toBeUndefined();
+  });
+
+  it("fingerprints plausible part codes, not names or prose", () => {
+    expect(finderCodeForFingerprint("edg-z 10")).toBe("EDGZ10");
+    expect(finderCodeForFingerprint("5201345")).toBe("5201345");
+    expect(finderCodeForFingerprint("A Person at 29 Print Lane")).toBeUndefined();
+    expect(finderCodeForFingerprint("A Person")).toBeUndefined();
   });
 });
