@@ -4,7 +4,7 @@ import { seedPaidAdminOrder, signInStaff } from "./admin-fixtures";
 
 test("staff sign in, print the paid order, then submit dispatch twice without moving stock twice", async ({ page }) => {
   const staff = await createLocalAdminUser("warehouse");
-  const order = await seedPaidAdminOrder();
+  const order = await seedPaidAdminOrder({ sku: "EDG-SUM-DRG-36" });
   const db = localAdminClient();
   const stock = () => db.from("variants").select("stock_on_hand,stock_reserved").eq("id", order.variant.id).single();
   const before = await stock();
@@ -16,6 +16,7 @@ test("staff sign in, print the paid order, then submit dispatch twice without mo
   await page.getByRole("link", { name: "Printable pick list" }).click();
   const lines = page.getByRole("table", { name: "Pick lines" });
   await expect(lines.getByRole("cell", { name: order.variant.sku, exact: true })).toHaveCount(2);
+  await expect(lines.getByRole("cell", { name: "36°", exact: true })).toBeVisible();
   await expect(lines.getByRole("cell", { name: String(order.quantity), exact: true })).toBeVisible();
   await expect(page.getByText(order.recipient, { exact: true })).toBeVisible();
   await expect(page.getByText(order.service, { exact: true })).toBeVisible();
