@@ -1,0 +1,132 @@
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, expect, test, vi } from "vitest";
+import { GET } from "@/app/api/cron/order-confirmations/route";
+import { hostedStripeInvoice, renderConfirmation } from "@/lib/email/confirmation";
+import { processOrderConfirmations } from "@/lib/email/outbox";
+import { fileProvider, resendProvider } from "@/lib/email/provider";
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/email/outbox", () => ({ processOrderConfirmations: vi.fn() }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.resetAllMocks();
+});
+
+const order = {
+  id: "8fbd7d5d-17d3-45ec-b005-eba7dd5da0bd",
+  email: "buyer@example.test",
+  recipient_name: 'A <script> & "B"',
+  goods_net_pence: 4_200,
+  delivery_net_pence: 695,
+  vat_rate_bps: 2_000,
+  vat_pence: 979,
+  gross_pence: 5_874,
+  delivery_service: "Standard & tracking",
+  promised_dispatch_date: "2026-11-23",
+  estimated_delivery_date: "2026-11-24",
+};
+const items = [{ sku: "EDGE-1", option_label: "Tool < 40 mm", quantity: 2, unit_price_pence: 2_100, net_pence: 4_200 }];
+
+test("renders the order snapshot in text and safe HTML, including VAT, dates and Stripe invoice", () => {
+  const result = renderConfirmation(order, items, "orders@example.test", "https://invoice.stripe.com/i/test?a=1&b=2");
+  expect(result.to).toEqual(["buyer@example.test"]);
+  expect(result.subject).toContain(order.id);
+  expect(result.text).toContain("EDGE-1 — Tool < 40 mm: 2 × £21.00 = £42.00 ex VAT");
+  expect(result.text).toContain("Goods subtotal (ex VAT): £42.00");
+  expect(result.text).toContain("Delivery (ex VAT): £6.95");
+  expect(result.text).toContain("VAT (20%): £9.79");
+  expect(result.text).toContain("Total paid (inc VAT): £58.74");
+  expect(result.text).toContain("Promised dispatch: Monday, 23 November 2026");
+  expect(result.text).toContain("Estimated delivery: Tuesday, 24 November 2026");
+  expect(result.text).toContain("View your VAT invoice: https://invoice.stripe.com/i/test?a=1&b=2");
+  expect(result.html).toContain('href="https://invoice.stripe.com/i/test?a=1&amp;b=2"');
+  expect(result.html).toContain("A &lt;script&gt; &amp; &quot;B&quot;");
+  expect(result.html).toContain("Tool &lt; 40 mm");
+  expect(result.html).not.toContain("<script>");
+});
+
+test("rejects unsafe recipients and omits missing or unsafe invoice links", () => {
+  for (const link of [
+    null, "http://invoice.stripe.com/i/test", "https://invoice.stripe.com.evil.test/i/test",
+    "https://invoice.stripe.com@evil.test/i/test", "https://user:pw@invoice.stripe.com/i/test",
+    "javascript:alert(1)",
+  ]) {
+    expect(hostedStripeInvoice(link)).toBeNull();
+    expect(renderConfirmation(order, items, "orders@example.test", link).html).not.toContain("<a ");
+  }
+  expect(() => renderConfirmation(
+    { ...order, email: "buyer@example.test,other@example.test" }, items, "orders@example.test", null,
+  )).toThrow("Cannot render");
+});
+
+test("sends the exact body and stable idempotency key to Resend over HTTPS", async () => {
+  const send = vi.fn().mockResolvedValue(Response.json({ id: "provider-id" }));
+  vi.stubGlobal("fetch", send);
+  const body = '{"text": "same bytes"}';
+  await expect(resendProvider("unit-test-key").send("order-confirmation/test", body))
+    .resolves.toEqual({ status: "sent", id: "provider-id" });
+  expect(send).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({
+    method: "POST",
+    headers: {
+      Authorization: "Bearer unit-test-key",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "order-confirmation/test",
+    },
+    body,
+    redirect: "error",
+    signal: expect.any(AbortSignal),
+  }));
+});
+
+test.each([
+  [429, { name: "rate_limit_exceeded" }, "provider_rate_limited"],
+  [409, { name: "concurrent_idempotent_requests" }, "provider_uncertain"],
+  [409, { name: "invalid_idempotent_request" }, "provider_conflict"],
+  [422, { name: "validation_error" }, "provider_rejected"],
+  [503, {}, "provider_uncertain"],
+  [200, { id: null }, "provider_uncertain"],
+] as const)("classifies Resend response %s / %j as %s", async (status, body, outcome) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(body, { status })));
+  await expect(resendProvider("unit-test-key").send("order-confirmation/test", "{}")).resolves.toEqual({ status: outcome });
+});
+
+test("treats a lost Resend response as an ambiguous delivery", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection lost")));
+  await expect(resendProvider("unit-test-key").send("order-confirmation/test", "{}"))
+    .resolves.toEqual({ status: "provider_uncertain" });
+});
+
+test("publishes a single complete file for concurrent sends without overwriting it", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "edgey-test-email-"));
+  try {
+    const provider = fileProvider(directory);
+    const body = '{"text":"one receipt"}';
+    const key = "order-confirmation/test";
+    const results = await Promise.all(Array.from({ length: 8 }, () => provider.send(key, body)));
+    expect(results).toEqual(results.map(() => ({ status: "sent", id: expect.any(String) })));
+    if (results[0]?.status !== "sent") throw new Error("No local confirmation file was written.");
+    const name = `${results[0].id}.json`;
+    expect(await readdir(directory)).toEqual([name]);
+    expect(await provider.send(key, '{"text":"different receipt"}')).toEqual({ status: "provider_conflict" });
+    expect(await readFile(join(directory, name), "utf8")).toBe(body);
+    expect((await stat(join(directory, name))).mode & 0o777).toBe(0o600);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("requires server cron authentication before processing the outbox", async () => {
+  vi.stubEnv("CRON_SECRET", "test-cron");
+  const url = "https://example.test/api/cron/order-confirmations";
+  expect((await GET(new Request(url))).status).toBe(401);
+  expect((await GET(new Request(url, { headers: { authorization: "Bearer wrong-cron" } }))).status).toBe(401);
+  expect(processOrderConfirmations).not.toHaveBeenCalled();
+  vi.mocked(processOrderConfirmations).mockResolvedValue({ sent: 1, failed: 2, pending: 0 });
+  const response = await GET(new Request(url, { headers: { authorization: "Bearer test-cron" } }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ sent: 1, failed: 2, pending: 0 });
+});

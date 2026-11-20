@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { checkoutReview } from "@/app/checkout/actions";
+import type { CheckoutSessionResult } from "@/app/api/checkout/session/route";
+import { captureCheckoutSelection, rememberCheckoutSelection } from "@/app/checkout/success/selection-handoff";
 import { forgetCheckoutAttempt, materialValue, prepareCheckoutToken } from "@/lib/checkout/attempt-token";
 import type { CheckoutFields } from "@/lib/checkout/types";
 import { formatGbp, parseUkPostcode, type LineRequest } from "@/lib/commerce";
@@ -29,7 +30,7 @@ const fields = {
 }>;
 
 type FieldName = keyof typeof fields;
-type SubmitResult = Awaited<ReturnType<typeof checkoutReview>>;
+type SubmitResult = Exclude<CheckoutSessionResult, { status: "payment" }>;
 
 export function CheckoutReview() {
   const { hydrated, lines, revision, replace, open } = useSelection();
@@ -120,10 +121,25 @@ export function CheckoutReview() {
       if (!prepared.stillCurrent()) return;
       const { token } = prepared;
       attempt.current = { token, revision, quoteKey };
+      const capture = await captureCheckoutSelection(lines);
       await prepared.remember();
       if (!prepared.stillCurrent()) return;
-      const value = await checkoutReview({ attemptToken: token, lines, fields: values, quoteKey: priced.quoteKey });
+      const response = await fetch("/api/checkout/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptToken: token, lines, fields: values, quoteKey }),
+      });
+      const value: CheckoutSessionResult = await response.json();
       if (!prepared.stillCurrent()) return;
+      if (value.status === "payment") {
+        await rememberCheckoutSelection(value.sessionId, capture);
+        if (prepared.stillCurrent()) window.location.assign(value.url);
+        return;
+      }
+      if ("attemptClosed" in value && value.attemptClosed) {
+        attempt.current = null;
+        forgetCheckoutAttempt();
+      }
       setResult({ lines, value });
     } catch {
       setResult({ lines, value: { status: "error", message: "We couldn’t review your checkout. Try again." } });
@@ -149,7 +165,7 @@ export function CheckoutReview() {
       <section className="checkout-panel checkout-summary" aria-labelledby={id + "-summary"}>
         <div className="checkout-section-head">
           <h2 id={id + "-summary"} ref={summaryTitle} tabIndex={-1}>Order summary</h2>
-          <button type="button" className="textlink" aria-haspopup="dialog" onClick={(event) => open(event.currentTarget)}>
+          <button type="button" className="textlink" aria-haspopup="dialog" disabled={submitting} onClick={(event) => open(event.currentTarget)}>
             Edit selection
           </button>
         </div>
@@ -234,12 +250,7 @@ export function CheckoutReview() {
             {submitting ? "Checking checkout…" : "Continue to payment"}
           </button>
           <div role="status" ref={feedback} tabIndex={-1} className="checkout-feedback">
-            {response?.status === "payment-unavailable" ? (
-              <div className="selection-notice">
-                <p><strong>Payment is not connected in this build.</strong></p>
-                <p>No order was placed and you haven’t been charged.</p>
-              </div>
-            ) : (response?.status === "invalid" || response?.status === "error" || response?.status === "review") && (
+            {response && (
               <p className="fine">{response.message}</p>
             )}
           </div>

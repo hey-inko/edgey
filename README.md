@@ -110,3 +110,87 @@ their separate retention policy. Finder analytics keep published terms in
 normalised form and use keyed fingerprints for other code-like input only.
 Unrecognised free text and input resembling an email, phone or postcode
 are counted by outcome without keeping the query.
+
+### Make a test payment locally
+
+1. Run the local setup above. In the Stripe dashboard select a **sandbox**,
+   enable cards in its payment method settings, and copy the sandbox secret
+   key into the ignored `.env.local` as `STRIPE_SECRET_KEY`. Set
+   `NEXT_PUBLIC_SITE_URL=http://localhost:3000` and a random `CRON_SECRET`.
+   For email without sending externally, set `EMAIL_PROVIDER=file`,
+   `EMAIL_FROM="Edgey <orders@example.test>"`, and `EMAIL_OUTBOX_DIR` to an
+   absolute directory outside the repository and under your control.
+   Run `pnpm db:env` before adding these entries; it overwrites the file.
+2. Log the Stripe CLI into that same sandbox. Keep this command running and
+   put its signing secret in `.env.local` as `STRIPE_WEBHOOK_SECRET`. Restart
+   `pnpm dev` after changing the environment.
+
+   ```sh
+   stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,charge.refunded,refund.created,refund.updated,refund.failed,invoice.finalized --forward-to http://localhost:3000/api/webhooks/stripe
+   ```
+
+3. Open `http://localhost:3000/blades/edg-z10`, add 5 blades and check out with
+   a test address in `SW1A 1AA` and an email you control. Use Stripe’s test
+   card `4242 4242 4242 4242`, a future expiry and any three-digit CVC. Confirm
+   **£128.04** on Checkout, the return page and the Stripe paid invoice. If the
+   page is still confirming, check that the CLI shows a 2xx webhook response.
+4. Run the protected workers below. If the invoice is still pending, wait at
+   least two minutes and run the confirmation worker again. Check that the
+   private mail directory has one message containing the order reference,
+   amounts, dispatch date and the Stripe invoice link if it was ready.
+
+   ```sh
+   # Set CRON_SECRET in your shell to the same value configured for Next.
+   curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/stripe-reconciliation
+   curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/order-confirmations
+   ```
+
+### Connect staging and operate the queues
+
+- Apply the Supabase migrations to the isolated staging database. Set the
+  Supabase variables, Stripe sandbox key and staging HTTPS origin on the
+  deployment. In the same Stripe sandbox, add a **snapshot** webhook for
+  `https://<staging-host>/api/webhooks/stripe` at API version
+  `2026-11-18.endive`, selecting the event types from the CLI command above.
+  Set its signing secret as `STRIPE_WEBHOOK_SECRET` and redeploy. If staging
+  uses deployment protection, allow Stripe to reach this endpoint. Validate
+  card and eligible Apple Pay/Google Pay on supported devices; do not use live
+  keys or real buyer details in this build.
+- Schedule both GET paths on the staging host every minute using a scheduler
+  that sends `Authorization: Bearer $CRON_SECRET`. For Vercel Cron, deploy a
+  staging project with staging as its production deployment, a plan that
+  supports one-minute schedules, and set `CRON_SECRET` in its production
+  environment. Add these entries to its deployment config:
+
+  ```json
+  {
+    "crons": [
+      { "path": "/api/cron/stripe-reconciliation", "schedule": "* * * * *" },
+      { "path": "/api/cron/order-confirmations", "schedule": "* * * * *" }
+    ]
+  }
+  ```
+
+- Use `EMAIL_PROVIDER=resend` (the default), `RESEND_API_KEY` from the staging
+  Resend account and a verified `EMAIL_FROM`. Use only controlled test
+  recipients. Keep the account and sender configuration stable while sends
+  are pending. JSON files from the development provider contain buyer details
+  and must not be committed or shared.
+- A Stripe event is acknowledged after durable storage; an application failure
+  remains visible on `provider_events` for the reconciliation job or finance
+  replay. Review `orders.stripe_reconciliation_error` and
+  `payment_review_reason` for holds needing intervention. Never free a hold
+  with an ambiguous provider creation or capture. Use the Stripe order
+  metadata and event history to verify the provider outcome first.
+- The confirmation worker only claims `order_confirmation` rows. It freezes the
+  message before sending and reuses the original provider key on retries. For
+  an ambiguous or expired send, look up the order reference in Resend before
+  attempting any manual delivery; the worker won't resend beyond the safe
+  idempotency window. Don't reset a failed row to force a new send.
+
+Stripe’s line prices are the saved VAT-inclusive totals, with the net and VAT
+shown on each paid invoice line and in the footer. Stripe automatic tax and FX
+are off so Stripe cannot re-round or convert the amount. The staging invoice
+does not certify statutory VAT invoice compliance. Finance must inspect an
+actual sandbox invoice, approve statutory details and validate the VAT and
+shipping setup before any live release.

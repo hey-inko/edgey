@@ -161,7 +161,7 @@ test("checkout validates before payment and retains the same attempt until a mat
     if (token) tokens.push(token);
   });
   await pay.click();
-  const complete = page.getByText("Payment is not connected in this build.");
+  const complete = page.getByText(/Card payment isn’t configured/);
   await expect(complete).toBeVisible();
   await pay.click();
   await expect.poll(() => tokens.length).toBe(2);
@@ -222,7 +222,7 @@ test("a new price must be reviewed and uses a new attempt token", async ({ page 
     });
     const pay = page.getByRole("button", { name: "Continue to payment" });
     await pay.click();
-    const complete = page.getByText("Payment is not connected in this build.");
+    const complete = page.getByText(/Card payment isn’t configured/);
     await expect(complete).toBeVisible();
     const { rows } = await db.query<{ prior: number }>(
       "update public.variants set price_1_4_pence = price_1_4_pence + 10 where sku = $1 returning price_1_4_pence - 10 as prior",
