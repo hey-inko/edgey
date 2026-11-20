@@ -1723,6 +1723,7 @@ export type Database = {
           authorised_at: string | null;
           business_name: string;
           buyer_id: string | null;
+          buyer_invoice_url: string | null;
           buying_for_work: boolean;
           carrier: string | null;
           checkout_attempt_token: string;
@@ -1918,6 +1919,7 @@ export type Database = {
           authorised_at: string | null;
           business_name: string;
           buyer_id: string | null;
+          buyer_invoice_url: string | null;
           buying_for_work: boolean;
           carrier: string | null;
           checkout_attempt_token: string;
@@ -2113,6 +2115,10 @@ export type Database = {
         };
       };
       fold_text: { Args: { input: string }; Returns: string };
+      get_own_buyer_invoice_url: {
+        Args: { p_order_id: string };
+        Returns: string;
+      };
       link_trial_order: {
         Args: {
           p_actor_id: string;
@@ -2320,6 +2326,7 @@ export type Database = {
           authorised_at: string | null;
           business_name: string;
           buyer_id: string | null;
+          buyer_invoice_url: string | null;
           buying_for_work: boolean;
           carrier: string | null;
           checkout_attempt_token: string;
@@ -2528,6 +2535,14 @@ export type Database = {
           variant_id: string;
         }[];
       };
+      set_buyer_invoice_url: {
+        Args: {
+          p_order_id: string;
+          p_provider_invoice_id: string;
+          p_url: string;
+        };
+        Returns: boolean;
+      };
       set_credit_limit: {
         Args: {
           p_actor_id: string;
@@ -2610,14 +2625,6 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
-      };
-      get_own_buyer_invoice_url: {
-        Args: { p_order_id: string };
-        Returns: string;
-      };
-      set_buyer_invoice_url: {
-        Args: { p_order_id: string; p_provider_invoice_id: string; p_url: string };
-        Returns: boolean;
       };
       submit_enquiry: {
         Args: {
