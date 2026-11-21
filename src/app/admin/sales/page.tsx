@@ -200,8 +200,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
               no cost, its product margin and the overall margin are unknown. This is a margin estimate, not inventory valuation.</dd>
           </>}
           <dt>Buyers and stock</dt>
-          <dd>We match signed-in buyers by account and guest buyers by email, not across the two. Buyers with an earlier
-            qualifying order are returning. Available stock excludes reserved units. Weekly sales use booked units divided by
+          <dd>We match signed-in buyers by account and guest buyers by email, not across the two. Buyers with a qualifying
+            order before the chosen period are returning. Available stock excludes reserved units. Weekly sales use booked units divided by
             the length of the selected period in weeks; weeks of cover divides available stock by that rate.
             “Never sold” means no qualifying sale on record for a published blade.</dd>
         </dl>
