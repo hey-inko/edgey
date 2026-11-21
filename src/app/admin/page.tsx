@@ -3,6 +3,7 @@ import { requestsDb } from "@/lib/admin/request-schema";
 import { AdminHeading, AdminLink } from "./ui";
 
 const areas: { roles?: StaffRole[]; title: string; path: string; description: string }[] = [
+  { title: "Sales", path: "sales", description: "Compare sales periods, see which blades sell and check stock cover." },
   { roles: ["warehouse"], title: "Pick and dispatch", path: "warehouse", description: "Pick the right order lines, record dispatch and handle returns." },
   { roles: ["warehouse"], title: "Stock", path: "stock", description: "Receive stock, adjust counts and review the movement ledger." },
   { roles: ["warehouse"], title: "Delivery settings", path: "delivery", description: "Manage postcode coverage, carrier services and working days." },
