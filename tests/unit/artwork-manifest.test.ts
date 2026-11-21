@@ -1,7 +1,10 @@
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { resolveCatalogueMedia, resolveQuotePhoto } from "@/lib/catalogue/media";
 import manifest from "../../docs/artwork-sources.json";
+
+vi.mock("server-only", () => ({}));
 
 type Artwork = {
   sku: string;
@@ -28,6 +31,22 @@ const packMedia = new Map([
   ["EDG-Z50", { drawing: "rotary-line.svg", photo: "rotary.webp", proof: "violet" }],
   ["EDG-SR6223", { drawing: "cylinder-line.svg", photo: "cylinder.webp", proof: "lime" }],
 ]);
+
+it("never borrows a sibling's artwork or displays an uncleared photograph on a published SKU", () => {
+  for (const [family, rows] of skusByFamily) {
+    for (const [, sku] of rows) {
+      const entry = artwork.find((row) => row.sku === sku);
+      if (!entry) continue;
+      for (const media of [familyMedia.get(family), {}]) {
+        const resolved = resolveCatalogueMedia(media, family!, sku!, "published");
+        expect(resolved.drawing).toBe(entry.drawing);
+        expect(resolved.proof).toBe(entry.proof);
+        expect(resolved.photo).toBe(entry.rights === "cleared" ? entry.photo : undefined);
+        expect(resolveQuotePhoto(sku!, entry.photo)).toBe(resolved.photo);
+      }
+    }
+  }
+});
 
 it("covers every non-design-pack variant and keeps public seed metadata free of sibling SKUs", () => {
   expect(skusByFamily.size).toBeGreaterThan(packMedia.size);

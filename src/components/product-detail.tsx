@@ -81,12 +81,13 @@ export function ProductDetail({
             unoptimized
           />
         ) : (
-          <div className="dialog-plate">
-            {media.drawing
-              ? <Image className="h-full w-full object-contain" src={"/line-art/" + media.drawing}
-                  alt={"Line drawing for " + figureCode} width={320} height={176} unoptimized />
-              : <span className="plate-code">{figureCode}</span>}
-          </div>
+          media.drawing ? <figure className="mb-3">
+            <div className="dialog-plate">
+              <Image className="h-full w-full object-contain" src={"/line-art/" + media.drawing}
+                alt={"Line drawing for " + figureCode} width={320} height={176} unoptimized />
+            </div>
+            <figcaption className="fine">Drawing for identification. Not to scale.</figcaption>
+          </figure> : <div className="dialog-plate"><span className="plate-code">{figureCode}</span></div>
         ))}
       <p className="eyebrow">{variant?.sku ?? family.familyCode}</p>
       <Heading id={mode === "dialog" ? "detail-title" : undefined}>{family.name}</Heading>

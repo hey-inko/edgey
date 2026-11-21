@@ -95,7 +95,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
                   ? <Image src={"/photos/" + media.photo} width={627} height={627} alt={"Photograph for " + variant.sku} unoptimized />
                   : <span className="plate-code">{variant.sku}</span>}
               </div>
-              <figcaption className="fine">{!media.photo ? "No photograph available." : media.photo.startsWith("staging/") ? "Reference photograph · private staging only." : "Reference photograph."}</figcaption>
+              <figcaption className="fine">{!media.photo ? "No photograph for display here." : media.photo.startsWith("staging/") ? "Reference photograph · private staging only." : "Reference photograph."}</figcaption>
             </figure>
             {media.drawing && <figure>
               <div className="p-card-image" data-proof={media.proof}>
