@@ -1,15 +1,29 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useTransition } from "react";
 import type { CatalogueFilters } from "@/lib/catalogue";
 
 type Option = { slug: string; name: string };
 
-function filterQuery(filters: CatalogueFilters): string {
+const filterNames = ["q", "type", "machine", "material"] as const;
+
+function filterQuery(read: (name: keyof CatalogueFilters) => string): string {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) if (value.trim()) params.set(key, value.trim());
+  for (const name of filterNames) {
+    const value = read(name).trim();
+    if (value) params.set(name, value);
+  }
   return params.toString();
+}
+
+function writeFilters(form: HTMLFormElement | null, filters?: CatalogueFilters) {
+  for (const name of filterNames) {
+    const control = form?.elements.namedItem(name);
+    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) {
+      control.value = filters?.[name] ?? "";
+    }
+  }
 }
 
 // Search and filters. State lives in the address (?q=&type=&machine=&material=)
@@ -25,35 +39,37 @@ export function CatalogueControls({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [values, setValues] = useState(filters);
-  const [requested, setRequested] = useState<string[]>([]);
+  const form = useRef<HTMLFormElement>(null);
+  const requested = useRef<string[]>([]);
   const [isPending, startTransition] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const received = filterQuery(filters);
-  const [rendered, setRendered] = useState(received);
-  if (received !== rendered) {
-    setRendered(received);
-    const index = requested.indexOf(received);
-    if (index === -1) setValues(filters);
-    setRequested(index === -1 ? [] : requested.slice(index + 1));
-  }
+  const received = filterQuery((name) => filters[name]);
+  const rendered = useRef(received);
+  useLayoutEffect(() => {
+    if (received === rendered.current) return;
+    rendered.current = received;
+    const index = requested.current.indexOf(received);
+    requested.current = index === -1 ? [] : requested.current.slice(index + 1);
+    if (index === -1) writeFilters(form.current, filters);
+  }, [filters, received]);
 
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [pathname]);
 
-  function push(next: CatalogueFilters, delay: number) {
-    setValues(next);
+  function push(element: HTMLFormElement, delay: number) {
     if (timer.current) clearTimeout(timer.current);
+    const data = new FormData(element);
+    const query = filterQuery((name) => String(data.get(name) ?? ""));
     timer.current = setTimeout(() => {
       timer.current = null;
-      const query = filterQuery(next);
-      setRequested((pending) => [...pending.filter((prior) => prior !== query).slice(-7), query]);
+      requested.current = [...requested.current.filter((prior) => prior !== query).slice(-7), query];
       startTransition(() => router.replace(pathname + (query ? "?" + query : ""), { scroll: false }));
     }, delay);
   }
 
   return (
     <form
+      ref={form}
       className="controls"
       id="catalogue-controls"
       role="search"
@@ -64,13 +80,14 @@ export function CatalogueControls({
         event.preventDefault();
         if (timer.current) clearTimeout(timer.current);
         timer.current = null;
-        setRequested([]);
-        setValues({ q: "", type: "", machine: "", material: "" });
+        requested.current = [];
+        writeFilters(event.currentTarget);
       }}
       onSubmit={(event) => {
         event.preventDefault();
-        push(values, 0);
+        push(event.currentTarget, 0);
       }}
+      onChange={(event) => push(event.currentTarget, event.target === event.currentTarget.elements.namedItem("q") ? 160 : 0)}
     >
       <label className="search-field">
         <span className="search-icon" aria-hidden="true" />
@@ -82,14 +99,13 @@ export function CatalogueControls({
           placeholder="Search blades"
           autoComplete="off"
           maxLength={80}
-          value={values.q}
-          onChange={(event) => push({ ...values, q: event.target.value }, 160)}
+          defaultValue={filters.q}
         />
         <kbd aria-hidden="true">/</kbd>
       </label>
       <label className="select-field">
         <span className="sr">Tool type</span>
-        <select name="type" value={values.type} onChange={(event) => push({ ...values, type: event.target.value }, 0)}>
+        <select name="type" defaultValue={filters.type}>
           <option value="">All tool types</option>
           {toolTypes.map((option) => (
             <option key={option.slug} value={option.slug}>
@@ -100,7 +116,7 @@ export function CatalogueControls({
       </label>
       <label className="select-field">
         <span className="sr">Machine</span>
-        <select name="machine" value={values.machine} onChange={(event) => push({ ...values, machine: event.target.value }, 0)}>
+        <select name="machine" defaultValue={filters.machine}>
           <option value="">All machines</option>
           {machines.map((option) => (
             <option key={option.slug} value={option.slug}>
@@ -109,7 +125,7 @@ export function CatalogueControls({
           ))}
         </select>
       </label>
-      {values.material && <input type="hidden" name="material" value={values.material} />}
+      {filters.material && <input type="hidden" name="material" defaultValue={filters.material} />}
       <noscript>
         <button className="secondary" type="submit">
           Search

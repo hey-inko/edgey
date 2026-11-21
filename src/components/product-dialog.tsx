@@ -24,6 +24,7 @@ export function ProductDialog({ children }: { children: ReactNode }) {
   return (
     <dialog
       ref={dialog}
+      className="product-dialog"
       aria-labelledby="detail-title"
       onPointerDown={(event) => {
         backdropDown.current = event.target === event.currentTarget;
@@ -35,10 +36,12 @@ export function ProductDialog({ children }: { children: ReactNode }) {
       onClose={() => router.back()}
     >
       <div className="dialog-wrap">
-        <button className="x-close" aria-label="Close blade details" type="button" onClick={() => dialog.current?.close()}>
-          ×
-        </button>
-        {children}
+        <div className="dialog-heading">
+          <button className="x-close" aria-label="Close blade details" type="button" onClick={() => dialog.current?.close()}>
+            ×
+          </button>
+        </div>
+        <div className="dialog-scroll" role="region" aria-label="Blade specifications and options" tabIndex={0}>{children}</div>
       </div>
     </dialog>
   );

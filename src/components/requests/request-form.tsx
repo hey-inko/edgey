@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { initialRequestFormState, requestTrapField, type RequestFormState } from "@/lib/requests/forms";
 import styles from "./request.module.css";
 
@@ -36,7 +36,6 @@ export function RequestForm({
 }) {
   const [state, formAction, pending] = useActionState(action, initialRequestFormState);
   const [attempt] = useState(attemptId);
-  const [values, setValues] = useState(() => Object.fromEntries(fields.map((field) => [field.name, field.initialValue ?? ""])));
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const hasError = state.status === "error";
@@ -78,7 +77,7 @@ export function RequestForm({
         )}
       </div>
       {(!succeeded || keepFormOnSuccess) && (
-        <form action={formAction} noValidate className={styles.form}>
+        <form action={formAction} onReset={(event) => event.preventDefault()} noValidate className={styles.form}>
           {attempt && <input type="hidden" name="attemptId" value={attempt} />}
           <input name={requestTrapField} type="text" className={styles.trap} aria-hidden="true" tabIndex={-1} autoComplete="off" />
           {fields.map((field) => {
@@ -92,11 +91,7 @@ export function RequestForm({
               id: fieldId,
               name: field.name,
               required: field.required,
-              value: values[field.name],
-              onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-                const value = event.currentTarget.value;
-                setValues((current) => ({ ...current, [field.name]: value }));
-              },
+              defaultValue: field.initialValue ?? "",
               "aria-describedby": description || undefined,
               "aria-invalid": error ? true : undefined,
             };

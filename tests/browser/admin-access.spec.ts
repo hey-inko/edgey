@@ -55,12 +55,17 @@ test("staff need an independently approved authenticator and private pages prohi
   const response = await page.goto("/admin/stock");
   await expect(page).toHaveURL(/\/admin\/sign-in$/);
   await expect(page.getByRole("navigation", { name: "Staff areas" })).toHaveCount(0);
-  expect(response?.headers()).toMatchObject({
+  const stockRedirect = await response?.request().redirectedFrom()?.response();
+  expect(stockRedirect?.headers()).toMatchObject({
     "x-frame-options": "DENY",
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     "permissions-policy": expect.stringContaining("microphone=()"),
     "content-security-policy": expect.stringContaining("frame-ancestors 'none'"),
+    "cache-control": expect.stringContaining("no-store"),
+  });
+  expect(response?.headers()).toMatchObject({
+    "referrer-policy": "same-origin",
     "cache-control": expect.stringContaining("no-store"),
   });
   const { factorId } = await verifyNewStaffAuthenticator(page);

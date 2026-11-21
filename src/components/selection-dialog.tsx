@@ -88,6 +88,7 @@ export function SelectionDialog() {
   const { lines, opened, close, replace, setQuantity } = useSelection();
   const pathname = usePathname();
   const dialog = useRef<HTMLDialogElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const opener = useRef<HTMLElement | undefined>(undefined);
   const backdropDown = useRef(false);
@@ -104,6 +105,7 @@ export function SelectionDialog() {
     if (!opened || !dialog.current || dialog.current.open) return;
     opener.current = opened.from;
     dialog.current.showModal();
+    if (content.current) content.current.scrollTop = 0;
   }, [opened]);
 
   function changeDraft(id: string, value?: string) {
@@ -143,67 +145,73 @@ export function SelectionDialog() {
       }}
     >
       <div className="dialog-wrap">
-        <button type="button" className="x-close" aria-label="Close selection" onClick={() => dialog.current?.close()}>×</button>
-        <h2 id="selection-title">Your selection</h2>
-        {!lines.length && <p className="tray-empty">Your selection is empty. Choose a blade from the catalogue to compare quantities and prices.</p>}
-        <div role="status">
-          {pending && <p className="fine">Checking current prices and availability…</p>}
-          {hasDraft && <p className="fine">Use Update to apply quantity changes before continuing.</p>}
-          {quote?.status === "error" && <p className="fine">{quote.message}</p>}
-          {corrections.length > 0 && (
-            <div className="selection-notice">
-              <p>Review the changes to your selection before continuing.</p>
-              <ul>{corrections.map((message, index) => <li key={index}>{message}</li>)}</ul>
+        <div className="dialog-heading">
+          <button type="button" className="x-close" aria-label="Close selection" onClick={() => dialog.current?.close()}>×</button>
+          <h2 id="selection-title">Your selection</h2>
+        </div>
+        <div ref={content} className="dialog-scroll" role="region" aria-label="Selection details" tabIndex={0}>
+          {!lines.length && <p className="tray-empty">Your selection is empty. Choose a blade from the catalogue to compare quantities and prices.</p>}
+          <div role="status">
+            {pending && <p className="fine">Checking current prices and availability…</p>}
+            {hasDraft && <p className="fine">Use Update to apply quantity changes before continuing.</p>}
+            {quote?.status === "error" && <p className="fine">{quote.message}</p>}
+            {corrections.length > 0 && (
+              <div className="selection-notice">
+                <p>Review the changes to your selection before continuing.</p>
+                <ul>{corrections.map((message, index) => <li key={index}>{message}</li>)}</ul>
+              </div>
+            )}
+          </div>
+          {quote?.status === "error" && (
+            <div className="tray-recovery">
+              <button type="button" className="secondary tray-action" onClick={retry}>Retry prices</button>
+              <button type="button" className="textlink" onClick={() => {
+                browsing.current?.focus();
+                replace([]);
+              }}>Clear selection</button>
             </div>
           )}
+          {priced && basket && (
+            <>
+              <ul className="selection-lines">
+                {basket.lines.map((line) => {
+                  const original = lines.find(({ variantId }) => variantId === line.variantId);
+                  if (!original) return null;
+                  return (
+                    <SelectionItem key={line.variantId} line={line}
+                      value={drafts[line.variantId] ?? String(priced.corrections.length ? line.quantity : original.quantity)}
+                      vatRate={basket.vatRateBasisPoints / 100} photo={priced.photos?.[line.variantId]} remove={remove}
+                      onChange={(value) => changeDraft(line.variantId, value)}
+                      onUpdate={(quantity) => {
+                        changeDraft(line.variantId);
+                        setQuantity(line.variantId, quantity);
+                      }} />
+                  );
+                })}
+              </ul>
+              <SelectionTotals quote={priced} />
+              <DispatchEstimate quote={priced} />
+            </>
+          )}
         </div>
-        {quote?.status === "error" && (
-          <div className="tray-recovery">
-            <button type="button" className="secondary tray-action" onClick={retry}>Retry prices</button>
-            <button type="button" className="textlink" onClick={() => {
+        <div className="dialog-actions">
+          {corrections.length > 0 && current ? (
+            <button type="button" className="primary full tray-action" onClick={() => {
               browsing.current?.focus();
-              replace([]);
-            }}>Clear selection</button>
-          </div>
-        )}
-        {priced && basket && (
-          <>
-            <ul className="selection-lines">
-              {basket.lines.map((line) => {
-                const original = lines.find(({ variantId }) => variantId === line.variantId);
-                if (!original) return null;
-                return (
-                  <SelectionItem key={line.variantId} line={line}
-                    value={drafts[line.variantId] ?? String(priced.corrections.length ? line.quantity : original.quantity)}
-                    vatRate={basket.vatRateBasisPoints / 100} photo={priced.photos?.[line.variantId]} remove={remove}
-                    onChange={(value) => changeDraft(line.variantId, value)}
-                    onUpdate={(quantity) => {
-                      changeDraft(line.variantId);
-                      setQuantity(line.variantId, quantity);
-                    }} />
-                );
-              })}
-            </ul>
-            <SelectionTotals quote={priced} />
-            <DispatchEstimate quote={priced} />
-          </>
-        )}
-        {corrections.length > 0 && current ? (
-          <button type="button" className="primary full tray-action" onClick={() => {
-            browsing.current?.focus();
-            setDrafts({});
-            replace(current.lines);
-          }}>
-            Accept changes
+              setDrafts({});
+              replace(current.lines);
+            }}>
+              Accept changes
+            </button>
+          ) : current?.basket && pathname !== "/checkout" && (
+            hasDraft
+              ? <button type="button" className="primary full tray-action" disabled>Go to checkout</button>
+              : <Link href="/checkout" className="primary full tray-action" onClick={() => dialog.current?.close()}>Go to checkout</Link>
+          )}
+          <button type="button" ref={browsing} className="secondary tray-action" onClick={() => dialog.current?.close()}>
+            {pathname === "/checkout" ? "Return to checkout" : "Continue browsing"}
           </button>
-        ) : current?.basket && pathname !== "/checkout" && (
-          hasDraft
-            ? <button type="button" className="primary full tray-action" disabled>Go to checkout</button>
-            : <Link href="/checkout" className="primary full tray-action" onClick={() => dialog.current?.close()}>Go to checkout</Link>
-        )}
-        <button type="button" ref={browsing} className="secondary tray-action" onClick={() => dialog.current?.close()}>
-          {pathname === "/checkout" ? "Return to checkout" : "Continue browsing"}
-        </button>
+        </div>
       </div>
     </dialog>
   );
