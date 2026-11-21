@@ -75,6 +75,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await db.query("delete from private.variant_price_changes where variant_id in (select id from public.variants where product_id = $1)", [family.id]);
   await db.query("delete from public.variants where product_id = $1", [family.id]);
   await db.query("delete from public.products where id = $1", [family.id]);
   await db.query("delete from auth.users where id = any($1::uuid[])", [users]);
@@ -96,6 +97,26 @@ function selling(overrides: Record<string, unknown> = {}) {
     price_1_4_pence: 1200, price_5_9_pence: 1000, price_10_plus_pence: 900, ...overrides,
   };
 }
+
+test("successful tier changes record both sets of prices and the catalogue actor once", async () => {
+  const service = await connect("service_role");
+  try {
+    await save(service, { price_1_4_pence: 1325 });
+    await save(service, { price_1_4_pence: 1325 });
+    await expect(save(service, { price_1_4_pence: 825 })).rejects.toMatchObject({ message: "catalogue_invalid_selling_data" });
+    const { rows } = await db.query(`
+      select actor_id, old_tiers_pence, new_tiers_pence, recorded_at
+      from private.variant_price_changes where variant_id = $1 order by id
+    `, [variant.id]);
+    expect(rows).toEqual([
+      { actor_id: null, old_tiers_pence: null, new_tiers_pence: [1200, 1000, 900], recorded_at: expect.any(Date) },
+      { actor_id: actor, old_tiers_pence: [1200, 1000, 900], new_tiers_pence: [1325, 1000, 900], recorded_at: expect.any(Date) },
+    ]);
+    await expect(service.query("select * from private.variant_price_changes")).rejects.toMatchObject({ code: "42501" });
+  } finally {
+    await service.end();
+  }
+});
 
 async function save(client: Client, patch: Record<string, unknown>, variantVersion?: string) {
   return client.query("select public.admin_catalogue_update($1, $2, $3, $4, $5)", [
