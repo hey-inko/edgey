@@ -28,7 +28,7 @@ export async function readCheckoutSuccess(sessionId: string): Promise<CheckoutSu
   if (!checkoutSessionId.test(sessionId)) return null;
   const db = paymentStore();
   const { data: order, error } = await db.from("orders").select(
-    "id,payment_method,checkout_session_id,hold_expires_at,payment_review_reason,authorised_at,stripe_reconciliation_error,fulfilment_status,order_reference,delivery_service,promised_dispatch_date,estimated_delivery_date,vat_rate_bps,goods_net_pence,delivery_net_pence,vat_pence,gross_pence",
+    "id,payment_method,checkout_session_id,hold_expires_at,payment_review_reason,authorised_at,stripe_reconciliation_error,fulfilment_status,order_reference,delivery_service,promised_dispatch_date,estimated_delivery_date,vat_rate_bps,goods_net_pence,delivery_net_pence,vat_pence,gross_pence,paid_pence,payment_status",
   )
     .eq("checkout_session_id", sessionId).maybeSingle();
   if (error) throw error;
