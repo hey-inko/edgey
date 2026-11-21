@@ -96,6 +96,7 @@ test("finance queues failed Stripe events and confirmations for the scheduled wo
     await event.getByRole("button", { name: "Reprocess event" }).click();
     await expect(event).toContainText("Retry queued.");
     await message.getByRole("button", { name: "Resend confirmation" }).click();
+    await expect(message).toContainText("Retry queued.");
     await page.reload();
     await expect(message).toContainText("Retry queued.");
     await expect(event).toContainText("Fixture needs replay");
