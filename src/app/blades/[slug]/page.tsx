@@ -136,9 +136,9 @@ function VariantSpecification({ family, variant }: { family: Family; variant: Va
         ))}
       </dl>
       {variant.compatibility.length > 0 && (
-        <div className="table-scroll mb-[26px]">
+        <div className="table-scroll mb-[26px]" role="region" tabIndex={0} aria-labelledby={variant.id + "-references"}>
           <table className="data-table">
-            <caption>Verified references for {variant.sku}</caption>
+            <caption id={variant.id + "-references"}>Verified references for {variant.sku}</caption>
             <thead>
               <tr>
                 <th scope="col">Code</th>

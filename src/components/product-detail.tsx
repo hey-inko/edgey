@@ -202,9 +202,9 @@ export function ProductDetail({
       )}
 
       {variant && gross && (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" tabIndex={0} aria-labelledby={id + "-price-breaks"}>
           <table className="data-table breaks">
-            <caption>Price breaks per blade for {variant.sku}</caption>
+            <caption id={id + "-price-breaks"}>Price breaks per blade for {variant.sku}</caption>
             <thead>
               <tr>
                 <th scope="col">Quantity</th>

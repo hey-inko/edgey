@@ -17,13 +17,13 @@ export function SelectionTrigger() {
       type="button"
       id="selection-trigger"
       className="tray-trigger"
-      aria-label={`Open selection, ${count} ${count === 1 ? "blade" : "blades"}`}
+      aria-label={`Selection ${count.toLocaleString("en-GB")} ${count === 1 ? "blade" : "blades"}`}
       aria-haspopup="dialog"
       disabled={!hydrated}
       onClick={(event) => open(event.currentTarget)}
     >
       <span className="case-icon" aria-hidden="true" />
-      <span className="tray-label">Selection</span>
+      <span className="tray-label">Selection</span>{" "}
       <span className="tray-count" aria-hidden="true">{count.toLocaleString("en-GB")}</span>
     </button>
   );

@@ -17,7 +17,7 @@ export function buildTokensCss() {
   const shared = [
     ["font-sans", stack(type.sans)],
     ["font-mono", stack(type.mono)],
-    ["body-size", type.body.fontSize],
+    ["body-size", Number(type.body.fontSize.replace(/px$/, "")) / 16 + "rem"],
     ["body-leading", type.body.lineHeight],
     ["h1-size", type.h1.fontSize],
     ["h1-compact-size", type.h1.compactSize],

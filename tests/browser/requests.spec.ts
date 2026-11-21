@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { Client } from "pg";
 import { requestTrapField } from "../../src/lib/requests/forms";
+import { scanBothThemes } from "../helpers/accessibility";
 
 test.use({ trace: "off" });
 
@@ -70,6 +71,7 @@ test("carries an unmatched code into a keyboard-accessible compatibility enquiry
   await send.press("Enter");
   await expect(page.getByRole("heading", { name: "Enquiry received" })).toBeFocused();
   await expect(page.getByRole("status")).toContainText("reply by email");
+  await scanBothThemes(page);
 });
 
 test("carries an unsupported delivery postcode and validates its enquiry", async ({ page }) => {
@@ -99,6 +101,7 @@ test("requests a trial with exactly five fields and no delivery promise", async 
   await submit.press("Enter");
   await expect(brand).toHaveAccessibleDescription("Choose a machine brand.");
   await expect(form.getByRole("textbox", { name: "OEM code" })).toHaveAccessibleDescription(/type “unknown”/);
+  await scanBothThemes(page);
   await brand.selectOption({ label: "iEcho" });
   await form.getByRole("textbox", { name: "OEM code" }).fill("unknown");
   await form.getByRole("textbox", { name: "Work email" }).fill(emailFor("trial"));
@@ -107,6 +110,7 @@ test("requests a trial with exactly five fields and no delivery promise", async 
   await submit.press("Enter");
   await expect(page.getByRole("heading", { name: "Trial request received" })).toBeFocused();
   await expect(page.getByRole("status")).toContainText("No delivery has been arranged");
+  await scanBothThemes(page);
 });
 
 test("records exact, suggested and unmatched searches without retaining private text", async ({ page }) => {
@@ -153,6 +157,7 @@ test("requires email verification and remembers an application as pending", asyn
     await address.fill(email);
     await send.press("Enter");
     await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+    await scanBothThemes(page);
     const link = await openSignInLink(page, email);
 
     await expect(page).toHaveURL(/\/trade$/);
@@ -163,6 +168,7 @@ test("requires email verification and remembers an application as pending", asyn
       await replay.goto(link.href);
       await expect(replay.getByRole("heading", { name: "We couldn’t verify the sign-in link" })).toBeVisible();
       await expect(replay.getByRole("textbox", { name: "Buyer name" })).toHaveCount(0);
+      await scanBothThemes(replay);
     } finally {
       await isolatedContext.close();
     }
@@ -171,6 +177,7 @@ test("requires email verification and remembers an application as pending", asyn
     await submit.press("Enter");
     await expect(page.getByRole("heading", { name: "Check the form" })).toBeFocused();
     await expect(buyer).toHaveAccessibleDescription("Enter the buyer’s full name.");
+    await scanBothThemes(page);
     await buyer.fill("Test Buyer");
     await page.getByRole("textbox", { name: "Company" }).fill("Proof Room");
     await page.getByRole("textbox", { name: "Billing address line 1" }).fill("1 Print Lane");
@@ -181,6 +188,7 @@ test("requires email verification and remembers an application as pending", asyn
     await expect(page.getByRole("status")).toContainText("pending");
     await page.reload();
     await expect(page.getByRole("heading", { name: "Application pending" })).toBeVisible();
+    await scanBothThemes(page);
     await page.getByRole("button", { name: "Sign out" }).press("Enter");
     await expect(page.getByRole("textbox", { name: "Work email" })).toBeVisible();
 });

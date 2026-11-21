@@ -5,6 +5,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { createServerClient } from "@supabase/ssr";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
 import { connectAccountDb } from "../helpers/account-fixture";
+import { scanBothThemes } from "../helpers/accessibility";
+import { signInStaff } from "./admin-fixtures";
 
 test.use({ trace: "off" });
 
@@ -154,6 +156,17 @@ test("Net 30 confirmation and the trade panel read only the verified buyer's ord
     await page.goto("/account");
     await expect(page.getByText("No trade application submitted.")).toBeVisible();
     await expect(page.getByText(fixture.issued)).toHaveCount(0);
+    await scanBothThemes(page);
+    const staff = await browser.newContext({ baseURL: new URL(page.url()).origin });
+    try {
+      const finance = await staff.newPage();
+      await signInStaff(finance, fixture.other);
+      await finance.goto(`/admin/finance/accounts/${fixture.tradeId}`);
+      await expect(finance.getByRole("heading", { level: 1, name: "Estuary Print Studio" })).toBeVisible();
+      await scanBothThemes(finance);
+    } finally {
+      await staff.close();
+    }
 
     const owner = await browser.newContext({ baseURL: new URL(page.url()).origin });
     try {
@@ -173,15 +186,18 @@ test("Net 30 confirmation and the trade panel read only the verified buyer's ord
           await capture(ownPage, "trade-panel", theme, width, height);
         }
       }
+      await scanBothThemes(ownPage);
       await trade.getByRole("link", { name: `View order for PO ${reference}` }).click();
       await expect(ownPage.getByText(reference, { exact: true })).toBeVisible();
       await expect(ownPage.getByRole("link", { name: "View invoice" })).toHaveAttribute("href", fixture.hostedInvoice);
+      await scanBothThemes(ownPage);
 
       await ownPage.goto(confirmation(fixture.issued));
       await expect(ownPage.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
       await expect(ownPage.getByText("Total invoiced inc VAT")).toBeVisible();
       await expect(ownPage.getByText("Total paid inc VAT")).toHaveCount(0);
       await expect(ownPage.getByText(reference, { exact: true })).toBeVisible();
+      await scanBothThemes(ownPage);
       for (const theme of ["dark", "light"] as const) {
         for (const [width, height] of viewports) {
           await capture(ownPage, "net30-confirmed", theme, width, height);
@@ -190,6 +206,7 @@ test("Net 30 confirmation and the trade panel read only the verified buyer's ord
       await ownPage.goto(confirmation(fixture.pending));
       await expect(ownPage.getByRole("heading", { name: "Confirming your invoice" })).toBeVisible();
       await expect(ownPage.getByRole("region", { name: "Order summary" })).toHaveCount(0);
+      await scanBothThemes(ownPage);
       if (renders) {
         await capture(ownPage, "net30-confirming", "dark", 320, 640);
         await capture(ownPage, "net30-confirming", "light", 390, 844);
@@ -201,11 +218,13 @@ test("Net 30 confirmation and the trade panel read only the verified buyer's ord
       await expect(ownPage.getByText("Partially paid", { exact: true })).toBeVisible();
       await expect(ownPage.getByText("Dispatch date")).toHaveCount(0);
       await expect(ownPage.getByRole("link", { name: "View invoice" })).toHaveCount(0);
+      await scanBothThemes(ownPage);
       await fixture.db.query("update public.orders set authorised_at = null where id = $1", [fixture.issued]);
       await ownPage.reload();
       await expect(ownPage.getByRole("heading", { name: "Your account order is under review" })).toBeVisible();
       await expect(ownPage.getByText(/Please don’t pay the invoice or place the order again/)).toBeVisible();
       await expect(ownPage.getByRole("link", { name: "View invoice" })).toHaveCount(0);
+      await scanBothThemes(ownPage);
     } finally {
       await owner.close();
     }
@@ -227,6 +246,7 @@ test("the launch flag gates Net 30 and credit reasons leave card available", asy
     }
     await expect(payOnAccount(page)).toBeDisabled();
     await expect(page.getByText("Your trade account isn’t approved for Net 30.")).toBeVisible();
+    await scanBothThemes(page);
 
     await signIn(page, fixture.buyer);
     await page.reload();
@@ -245,6 +265,7 @@ test("the launch flag gates Net 30 and credit reasons leave card available", asy
     await expect(payOnAccount(page)).toBeDisabled();
     await expect(page.getByText("This order exceeds your available credit.")).toBeVisible();
     await expect(submitByCard(page)).toBeEnabled();
+    await scanBothThemes(page);
 
     await fixture.db.query("update public.trade_accounts set status = 'suspended' where id = $1", [fixture.tradeId]);
     await page.reload();
@@ -258,6 +279,7 @@ test("the launch flag gates Net 30 and credit reasons leave card available", asy
     await payOnAccount(page).check();
     await expect(page.getByRole("region", { name: "Order summary" })).toContainText("Dates are provisional until your invoice is issued.");
     await poField(page).fill(pendingReference);
+    await scanBothThemes(page);
     await page.route("**/api/checkout/net30", (route) => route.fulfill({
       status: 409, json: { status: "trade-unavailable", reason: "over-limit" },
     }));
@@ -372,17 +394,17 @@ test("a confirming Net 30 order clears only the submitted selection after author
     await page.getByRole("button", { name: "Place order on account" }).click();
     await expect(page).toHaveURL(confirmation(fixture.pending));
     await expect(page.getByRole("heading", { name: "Confirming your invoice" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open selection, 5 blades" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Selection 5 blades" })).toBeVisible();
     await fixture.issue(fixture.pending, pendingReference, 12804);
     await page.getByRole("button", { name: "Check invoice status" }).click();
     await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open selection, 0 blades" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Selection 0 blades" })).toBeVisible();
     await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), attemptKey)).toBeNull();
 
     await checkout(page, fixture.variantId);
     await page.goto(confirmation(fixture.issued));
     await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open selection, 5 blades" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Selection 5 blades" })).toBeVisible();
   } finally {
     await fixture.clean();
   }

@@ -6,6 +6,7 @@ import { createLocalAdminUser } from "../../scripts/seed-admin";
 import type { Database } from "../../src/lib/supabase/database.types";
 import { signInStaff } from "../browser/admin-fixtures";
 import { createAccountCatalogue, createAccountOrder } from "../helpers/account-fixture";
+import { scanBothThemes } from "../helpers/accessibility";
 import {
   addBlade, capture, checkoutPayload, chooseBlade, confirmation, database, dispatchAt, drainEmails,
   dropNextCreateResponse, email, messagesTo,
@@ -37,7 +38,7 @@ test("Exact, ambiguous and unknown searches", async ({ page }) => {
   for (const query of ["edg z10", "eDG-Z10", " 3910-301 "]) {
     await page.goto("/?q=" + encodeURIComponent(query));
     const results = page.locator(".cards").getByRole("link");
-    await expect(results.first()).toHaveAccessibleName("EDG-Z10 Flat-stock drag blade");
+    await expect(results.first()).toHaveAccessibleName(/Exact match.*EDG-Z10 Flat-stock drag blade.*£22.50 ex VAT/);
     await expect(results.first()).toContainText("Exact match");
     await results.first().click();
     const dialog = page.getByRole("dialog", { name: "Flat-stock drag blade" });
@@ -185,10 +186,12 @@ test("Guest purchase", async ({ page, db, request }) => {
   expect(params.get("payment_intent_data[shipping][address][postal_code]")).toBe("SW1A 1AA");
   await page.goto(session.success_url.replace("{CHECKOUT_SESSION_ID}", session.id));
   await expect(page.getByRole("heading", { name: "Confirming payment" })).toBeVisible();
+  await scanBothThemes(page);
   const invoice = await capture(session.id);
   await event(request, "checkout.session.completed", session.id);
   await drainEmails(request);
   await visitSuccess(page, session);
+  await scanBothThemes(page);
   const reference = await receiptReference(page);
   expect(reference).toMatch(/^EDG-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{5}$/);
   expect(reference).not.toBe(session.client_reference_id);
@@ -321,6 +324,7 @@ test("Isolation and trials", async ({ db, page, browser, request }) => {
   await expect(page.getByRole("table", { name: "Trial blade units" })).toContainText("EDG-Z1");
   expect(await balance()).toEqual(stock);
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL("/admin/sign-in");
   await signInStaff(page, warehouse);
   await page.goto(trialPath);
   await expect(page.getByRole("button", { name: "Record dispatch" })).toHaveCount(0);

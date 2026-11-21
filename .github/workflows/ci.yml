@@ -47,6 +47,12 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: axe-manual-review
+          path: test-results/**/axe-manual-review-*.json
+          if-no-files-found: ignore
       - run: pnpm test:acceptance
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -10,7 +10,7 @@ function ReviewFields() {
     <>
       <AdminField label="Review decision">
         <select name="operation" required defaultValue="">
-          <option value="" disabled>Choose a decision</option>
+          <option value="" disabled>Select</option>
           <option value="approve">Approve</option>
           <option value="reject">Reject</option>
         </select>
@@ -110,11 +110,17 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
           <AdminField label="Extra specifications (one “Label: value” per line)">
             <textarea name="specs" rows={4} maxLength={4000} defaultValue={specs} />
           </AdminField>
-          <AdminField label="Verified materials (select all that apply)">
-            <select name="substrates" multiple size={6} defaultValue={[...selectedSubstrates]}>
-              {substrates.map(({ slug, name }) => <option key={slug} value={slug}>{name}</option>)}
-            </select>
-          </AdminField>
+          <fieldset className="admin-panel min-w-0">
+            <legend>Verified materials</legend>
+            <div className="admin-grid">
+              {substrates.map(({ slug, name }) => (
+                <label key={slug} className="admin-check">
+                  <input type="checkbox" name="substrates" value={slug} defaultChecked={selectedSubstrates.has(slug)} />
+                  <span>{name}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <p>Enter the price per blade in pence, excluding VAT.</p>
           <div className="admin-grid">
             <AdminField label="1–4 blades (pence)"><input type="number" name="price_1_4_pence" defaultValue={variant.price_1_4_pence} min={1} max={2147483647} required /></AdminField>
