@@ -16,13 +16,21 @@ export const metadata: Metadata = {
     "Edgey’s digital cutting room. Explore replacement blades for print, packaging and display by tool type, material or part number.",
 };
 
-const themeScript = `try{if(localStorage.getItem('edgey-theme')==='light')document.documentElement.dataset.theme='light';}catch{}`;
+const themeScript = `{
+  let theme = ${JSON.stringify(tokens.defaultState.theme)};
+  try { if (localStorage.getItem('edgey-theme') === 'light') theme = 'light'; } catch {}
+  document.documentElement.dataset.theme = theme;
+  const color = document.createElement('meta');
+  color.name = 'theme-color';
+  color.content = theme === 'light' ? ${JSON.stringify(tokens.themes.light.page)} : ${JSON.stringify(tokens.themes.dark.page)};
+  document.head.append(color);
+}`;
 
 export default function RootLayout({ children, modal }: { children: ReactNode; modal: ReactNode }) {
   return (
     <html lang="en-GB" data-theme={tokens.defaultState.theme} suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content={tokens.themes.dark.page} />
+        <noscript dangerouslySetInnerHTML={{ __html: `<meta name="theme-color" content="${tokens.themes.dark.page}">` }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body id="top">

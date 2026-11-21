@@ -19,7 +19,7 @@ const viewports = [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, {
 const themes = ["dark", "light"] as const;
 const orderPath = (id: string) => `/account/orders/${id}`;
 const isAccount = (url: URL) => url.pathname === "/account";
-const orderLink = (page: Page, id: string) => page.getByRole("link", { name: `View order ${id}`, exact: true });
+const orderLink = (page: Page, reference: string) => page.getByRole("link", { name: `View order ${reference}`, exact: true });
 const signInHeading = (page: Page) => page.getByRole("heading", { name: "Sign in to your account", level: 1 });
 const accountHeading = (page: Page) => page.getByRole("heading", { name: "Your account", level: 1 });
 const emailField = (page: Page) => page.getByRole("textbox", { name: "Email address", exact: true });
@@ -175,18 +175,18 @@ test("verified buyers can read and reorder their history without exposing foreig
     });
     await page.reload();
 
-    await test.step("List only this buyer’s orders, newest first with full references", async () => {
+    await test.step("List only this buyer’s orders, newest first with readable references", async () => {
       const orders = page.getByRole("region", { name: "Orders", exact: true });
-      const ids = [dispatched.id, pending.id, refunded.id];
+      const ownOrders = [dispatched, pending, refunded];
       const displayed = orders.getByRole("link", { name: /^View order / });
-      await expect(displayed).toHaveText(ids);
-      for (const [index, id] of ids.entries()) await expect(displayed.nth(index)).toHaveAttribute("href", orderPath(id));
+      await expect(displayed).toHaveText(ownOrders.map((order) => order.reference));
+      for (const [index, { id }] of ownOrders.entries()) await expect(displayed.nth(index)).toHaveAttribute("href", orderPath(id));
       const rows = orders.getByRole("listitem");
       const statuses = [["Paid", "Dispatched"], ["Payment pending", "Awaiting confirmation"], ["Refunded", "Cancelled"]];
       for (const [index, terms] of statuses.entries()) {
         for (const term of terms) await expect(rows.nth(index).getByText(term, { exact: true })).toBeVisible();
       }
-      for (const id of [foreign.id, guest.id]) await expect(orderLink(page, id)).toHaveCount(0);
+      for (const order of [foreign, guest]) await expect(orderLink(page, order.reference)).toHaveCount(0);
     });
 
     await test.step("Show the application decision without implying that approval grants credit", async () => {
@@ -210,9 +210,9 @@ test("verified buyers can read and reorder their history without exposing foreig
     });
 
     await test.step("Show the historical items, dispatch, tracking and invoice only where applicable", async () => {
-      await orderLink(page, dispatched.id).click();
+      await orderLink(page, dispatched.reference).click();
       await expect(page).toHaveURL(orderPath(dispatched.id));
-      await expect(page.getByText(dispatched.id, { exact: true })).toBeVisible();
+      await expect(page.getByText(dispatched.reference, { exact: true })).toBeVisible();
       const items = page.getByRole("region", { name: "Order items", exact: true });
       await expect(items.getByRole("heading", { name: "Order items", exact: true })).toBeVisible();
       await expect(items.getByRole("listitem").filter({ hasText: catalogue.available.sku })).toContainText("£21.00");
@@ -237,7 +237,7 @@ test("verified buyers can read and reorder their history without exposing foreig
     });
 
     await test.step("Foreign, guest and unknown detail URLs have the same not-found response", async () => {
-      for (const id of [foreign.id, guest.id, randomUUID()]) {
+      for (const id of [foreign.id, guest.id, randomUUID(), dispatched.reference]) {
         expect((await page.goto(orderPath(id)))?.status()).toBe(404);
         await expect(page.getByRole("heading", { name: "We could not find that page" })).toBeVisible();
         await expect(page.getByRole("heading", { name: "Order items", exact: true })).toHaveCount(0);
@@ -251,7 +251,7 @@ test("verified buyers can read and reorder their history without exposing foreig
       `, [email]);
       await page.goto("/account");
       const orders = page.getByRole("region", { name: "Orders", exact: true });
-      await expect(orders.getByRole("link", { name: /^View order / })).toHaveText([dispatched.id, pending.id, refunded.id]);
+      await expect(orders.getByRole("link", { name: /^View order / })).toHaveText([dispatched.reference, pending.reference, refunded.reference]);
       expect((await page.goto(orderPath(foreign.id)))?.status()).toBe(404);
       await expect(page.getByRole("link", { name: "View invoice" })).toHaveCount(0);
     });
@@ -273,7 +273,7 @@ test("verified buyers can read and reorder their history without exposing foreig
           await expect(accountHeading(page)).toBeVisible();
           await expectViewportFits(page, width);
           await capture("list");
-          const link = orderLink(page, dispatched.id);
+          const link = orderLink(page, dispatched.reference);
           await focusByKeyboard(page, link);
           await page.keyboard.press("Enter");
           await expect(page).toHaveURL(orderPath(dispatched.id));
@@ -327,7 +327,7 @@ test("verified buyers can read and reorder their history without exposing foreig
       await replace.press("Enter");
       await expect(preview).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Open selection, 2 blades" })).toBeVisible();
-      expect(await readSelection()).toEqual({ [catalogue.available.id]: 2 });
+      await expect.poll(readSelection).toEqual({ [catalogue.available.id]: 2 });
       await page.getByRole("button", { name: "Open selection, 2 blades" }).click();
       const selection = page.getByRole("dialog", { name: "Your selection" });
       await expect(selection).toContainText("2 × £23.50");

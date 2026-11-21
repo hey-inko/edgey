@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/admin/auth";
 import { requestsDb, type EnquiryMutation } from "@/lib/admin/request-schema";
 import { requireRequestsStaff } from "@/lib/admin/requests";
-import { isWarehouseId } from "@/lib/admin/warehouse-format";
+import { isWarehouseId, warehouseOrderLookup } from "@/lib/admin/warehouse-format";
 import { lookupDeliveryCoverage, PLACEHOLDER_DELIVERY_COVERAGE } from "@/lib/commerce";
 import type { AdminResult } from "../form";
 
@@ -75,7 +75,7 @@ function updateError(error: { message: string; code: string }, fallback: string,
 
 export async function handleTrial(action: TrialAction, _previous: AdminResult | null, form: FormData): Promise<AdminResult> {
   const reviewing = action.kind === "eligible" || action.kind === "declined";
-  const { userId } = await requireStaff(reviewing ? "catalogue" : "warehouse");
+  const { userId, db: staffDb } = await requireStaff(reviewing ? "catalogue" : "warehouse");
   if (!isWarehouseId(action.id)) return refused("This trial request could not be found.");
   const db = requestsDb();
   const args = { p_trial_request_id: action.id, p_actor_id: userId };
@@ -138,13 +138,19 @@ export async function handleTrial(action: TrialAction, _previous: AdminResult | 
       result = await db.rpc("cancel_trial_fulfilment", args);
       message = "Trial cancelled and the two units released.";
       break;
-    case "link":
-      orderId = field(form, "orderId");
-      if (!isWarehouseId(orderId)) return refused("Enter a full order reference.");
+    case "link": {
+      const lookup = warehouseOrderLookup(field(form, "orderId"));
+      if (!lookup) return refused("Enter a full order reference.");
       if (field(form, "confirm") !== "yes") return refused("Confirm this order followed the trial.");
+      const { data: order, error } = await staffDb.from("orders").select("id")
+        .eq(lookup.field, lookup.value).not("authorised_at", "is", null).maybeSingle();
+      if (error) return refused("Could not check the order reference. Try again.");
+      if (!order) return refused("No eligible order was found for that reference.");
+      orderId = order.id;
       result = await db.rpc("link_trial_order", { ...args, p_order_id: orderId });
       message = "Order linked to the trial.";
       break;
+    }
     case "unlink":
       orderId = action.orderId;
       if (!isWarehouseId(orderId) || field(form, "confirm") !== "yes") return refused("Confirm removal of the order link first.");

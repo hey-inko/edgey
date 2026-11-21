@@ -24,7 +24,7 @@ export default async function AccountOrderPage({ params }: { params: Promise<{ i
         <div>
           <p className="kicker"><span className="register" aria-hidden="true" /> Order record</p>
           <h1>Order details</h1>
-          <p className={styles.reference}>{order.id}</p>
+          <p className={styles.reference}>{order.order_reference}</p>
         </div>
         <dl className={styles.orderMeta}>
           <div><dt>Placed</dt><dd><time dateTime={order.created_at} className={styles.figure}>{accountDate(order.created_at)}</time></dd></div>

@@ -77,7 +77,10 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         {overview.outbox.length ? (
           <AdminTable label="Confirmation outbox" headers={["Order", "Status", "Last error", "Updated", "Retry"]}>
             {overview.outbox.slice(0, adminPageSize).map((message) => <tr key={message.order_id}>
-              <td className="admin-mono">{message.order_id}</td><td>{displayState(message.state)}</td>
+              <td className="admin-mono">
+                {message.orders?.order_reference && <span className="block">{message.orders.order_reference}</span>}
+                {message.order_id}
+              </td><td>{displayState(message.state)}</td>
               <td>{message.last_error ? displayState(message.last_error) : "—"}</td>
               <td className="admin-mono">{displayTimestamp(message.updated_at)}</td><td>{message.state !== "failed" || !message.order_id ? "—" :
               replayLabel(`confirmation:${message.order_id}:${message.updated_at}`) ?? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import tokens from "../../design-tokens.json";
 
 type Theme = "dark" | "light";
@@ -15,15 +15,12 @@ function subscribe(onChange: () => void) {
 
 export function ThemeSwitch() {
   const theme = useSyncExternalStore(subscribe, getTheme, getServerTheme);
-  useEffect(() => {
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tokens.themes[theme].page);
-  }, [theme]);
-
   const target: Theme = theme === "dark" ? "light" : "dark";
   const label = "Switch to " + target + " mode";
 
   function toggle() {
     document.documentElement.dataset.theme = target;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tokens.themes[target].page);
     try {
       localStorage.setItem("edgey-theme", target);
     } catch {

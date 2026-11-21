@@ -303,13 +303,13 @@ footer { padding-top: 22px; }
   .foot-inner { flex-wrap: wrap; gap: 12px 20px; }
 }
 @media (max-width: 490px) {
-  .nav-inner { gap: 8px; height: 58px; justify-content: space-between; }
+  .nav-inner { gap: 8px; height: auto; min-height: 58px; flex-wrap: wrap; justify-content: space-between; }
   .nav-inner nav { gap: 10px; }
   .brand { width: 88px; }
   .nav-tools { gap: 4px; margin-left: 0; }
   .theme-switch { width: 32px; min-height: 34px; }
-  .proof-options { gap: 4px; padding: 0 6px 7px; }
-  .proof-option span { font-size: .69rem; padding-left: 4px; }
+  .proof-options { grid-template-columns: repeat(auto-fit, minmax(min(100%, 3.25rem), 1fr)); gap: 4px; padding: 0 6px 7px; }
+  .proof-option span { font-size: .69rem; padding-inline: 4px 0; }
   .proof-option span::after { width: 6px; height: 6px; right: 3px; top: 3px; bottom: auto; background: var(--ink); box-shadow: 0 0 0 1px var(--paper); }
   .nav-inner nav a { font-size: .87rem; }
   .nav-wide, .tray-label { display: none; }

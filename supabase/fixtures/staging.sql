@@ -2,9 +2,10 @@
 -- It publishes a handful of seeded variants with invented approvals and
 -- positive stock so the storefront, search and later checkout work have
 -- something to show and contend over. Nothing here is supplier evidence.
--- Apply it with `pnpm db:fixture`, which refuses non-local database addresses.
-
-begin;
+-- Run through the local or hosted-staging fixture command, which supplies
+-- the transaction and checks the target. Names, artwork and prices come
+-- from the canonical catalogue seed; the fixture adds only test approvals
+-- and stock.
 
 -- sku, stock on hand, codes to approve
 create temporary table fixture_variants (sku text primary key, stock integer not null, codes text[] not null) on commit drop;
@@ -67,5 +68,3 @@ select v.id, 'PRIV-Z10-ALIAS', 'alias', 'STAGING FIXTURE - not supplier evidence
   'Private alias used to test that it never surfaces publicly.', 'approved', true, now(), 'staging-fixture'
 from public.variants v where v.sku = 'EDG-Z10'
 on conflict (variant_id, code_normalised) do nothing;
-
-commit;

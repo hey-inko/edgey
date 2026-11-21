@@ -426,7 +426,9 @@ export type Database = {
           last_error: string | null;
           lease_token: string | null;
           lease_until: string | null;
+          message_body: string | null;
           message_key: string;
+          message_subject: string | null;
           next_attempt_at: string;
           order_id: string | null;
           provider_message_id: string | null;
@@ -450,7 +452,9 @@ export type Database = {
           last_error?: string | null;
           lease_token?: string | null;
           lease_until?: string | null;
+          message_body?: string | null;
           message_key: string;
+          message_subject?: string | null;
           next_attempt_at?: string;
           order_id?: string | null;
           provider_message_id?: string | null;
@@ -473,7 +477,9 @@ export type Database = {
           last_error?: string | null;
           lease_token?: string | null;
           lease_until?: string | null;
+          message_body?: string | null;
           message_key?: string;
+          message_subject?: string | null;
           next_attempt_at?: string;
           order_id?: string | null;
           provider_message_id?: string | null;
@@ -591,6 +597,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -642,6 +649,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id?: string;
+          order_reference?: string;
           paid_pence?: number;
           payment_intent_id?: string | null;
           payment_method?: Database["public"]["Enums"]["order_payment_method"];
@@ -692,6 +700,7 @@ export type Database = {
           gross_pence?: number;
           hold_expires_at?: string;
           id?: string;
+          order_reference?: string;
           paid_pence?: number;
           payment_intent_id?: string | null;
           payment_method?: Database["public"]["Enums"]["order_payment_method"];
@@ -1569,6 +1578,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -1632,6 +1642,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -1705,6 +1716,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -1779,6 +1791,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -1844,6 +1857,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2040,6 +2054,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2132,6 +2147,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2200,6 +2216,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2308,6 +2325,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2528,6 +2546,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2599,6 +2618,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];
@@ -2663,6 +2683,7 @@ export type Database = {
           gross_pence: number;
           hold_expires_at: string;
           id: string;
+          order_reference: string;
           paid_pence: number;
           payment_intent_id: string | null;
           payment_method: Database["public"]["Enums"]["order_payment_method"];

@@ -41,7 +41,7 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
       </nav>
       <AdminSection title="Order status">
         <dl className="admin-spec">
-          <dt>Order reference</dt><dd className="admin-mono break-all">{order.id}</dd>
+          <dt>Order reference</dt><dd className="admin-mono break-all">{order.order_reference}</dd>
           <dt>Fulfilment</dt><dd>{warehouseLabel(status)}</dd>
           <dt>Payment</dt><dd>{warehouseLabel(order.payment_status)}</dd>
           {trial.data && <><dt>Linked trial</dt><dd><AdminLink href={`/admin/requests/trials/${trial.data.trial_request_id}`}>View trial request</AdminLink></dd></>}

@@ -24,7 +24,7 @@ export async function financeOverview(db: SupabaseClient<Database>, pages: {
     db.from("provider_events").select("provider,event_id,event_type,state,last_error,updated_at")
       .eq("state", "failed").order("updated_at", { ascending: false }).order("provider").order("event_id")
       .range(...adminRange(pages.events)),
-    db.from("order_outbox").select("order_id,message_key,state,last_error,updated_at")
+    db.from("order_outbox").select("order_id,orders(order_reference),message_key,state,last_error,updated_at")
       .eq("message_key", "order_confirmation").not("order_id", "is", null)
       .in("state", ["pending", "failed"])
       .order("state", { ascending: false }).order("updated_at", { ascending: false }).order("order_id")

@@ -4,7 +4,7 @@ import { isSingleMailbox } from "./address";
 
 type Order = Pick<
   Database["public"]["Tables"]["orders"]["Row"],
-  | "id" | "email" | "recipient_name" | "goods_net_pence" | "delivery_net_pence"
+  | "order_reference" | "email" | "recipient_name" | "goods_net_pence" | "delivery_net_pence"
   | "vat_rate_bps" | "vat_pence" | "gross_pence" | "delivery_service"
   | "promised_dispatch_date" | "estimated_delivery_date"
 >;
@@ -42,9 +42,9 @@ export function renderConfirmation(
     throw new Error("Cannot render the order confirmation.");
   }
 
-  const subject = `Edgey order confirmation: ${order.id}`;
+  const subject = `Edgey order confirmation: ${order.order_reference}`;
   const greeting = `Hello ${order.recipient_name},`;
-  const intro = `Thank you for your order. Your order reference is ${order.id}.`;
+  const intro = `Thank you for your order. Your order reference is ${order.order_reference}.`;
   const totals = [
     ["Goods subtotal (ex VAT)", formatGbp(order.goods_net_pence)],
     ["Delivery (ex VAT)", formatGbp(order.delivery_net_pence)],

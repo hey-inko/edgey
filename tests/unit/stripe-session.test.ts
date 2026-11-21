@@ -5,7 +5,8 @@ import { stripeSessionParams } from "@/lib/payments/session-params";
 vi.mock("server-only", () => ({}));
 
 const order = {
-  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", email: "buyer@example.test", recipient_name: "Test Buyer",
+  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", order_reference: "EDG-00000042",
+  email: "buyer@example.test", recipient_name: "Test Buyer",
   phone: null, address_line1: "1 Sample Street", address_line2: null, address_town: "London",
   address_region: null, address_postcode: "SW1A 1AA", address_country: "GB",
   hold_expires_at: "2026-11-23T13:00:00Z", delivery_service: "Next working day", vat_rate_bps: 2000,
@@ -32,6 +33,7 @@ it.each([
   });
   expect(params.shipping_address_collection).toBeUndefined();
   expect(params.line_items?.every((line) => !line.tax_rates)).toBe(true);
+  expect(params.invoice_creation?.invoice_data?.footer).toContain(`Edgey order ${order.order_reference}`);
   if (quantity === 5) expect(params.invoice_creation?.invoice_data?.footer)
     .toContain("VAT (20%): £21.34\nTotal including VAT: £128.04");
 });

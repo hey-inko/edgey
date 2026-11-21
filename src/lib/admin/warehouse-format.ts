@@ -10,6 +10,13 @@ export function isWarehouseId(value: unknown): value is string {
     /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value);
 }
 
+export type WarehouseOrderLookup = { field: "id" | "order_reference"; value: string };
+
+export function warehouseOrderLookup(value: string): WarehouseOrderLookup | null {
+  if (/^EDG-[0-9]{8}$/i.test(value)) return { field: "order_reference", value: value.toUpperCase() };
+  return isWarehouseId(value) ? { field: "id", value } : null;
+}
+
 const calendarDate = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
   timeZone: "UTC",

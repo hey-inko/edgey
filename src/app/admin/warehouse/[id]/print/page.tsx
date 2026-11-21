@@ -28,7 +28,7 @@ export default async function WarehousePrintPage({ params }: { params: Promise<{
         <article className="warehouse-pick-list">
           <AdminHeading title="Pick list" eyebrow="Warehouse" />
           <dl className="admin-spec">
-            <dt>Order reference</dt><dd className="admin-mono break-all">{order.id}</dd>
+            <dt>Order reference</dt><dd className="admin-mono break-all">{order.order_reference}</dd>
             <dt>Fulfilment</dt><dd>{warehouseLabel(order.fulfilment_status)}</dd>
           </dl>
           <PickDetails order={order} items={items} />
