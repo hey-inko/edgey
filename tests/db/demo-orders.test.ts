@@ -64,9 +64,12 @@ test("loads ten weeks of worker-safe orders and reverses only the unmodified fix
     expect((await db.query(`select id from public.orders where ${demo}`)).rowCount).toBe(0);
     await db.query("select public.release_reservation($1, 'test-close', 'closed')", [blocker.id]);
 
-    expect((await cli("load")).stdout).toContain("Loaded 15");
+    const concurrent = await Promise.allSettled([cli("load"), cli("load")]);
+    expect(concurrent).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "fulfilled", value: expect.objectContaining({ stdout: expect.stringContaining("Loaded 15") }) }),
+      expect.objectContaining({ status: "rejected", reason: expect.objectContaining({ stderr: expect.stringContaining("already loaded") }) }),
+    ]));
     loaded = true;
-    await expect(cli("load")).rejects.toMatchObject({ stderr: expect.stringContaining("already loaded") });
     const { rows: [state] } = await db.query(`
       select count(*)::int as orders,
         count(distinct date_trunc('week', o.created_at at time zone 'Europe/London'))::int as weeks,
@@ -84,7 +87,7 @@ test("loads ten weeks of worker-safe orders and reverses only the unmodified fix
     `);
     expect(state).toEqual({
       orders: 15, weeks: 10, tiers: 3, visibly_demo: true, excluded_from_replay: true, ordered: true, prices_match: true, skus: 9,
-      states: ["awaiting_authorisation", "cancelled", "dispatched", "picking", "ready_to_pick"],
+      states: ["cancelled", "dispatched"],
       payments: ["invoiced", "paid", "partially_paid", "partially_refunded", "pending", "refunded"],
     });
     const { rows: [workers] } = await db.query(`

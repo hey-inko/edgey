@@ -13,10 +13,10 @@ declare
     [3,"EDG-Z10",10,"card","","Harbourline Displays"],
     [2,"EDG-SUM-DRG-36",3,"net30","part_paid","Clockfern Printworks"],
     [2,"EDG-Z16",1,"card","abandoned","Juniper Plotworks"],
-    [1,"EDG-Z1",2,"card","picking","Mosswindow Studio"],
+    [1,"EDG-Z1",2,"card","","Mosswindow Studio"],
     [1,"EDG-MIM-A45",2,"net30","","Clockfern Printworks"],
-    [0,"EDG-SUM-TAN-36",1,"card","ready","Hollowglass Signs"],
-    [0,"EDG-Z10",1,"card","held","Harbourline Displays"],
+    [0,"EDG-SUM-TAN-36",1,"card","","Hollowglass Signs"],
+    [0,"EDG-Z10",1,"card","abandoned","Harbourline Displays"],
     [0,"EDG-Z16",2,"card","","Juniper Plotworks"]
   ]';
   buyer_id constant uuid := current_setting('edgey.demo_buyer_id');
@@ -182,7 +182,7 @@ begin
       perform public.bind_checkout_session(target.id, checkout_id, target.hold_expires_at);
       if item.scenario = 'abandoned' then
         perform public.release_reservation(target.id, operation_prefix || 'release', 'closed', checkout_id);
-      elsif item.scenario <> 'held' then
+      else
         perform public.confirm_payment(target.id, checkout_id, capture_id, target.gross_pence,
           'GBP', authorised, dispatch_date, delivery_date);
       end if;
@@ -191,20 +191,18 @@ begin
     if item.scenario = 'cancel_refund' then
       perform public.cancel_order(target.id, operation_prefix || 'cancel', actor_id);
       perform public.record_refund(target.id, operation_prefix || 'refund', capture_id, target.gross_pence, 'GBP');
-    elsif item.scenario not in ('abandoned', 'held', 'ready') then
+    elsif item.scenario <> 'abandoned' then
       perform public.start_picking(target.id, operation_prefix || 'pick', actor_id);
-      if item.scenario <> 'picking' then
-        perform public.dispatch_order(target.id, operation_prefix || 'dispatch', actor_id, '[DEMO] Test Carrier',
-          'DEMO-DO-NOT-SHIP-' || item.seq);
-        if item.scenario = 'partial_refund' then
-          perform public.record_refund(target.id, operation_prefix || 'refund', capture_id, target.gross_pence / 4, 'GBP');
-        end if;
+      perform public.dispatch_order(target.id, operation_prefix || 'dispatch', actor_id, '[DEMO] Test Carrier',
+        'DEMO-DO-NOT-SHIP-' || item.seq);
+      if item.scenario = 'partial_refund' then
+        perform public.record_refund(target.id, operation_prefix || 'refund', capture_id, target.gross_pence / 4, 'GBP');
       end if;
     end if;
 
     update public.orders set created_at = created, stripe_replay_after = 'infinity',
       dispatched_at = case when fulfilment_status = 'dispatched' then dispatched end,
-      hold_expires_at = case when item.scenario = 'held' then hold_expires_at else created + interval '35 minutes' end
+      hold_expires_at = created + interval '35 minutes'
     where id = target.id;
     update private.order_operations set created_at = case action
       when 'pick' then authorised when 'dispatch' then dispatched when 'refund' then adjusted else authorised end
