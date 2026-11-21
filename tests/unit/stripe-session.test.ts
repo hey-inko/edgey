@@ -57,9 +57,12 @@ it("requires Vercel's bearer secret on cron requests and diagnoses missing confi
     vi.stubEnv("CRON_SECRET", "");
     expect(checkCron(request("Bearer sample"))?.status).toBe(503);
     vi.stubEnv("CRON_SECRET", "sample");
+    expect(checkCron(request("Bearer sample"))?.status).toBe(503);
+    const cron = "a".repeat(32);
+    vi.stubEnv("CRON_SECRET", cron);
     expect(checkCron(request("Bearer wrong!"))?.status).toBe(401);
-    expect(checkCron(request("Bearer samplf"))?.status).toBe(401);
-    expect(checkCron(request("Bearer sample"))).toBeNull();
+    expect(checkCron(request(`Bearer ${"b".repeat(32)}`))?.status).toBe(401);
+    expect(checkCron(request(`Bearer ${cron}`))).toBeNull();
   } finally {
     vi.unstubAllEnvs();
   }

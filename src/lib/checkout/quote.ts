@@ -20,7 +20,7 @@ const quoteUnavailable = "We couldn’t check the latest prices and availability
 type CheckoutVariant = CommerceVariant & { photo?: unknown };
 
 export type QuoteDependencies = {
-  lookup: (ids: string[]) => Promise<readonly CheckoutVariant[]>;
+  lookup: (lines: readonly LineRequest[]) => Promise<readonly CheckoutVariant[]>;
   now: () => Date;
 };
 
@@ -53,7 +53,7 @@ export async function quoteSelectionWith(
   const variants = new Map<string, CheckoutVariant>();
   if (ids.length) {
     try {
-      for (const row of await lookup(ids)) {
+      for (const row of await lookup(requested)) {
         if (!requestedIds.has(row.id) || variants.has(row.id) ||
             !Number.isSafeInteger(row.availableQuantity) || row.availableQuantity < 0) {
           return { status: "error", message: quoteUnavailable };
@@ -81,7 +81,7 @@ export async function quoteSelectionWith(
       continue;
     }
     if (quantity < line.quantity) {
-      corrections.push(`${variant.sku}: quantity changed from ${line.quantity} to ${quantity} due to stock availability.`);
+      corrections.push(`${variant.sku}: limited stock. We’ve suggested a smaller quantity for you to review.`);
     }
     lines.push({ variantId: line.variantId, quantity });
     if (typeof variant.photo === "string" && allowedPhotos.includes(variant.photo)) photos[line.variantId] = variant.photo;

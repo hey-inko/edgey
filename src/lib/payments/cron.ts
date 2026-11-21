@@ -3,7 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 
 export function checkCron(request: Request): Response | null {
   const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return Response.json({ error: "CRON_SECRET is not configured." }, { status: 503 });
+  if (!secret || Buffer.byteLength(secret) < 32) {
+    console.error("Cron authentication configuration is unavailable.");
+    return Response.json({ error: "This job is unavailable." }, { status: 503 });
+  }
   const expected = Buffer.from(`Bearer ${secret}`);
   const supplied = Buffer.from(request.headers.get("authorization") ?? "");
   if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {

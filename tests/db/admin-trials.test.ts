@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setDbClaims } from "../helpers/db-claims";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
@@ -141,7 +142,7 @@ describe("staff trial workflow", () => {
       () => dispatch(id, warehouse), () => rpc("cancel_trial_fulfilment", [id, warehouse]),
       () => link(id, randomUUID(), warehouse), () => unlink(id, randomUUID(), warehouse), () => metric(warehouse)];
     for (const role of ["anon", "authenticated"]) {
-      await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role, sub: catalogue })]);
+      await setDbClaims(db, role, catalogue, role === "authenticated");
       await db.query(`set local role ${role}`);
       for (const action of call) await rejects(action, "42501");
       await rejects(() => db.query("update public.trial_requests set status = 'in_review' where id = $1", [id]), "42501");
@@ -181,7 +182,7 @@ describe("staff trial workflow", () => {
     const newer = await request(randomUUID(), email, "print room", postcode);
     await db.query("update public.trial_requests set created_at = now() + interval '1 minute' where id = $1", [newer]);
     for (const id of [catalogue, finance, buyer]) {
-      await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: "authenticated", sub: id })]);
+      await setDbClaims(db, "authenticated", id, id !== buyer);
       await db.query("set local role authenticated");
       const { rows } = await db.query("select id, same_email, same_company, same_postcode from public.admin_trial_duplicate_evidence($1)", [target]);
       await db.query("reset role");

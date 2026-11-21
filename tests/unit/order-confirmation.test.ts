@@ -138,15 +138,17 @@ test("publishes a single complete file for concurrent sends without overwriting 
   }
 });
 
+const cronSecret = "test-only-cron-secret-at-least-32-bytes";
+
 test("requires server cron authentication before processing the outbox", async () => {
-  vi.stubEnv("CRON_SECRET", "test-cron");
+  vi.stubEnv("CRON_SECRET", cronSecret);
   const url = "https://example.test/api/cron/order-confirmations";
   expect((await GET(new Request(url))).status).toBe(401);
   expect((await GET(new Request(url, { headers: { authorization: "Bearer wrong-cron" } }))).status).toBe(401);
   expect(processOrderConfirmations).not.toHaveBeenCalled();
   vi.stubEnv("EMAIL_PROVIDER", undefined);
   vi.stubEnv("RESEND_API_KEY", undefined);
-  const authorised = () => new Request(url, { headers: { authorization: "Bearer test-cron" } });
+  const authorised = () => new Request(url, { headers: { authorization: `Bearer ${cronSecret}` } });
   const unconfigured = await GET(authorised());
   expect(unconfigured.status).toBe(503);
   expect(await unconfigured.json()).toEqual({ error: "RESEND_API_KEY is not configured." });
@@ -160,14 +162,14 @@ test("requires server cron authentication before processing the outbox", async (
 });
 
 test("keeps order cron runnable when the separately protected request cron is not configured", async () => {
-  vi.stubEnv("CRON_SECRET", "test-cron");
+  vi.stubEnv("CRON_SECRET", cronSecret);
   vi.stubEnv("EMAIL_PROVIDER", "resend");
   vi.stubEnv("RESEND_API_KEY", "test-key");
   vi.stubEnv("EMAIL_FROM", "Edgey <orders@example.test>");
   vi.stubEnv("EDGEY_REQUEST_HASH_KEY", undefined);
   vi.stubEnv("REQUEST_STAFF_EMAIL", "staff@example.test,other@example.test");
   const url = "https://example.test/api/cron/request-emails";
-  const headers = { authorization: "Bearer test-cron" };
+  const headers = { authorization: `Bearer ${cronSecret}` };
   const request = () => new Request(url, { headers });
   expect((await getRequestEmails(new Request(url))).status).toBe(401);
   expect((await getRequestEmails(request())).status).toBe(503);

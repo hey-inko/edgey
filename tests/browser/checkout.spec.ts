@@ -111,14 +111,15 @@ test("stale selections identify unavailable lines and require acceptance before 
   await page.goto("/blades");
   await page.getByRole("button", { name: "Open selection, 43 blades" }).click();
   const tray = selection(page);
-  await expect(tray.getByRole("status")).toContainText(/EDG-Z10.*41.*40/);
+  await expect(tray.getByRole("status")).toContainText(/EDG-Z10: limited stock.*smaller quantity/);
+  await expect(tray.getByRole("status")).not.toContainText(/40/);
   await expect(tray.getByRole("status")).toContainText(/EDG-SUM-DRG-60.*out of stock/i);
   await expect(tray.getByRole("status")).toContainText(/unavailable item/i);
   await expect(tray.getByRole("link", { name: "Go to checkout" })).toHaveCount(0);
   await tray.getByRole("button", { name: "Accept changes" }).click();
   await tray.getByRole("link", { name: "Go to checkout" }).click();
-  await expect(page.getByRole("region", { name: "Order summary" })).toContainText("40 × £17.50 = £700.00");
-  await expect(page.getByRole("button", { name: "Open selection, 40 blades" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Order summary" })).toContainText("10 × £17.50 = £175.00");
+  await expect(page.getByRole("button", { name: "Open selection, 10 blades" })).toBeVisible();
 });
 
 test("checkout validates before payment and retains the same attempt until a material change", async ({ page }) => {
@@ -161,7 +162,7 @@ test("checkout validates before payment and retains the same attempt until a mat
     if (token) tokens.push(token);
   });
   await pay.click();
-  const complete = page.getByText(/Card payment isn’t configured/);
+  const complete = page.getByText(/Card payment is unavailable right now/);
   await expect(complete).toBeVisible();
   await pay.click();
   await expect.poll(() => tokens.length).toBe(2);
@@ -222,7 +223,7 @@ test("a new price must be reviewed and uses a new attempt token", async ({ page 
     });
     const pay = page.getByRole("button", { name: "Continue to payment" });
     await pay.click();
-    const complete = page.getByText(/Card payment isn’t configured/);
+    const complete = page.getByText(/Card payment is unavailable right now/);
     await expect(complete).toBeVisible();
     const { rows } = await db.query<{ prior: number }>(
       "update public.variants set price_1_4_pence = price_1_4_pence + 10 where sku = $1 returning price_1_4_pence - 10 as prior",
@@ -269,7 +270,7 @@ test("a dropped response does not lose the submitted attempt on reload", async (
   const request = page.waitForRequest((request) => request.method() === "POST" && !!request.postData()?.includes("attemptToken"));
   await pay.click();
   expect((await request).postData()).toContain(`"attemptToken":"${lostToken}"`);
-  await expect(page.getByText(/Card payment isn’t configured/)).toBeVisible();
+  await expect(page.getByText(/Card payment is unavailable right now/)).toBeVisible();
 });
 
 test("hands the reviewed order to hosted Checkout and can close the saved attempt on return", async ({ page }) => {

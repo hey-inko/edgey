@@ -36,6 +36,10 @@ additional_redirect_urls = ["http://localhost:3000/auth/confirm", "http://127.0.
 [auth.email]
 enable_confirmations = true
 
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
 [edge_runtime]
 enabled = false
 

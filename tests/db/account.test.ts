@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { setDbClaims } from "../helpers/db-claims";
 import {
   accountInvoiceUrl,
   connectAccountDb,
@@ -14,10 +15,12 @@ let db: Client;
 beforeAll(async () => { db = await connectAccountDb(); });
 afterAll(() => db?.end());
 
-async function asRole(role: "anon" | "authenticated" | "service_role", buyerId: string | undefined, read: () => Promise<void>) {
+async function asRole(
+  role: "anon" | "authenticated" | "service_role", buyerId: string | undefined, read: () => Promise<void>, steppedUp = false,
+) {
   await db.query("savepoint account_role");
   try {
-    await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role, sub: buyerId })]);
+    await setDbClaims(db, role, buyerId, steppedUp);
     await db.query(`set local role ${role}`);
     await read();
   } finally {
@@ -120,7 +123,7 @@ describe("buyer account database isolation", () => {
         await rejects("delete from public.orders where id = $1", [buyer.order.id]);
         await rejects("update public.order_items set option_label = 'Changed' where order_id = $1", [buyer.order.id]);
         await rejects("update public.trade_applications set company = 'Changed' where id = $1", [buyer.applicationId]);
-      });
+      }, buyer === buyers[0]);
       expect((await db.query(
         "select buyer_invoice_url, provider_invoice_id from public.orders where id = $1", [buyer.order.id],
       )).rows).toEqual([{ buyer_invoice_url: buyer.order.invoiceUrl, provider_invoice_id: buyer.order.providerInvoiceId }]);

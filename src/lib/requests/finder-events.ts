@@ -7,7 +7,7 @@ import { finderCodeForFingerprint, normaliseFinderCode, normaliseFinderWords, pr
 import { allowFinderEvent, requestFingerprint } from "./rate-limit";
 
 export async function recordFinderSearch(query: string, hits: SearchHit[], view: CatalogueView) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.EDGEY_REQUEST_HASH_KEY) return;
+  if (!process.env.EDGEY_REQUEST_HASH_KEY) return;
   const requestHeaders = await headers();
   if (requestHeaders.has("next-router-prefetch") || requestHeaders.has("next-router-segment-prefetch")
     || requestHeaders.get("purpose") === "prefetch" || requestHeaders.get("sec-purpose")?.includes("prefetch")

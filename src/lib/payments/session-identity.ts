@@ -6,7 +6,10 @@ export const orderId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 
 export class PaymentReviewError extends Error {}
 
-export function assertSessionMatches(order: Order, session: Stripe.Checkout.Session) {
+export function assertSessionMatches(
+  order: Pick<Order, "id" | "payment_method" | "checkout_session_id" | "hold_expires_at">,
+  session: Stripe.Checkout.Session,
+) {
   if (session.livemode !== false || session.mode !== "payment" || !checkoutSessionId.test(session.id) ||
     session.metadata?.edgey_order_id !== order.id || session.client_reference_id !== order.id ||
     order.payment_method !== "card" || (order.checkout_session_id && session.id !== order.checkout_session_id) ||

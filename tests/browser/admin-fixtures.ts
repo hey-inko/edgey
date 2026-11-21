@@ -1,12 +1,49 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { localAdminClient } from "../../scripts/seed-admin";
+import { authenticatorCode } from "../helpers/authenticator";
 
-export async function signInStaff(page: Page, credentials: { email: string; password: string }) {
+type StaffCredentials = { id: string; email: string; password: string };
+const fixtureFactors = new Map<string, string>();
+
+export async function enterStaffPassword(page: Page, credentials: StaffCredentials) {
   await page.goto("/admin");
   await page.getByLabel("Work email").fill(credentials.email);
   await page.getByLabel("Password").fill(credentials.password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+}
+
+export async function verifyNewStaffAuthenticator(page: Page) {
+  await page.getByRole("button", { name: "Set up authenticator" }).click();
+  const key = await page.locator(".admin-panel code").textContent();
+  if (!key) throw new Error("No local authenticator setup key.");
+  await page.getByLabel("Authenticator code").fill(authenticatorCode(key.trim()));
+  await page.getByRole("button", { name: "Verify code" }).click();
+  await expect(page.getByText("Your authenticator is verified, but not approved for staff access.")).toBeVisible();
+  const factorId = await page.locator(".admin-panel code").textContent();
+  if (!factorId) throw new Error("No local authenticator ID.");
+  return { factorId, key: key.trim() };
+}
+
+export async function activateStaffFactor(credentials: StaffCredentials, factorId: string) {
+  const { error } = await localAdminClient().rpc("activate_staff_authenticator", {
+    p_user_id: credentials.id, p_factor_id: factorId,
+  });
+  if (error) throw error;
+}
+
+export async function signInStaff(page: Page, credentials: StaffCredentials) {
+  await enterStaffPassword(page, credentials);
+  const key = fixtureFactors.get(credentials.id);
+  if (key) {
+    await page.getByLabel("Authenticator code").fill(authenticatorCode(key));
+    await page.getByRole("button", { name: "Verify code" }).click();
+  } else {
+    const factor = await verifyNewStaffAuthenticator(page);
+    await activateStaffFactor(credentials, factor.factorId);
+    fixtureFactors.set(credentials.id, factor.key);
+    await page.goto("/admin");
+  }
   await expect(page.getByRole("heading", { name: "Staff desk" })).toBeVisible();
 }
 

@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { setDbClaims } from "../helpers/db-claims";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
@@ -33,8 +34,8 @@ const rpc = async <T = string>(name: string, args: unknown[], client = db) =>
     `select public.${name}(${args.map((_, i) => `$${i + 1}`).join(", ")}) as result`, args, client,
   )).result;
 
-async function asRole<T>(role: "anon" | "authenticated" | "service_role", run: () => Promise<T>, id?: string) {
-  await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role, sub: id })]);
+async function asRole<T>(role: "anon" | "authenticated" | "service_role", run: () => Promise<T>, id?: string, steppedUp = false) {
+  await setDbClaims(db, role, id, steppedUp);
   await db.query(`set local role ${role}`);
   const result = await run();
   await db.query("reset role");
@@ -194,7 +195,7 @@ describe("request data and permissions", () => {
           [trialId]), "42501");
         expect((await db.query("select id from public.trade_applications where id = $1", [buyerApplication])).rows)
           .toEqual([]);
-      }, staff.id);
+      }, staff.id, true);
     }
     await asRole("authenticated", async () => {
       expect((await db.query("select id from public.trade_applications where id in ($1, $2)",
@@ -202,7 +203,7 @@ describe("request data and permissions", () => {
       expect(await outbox(buyerApplication)).toEqual([]);
       expect((await db.query("select id from public.enquiries where id = $1", [enquiryId])).rows).toEqual([]);
       await rejects(() => rpc("review_trade_application", [buyerApplication, finance.id, "approved"]), "42501");
-    }, finance.id);
+    }, finance.id, true);
     await asRole("service_role", async () => {
       expect(await rpc("review_trade_application", [buyerApplication, finance.id, "approved"])).toBe(buyerApplication);
       expect(await rpc("review_trade_application", [buyerApplication, finance.id, "approved"])).toBe(buyerApplication);
@@ -364,12 +365,12 @@ describe("request data and permissions", () => {
       expect((await db.query("select variant_id from public.trial_allocations where trial_request_id = $1",
         [trialId])).rowCount).toBe(2);
       await rejects(() => approve(declinedId, warehouse.id, [first, second]), "42501");
-    }, catalogue.id);
+    }, catalogue.id, true);
     await asRole("authenticated", async () => {
       expect(await one("select state, tracking_number, carrier_service from public.trial_fulfilments where trial_request_id = $1",
         [trialId])).toEqual({ state: "dispatched", tracking_number: "TRACK", carrier_service: "Standard" });
       await rejects(() => db.query("update public.trial_fulfilments set tracking_number = 'CHANGED'"), "42501");
-    }, warehouse.id);
+    }, warehouse.id, true);
   });
 
   test("retention clears old unconverted PII and its outbox while preserving stock history, approved records and live windows", async () => {

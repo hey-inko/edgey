@@ -1,5 +1,6 @@
 import "server-only";
 
+import { requireStaff } from "@/lib/admin/auth";
 import { getVerifiedBuyer } from "@/lib/auth/server";
 import type { CreateOrderInput } from "@/lib/orders";
 import { orderReservationArgs } from "@/lib/orders/reservation-input";
@@ -53,7 +54,7 @@ export async function approveTradeAccount(input: {
 }) {
   return call("approve_trade_account", {
     p_application_id: input.applicationId,
-    p_actor_id: await verifiedActorId(),
+    p_actor_id: (await requireStaff("finance")).userId,
     p_credit_limit_pence: input.creditLimitPence,
     p_stripe_customer_id: input.stripeCustomerId,
   });
@@ -66,7 +67,7 @@ export async function setCreditLimit(input: {
 }) {
   return call("set_credit_limit", {
     p_trade_account_id: input.tradeAccountId,
-    p_actor_id: await verifiedActorId(),
+    p_actor_id: (await requireStaff("finance")).userId,
     p_operation_key: input.operationKey,
     p_credit_limit_pence: input.creditLimitPence,
   });
@@ -79,7 +80,7 @@ export async function suspendTradeAccount(input: {
 }) {
   return call("suspend_trade_account", {
     p_trade_account_id: input.tradeAccountId,
-    p_actor_id: await verifiedActorId(),
+    p_actor_id: (await requireStaff("finance")).userId,
     p_operation_key: input.operationKey,
     p_reason: input.reason,
   });

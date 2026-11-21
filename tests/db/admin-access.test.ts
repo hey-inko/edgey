@@ -4,6 +4,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
 import type { Database } from "../../src/lib/supabase/database.types";
 import { deleteStripeEventFixtures } from "../fixtures/stripe-events";
+import { authenticatorCode } from "../helpers/authenticator";
 
 const roles = ["warehouse", "catalogue", "finance", "buyer"] as const;
 const service = localAdminClient();
@@ -24,6 +25,68 @@ beforeAll(async () => {
     if (auth.error) throw auth.error;
     const verified = await client.auth.getUser();
     expect(verified.data.user?.id).toBe(id);
+    if (role !== "buyer") {
+      const factor = await client.auth.mfa.enroll({ factorType: "totp" });
+      if (factor.error) throw factor.error;
+      const mfa = await client.auth.mfa.challengeAndVerify({
+        factorId: factor.data.id, code: authenticatorCode(factor.data.totp.secret),
+      });
+      if (mfa.error) throw mfa.error;
+      const approval = await service.rpc("activate_staff_authenticator", { p_user_id: id, p_factor_id: factor.data.id });
+      if (approval.error) throw approval.error;
+    }
+  }
+});
+
+test("staff data requires a password and an operator-approved factor tied to the current GoTrue session", async () => {
+  const { id, email, password } = await createLocalAdminUser("finance");
+  const client = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const event = `evt_${randomUUID().replaceAll("-", "")}`;
+  events.push(event);
+  try {
+    expect((await service.rpc("record_provider_event", {
+      p_provider: "stripe", p_event_id: event, p_event_type: "fixture.event", p_payload: {},
+    })).error).toBeNull();
+    expect((await client.auth.signInWithPassword({ email, password })).error).toBeNull();
+    const read = () => client.from("provider_events").select("event_id").eq("event_id", event);
+    expect(await read()).toMatchObject({ error: null, data: [] });
+    const factor = await client.auth.mfa.enroll({ factorType: "totp" });
+    if (factor.error) throw factor.error;
+    const args = { p_user_id: id, p_factor_id: factor.data.id };
+    expect((await service.rpc("activate_staff_authenticator", args)).error)
+      .toMatchObject({ code: "22023", message: "verified_staff_factor_required" });
+    const verify = await client.auth.mfa.challengeAndVerify({
+      factorId: factor.data.id, code: authenticatorCode(factor.data.totp.secret),
+    });
+    expect(verify.error).toBeNull();
+    expect(await client.rpc("get_staff_authenticator").single()).toMatchObject({
+      error: null, data: { approved_factor_id: null, session_factor_id: factor.data.id },
+    });
+    expect(await read()).toMatchObject({ error: null, data: [] });
+    expect((await client.rpc("activate_staff_authenticator", args)).error?.code).toBe("42501");
+    expect((await service.rpc("activate_staff_authenticator", { ...args, p_user_id: users.get("warehouse")!.id })).error)
+      .toMatchObject({ code: "22023", message: "verified_staff_factor_required" });
+    expect((await service.rpc("activate_staff_authenticator", args)).error).toBeNull();
+    expect(await read()).toMatchObject({ error: null, data: [{ event_id: event }] });
+    const alternate = await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "Second fixture factor" });
+    if (alternate.error) throw alternate.error;
+    expect((await client.auth.mfa.challengeAndVerify({
+      factorId: alternate.data.id, code: authenticatorCode(alternate.data.totp.secret),
+    })).error).toBeNull();
+    expect(await client.rpc("get_staff_authenticator").single()).toMatchObject({
+      error: null, data: { approved_factor_id: factor.data.id, session_factor_id: alternate.data.id },
+    });
+    expect(await read()).toMatchObject({ error: null, data: [] });
+    const link = await service.auth.admin.generateLink({ type: "magiclink", email });
+    if (link.error) throw link.error;
+    expect((await client.auth.signOut({ scope: "local" })).error).toBeNull();
+    const magic = await client.auth.verifyOtp({ type: "magiclink", token_hash: link.data.properties.hashed_token });
+    expect(magic.error).toBeNull();
+    expect(await read()).toMatchObject({ error: null, data: [] });
+  } finally {
+    await service.auth.admin.deleteUser(id);
   }
 });
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { expect, test, type Page } from "@playwright/test";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
-import { signInStaff } from "./admin-fixtures";
+import { activateStaffFactor, enterStaffPassword, signInStaff, verifyNewStaffAuthenticator } from "./admin-fixtures";
 
 const privatePaths = [
   "/admin", "/admin/warehouse", "/admin/warehouse/8028e331-bde6-4d32-97c4-7fcf1bed9190",
@@ -46,6 +46,30 @@ test("anonymous users and signed-in buyers cannot reach any staff page", async (
   await expect(page.getByRole("alert").filter({ hasText: "Could not sign in" })).toBeVisible();
   await setBuyerSession(page, { email: buyer.email, password: buyer.password }, baseURL!);
   await checkAll();
+});
+
+test("staff need an independently approved authenticator and private pages prohibit framing and caching", async ({ page }) => {
+  const staff = await createLocalAdminUser("warehouse");
+  await enterStaffPassword(page, staff);
+  await expect(page.getByRole("button", { name: "Set up authenticator" })).toBeVisible();
+  const response = await page.goto("/admin/stock");
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
+  await expect(page.getByRole("navigation", { name: "Staff areas" })).toHaveCount(0);
+  expect(response?.headers()).toMatchObject({
+    "x-frame-options": "DENY",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": expect.stringContaining("microphone=()"),
+    "content-security-policy": expect.stringContaining("frame-ancestors 'none'"),
+    "cache-control": expect.stringContaining("no-store"),
+  });
+  const { factorId } = await verifyNewStaffAuthenticator(page);
+  await page.goto("/admin/stock");
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
+  await expect(page.getByRole("navigation", { name: "Staff areas" })).toHaveCount(0);
+  await activateStaffFactor(staff, factorId);
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Staff desk" })).toBeVisible();
 });
 
 test("a stale finance replay form cannot act after switching to a warehouse session", async ({ browser, page, baseURL }) => {
