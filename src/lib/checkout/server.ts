@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getBuyerSession } from "@/lib/auth/server";
+import { readWarehouseSchedule, resolveCheckoutDelivery } from "@/lib/delivery/server";
 import { serviceClient } from "@/lib/supabase/service";
 import { prepareCheckoutAttempt } from "./attempt";
 import { quoteSelectionWith, type QuoteDependencies } from "./quote";
@@ -30,7 +31,7 @@ const lookup: QuoteDependencies["lookup"] = async (lines) => {
   }));
 };
 
-const deps: QuoteDependencies = { lookup, now: () => new Date() };
+const deps: QuoteDependencies = { lookup, now: () => new Date(), resolveDelivery: resolveCheckoutDelivery, readWarehouseSchedule };
 
 export function quoteCurrentSelection(lines: unknown, postcode?: unknown) {
   return quoteSelectionWith(lines, postcode, deps);

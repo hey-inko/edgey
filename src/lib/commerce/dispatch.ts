@@ -26,6 +26,7 @@ export type DispatchInput = Readonly<{
   deliveryQuote?: DeliveryQuote | null;
   warehouseCalendar?: WorkingDayCalendar;
   deliveryCalendar?: WorkingDayCalendar;
+  cutoffMinutes?: number;
 }>;
 
 export type DispatchPromise = { dispatchDate: string; estimatedDeliveryDate: string | null };
@@ -47,7 +48,6 @@ const londonDateTime = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 const dayMilliseconds = 86_400_000;
-const cutoffMinutes = 15 * 60 + 30;
 
 function isCalendarDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date.startsWith("0000")) return false;
@@ -96,6 +96,7 @@ export function calculateDispatchPromise({
   deliveryQuote,
   warehouseCalendar = ENGLAND_WALES_BANK_HOLIDAY_CALENDAR_2026_2027,
   deliveryCalendar = ENGLAND_WALES_BANK_HOLIDAY_CALENDAR_2026_2027,
+  cutoffMinutes = 15 * 60 + 30,
 }: DispatchInput): CommerceResult<DispatchPromise, DispatchError> {
   if (typeof authorisedAt !== "string") return { ok: false, error: { code: "invalid_authorised_at" } };
   const instantParts = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/.exec(authorisedAt);
@@ -109,6 +110,9 @@ export function calculateDispatchPromise({
   }
   if (deliveryQuote != null && !isValidDeliveryQuote(deliveryQuote)) {
     return { ok: false, error: { code: "invalid_delivery_quote" } };
+  }
+  if (!Number.isInteger(cutoffMinutes) || cutoffMinutes < 0 || cutoffMinutes > 1439) {
+    return { ok: false, error: { code: "invalid_calendar", calendar: "warehouse" } };
   }
 
   const { year, month, day, hour, minute } = Object.fromEntries(

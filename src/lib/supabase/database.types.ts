@@ -9,6 +9,40 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      delivery_calendars: {
+        Row: {
+          active_from: string;
+          active_through: string;
+          bank_holidays: string[];
+          calendar: string;
+          closures: string[];
+          cutoff_minutes: number | null;
+          working_weekdays: number[];
+        };
+        Insert: Omit<Database["public"]["Tables"]["delivery_calendars"]["Row"], "cutoff_minutes"> & { cutoff_minutes?: number | null };
+        Update: Partial<Database["public"]["Tables"]["delivery_calendars"]["Row"]>;
+        Relationships: [];
+      };
+      delivery_rules: {
+        Row: {
+          charge_ex_vat_pence: number | null;
+          code: string;
+          kind: string;
+          scope: string;
+          service_name: string | null;
+          working_days: number | null;
+        };
+        Insert: {
+          charge_ex_vat_pence?: number | null;
+          code: string;
+          kind: string;
+          scope: string;
+          service_name?: string | null;
+          working_days?: number | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["delivery_rules"]["Row"]>;
+        Relationships: [];
+      };
       brands: {
         Row: {
           name: string;
@@ -589,6 +623,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -645,6 +680,7 @@ export type Database = {
           currency?: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms?: Json | null;
           dispatched_at?: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -700,6 +736,7 @@ export type Database = {
           currency?: string;
           delivery_net_pence?: number;
           delivery_service?: string;
+          delivery_terms?: Json | null;
           dispatched_at?: string | null;
           email?: string;
           estimated_delivery_date?: string;
@@ -1500,6 +1537,23 @@ export type Database = {
         Args: { p_refund_id: string };
         Returns: boolean;
       };
+      checkout_delivery_terms: {
+        Args: { p_postcode: string };
+        Returns: Json;
+      };
+      checkout_warehouse_calendar: {
+        Args: never;
+        Returns: Json;
+      };
+      reserve_order_with_delivery: {
+        Args: Database["public"]["Functions"]["create_order_with_reservations"]["Args"] & {
+          p_delivery_terms: Json;
+          p_payment_method: Database["public"]["Enums"]["order_payment_method"];
+          p_po_number?: string;
+        };
+        Returns: Database["public"]["Tables"]["orders"]["Row"];
+        SetofOptions: { from: "*"; to: "orders"; isOneToOne: true; isSetofReturn: false };
+      };
       admin_catalogue_review: {
         Args: {
           p_actor_id: string;
@@ -1639,6 +1693,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -1707,6 +1762,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -1785,6 +1841,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -1877,6 +1934,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -1947,6 +2005,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2148,6 +2207,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2245,6 +2305,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2318,6 +2379,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2467,6 +2529,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2708,6 +2771,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2784,6 +2848,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;
@@ -2853,6 +2918,7 @@ export type Database = {
           currency: string;
           delivery_net_pence: number;
           delivery_service: string;
+          delivery_terms: Json | null;
           dispatched_at: string | null;
           email: string;
           estimated_delivery_date: string;

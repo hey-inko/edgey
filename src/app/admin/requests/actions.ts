@@ -5,7 +5,7 @@ import { requireStaff } from "@/lib/admin/auth";
 import { requestsDb, type EnquiryMutation } from "@/lib/admin/request-schema";
 import { requireRequestsStaff } from "@/lib/admin/requests";
 import { isWarehouseId, warehouseOrderLookup } from "@/lib/admin/warehouse-format";
-import { lookupDeliveryCoverage, PLACEHOLDER_DELIVERY_COVERAGE } from "@/lib/commerce";
+import { deliveryCoverageForPostcode } from "@/lib/delivery/server";
 import type { AdminResult } from "../form";
 
 type TrialAction =
@@ -104,10 +104,11 @@ export async function handleTrial(action: TrialAction, _previous: AdminResult | 
       const line2 = field(form, "line2");
       const town = field(form, "town");
       const region = field(form, "region");
-      const coverage = lookupDeliveryCoverage(field(form, "postcode"), PLACEHOLDER_DELIVERY_COVERAGE);
+      const coverage = await deliveryCoverageForPostcode(field(form, "postcode"));
       const carrier = field(form, "carrier");
       const service = field(form, "service");
-      if (!coverage.ok) return refused("Enter a full UK delivery postcode.", "postcode");
+      if (!coverage.ok) return refused(coverage.error.code === "invalid_postcode"
+        ? "Enter a full UK delivery postcode." : "Delivery coverage couldn’t be checked. Try again before approving.", "postcode");
       if (coverage.value.kind !== "covered") return refused("The delivery postcode is outside configured coverage. Do not approve until an agreed service is configured for it.", "postcode");
       if (!recipient || recipient.length > 200 || !line1 || line1.length > 200 || line2.length > 200 ||
         !town || town.length > 100 || region.length > 100 || !carrier || carrier.length > 100 ||

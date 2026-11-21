@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     if (reason === "checkout_attempt_closed") {
       return reply({ status: "error", message: "This payment attempt has closed. Review your selection and try again.", attemptClosed: true }, 409);
     }
-    if (["insufficient_stock", "variant_not_published", "stale_unit_price"].includes(reason ?? "")) {
+    if (["insufficient_stock", "variant_not_published", "stale_unit_price", "delivery_terms_changed"].includes(reason ?? "")) {
       const quote = await currentQuote(body).catch(() => ({ status: "error" as const, message: "We couldn’t get an updated quote. Try again." }));
       return reply({ status: "review", quote, message: "Your quote has changed. Review the selection before continuing." }, 409);
     }

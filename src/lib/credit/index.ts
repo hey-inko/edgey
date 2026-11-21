@@ -87,10 +87,12 @@ export async function suspendTradeAccount(input: {
 }
 
 export async function createNet30OrderWithHolds(input: Net30OrderInput, rateKeys?: ReservationRateKeys) {
-  return call("create_net30_order_with_holds", {
+  return call("reserve_order_with_delivery", {
     ...orderReservationArgs(input, rateKeys),
     p_buyer_id: await verifiedActorId(),
     p_po_number: input.poNumber,
+    p_delivery_terms: input.deliveryTerms,
+    p_payment_method: "net30",
   });
 }
 

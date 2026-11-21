@@ -3,14 +3,13 @@ import {
   calculateBasket,
   calculateDispatchPromise,
   formatGbp,
-  lookupDeliveryCoverage,
-  PLACEHOLDER_DELIVERY_COVERAGE,
   STANDARD_DELIVERY_QUOTE,
   type BasketTotals,
   type CommerceVariant,
   type DeliveryQuote,
   type LineRequest,
 } from "@/lib/commerce";
+import { promiseUnderTerms, type DeliveryResolution, type DeliveryTerms, type WarehouseSchedule } from "@/lib/delivery/terms";
 import type { QuoteResult } from "./types";
 import { MAX_ORDER_INTEGER, normaliseLines, readPostcodeInput } from "./validation";
 
@@ -22,29 +21,43 @@ type CheckoutVariant = CommerceVariant & { photo?: unknown };
 export type QuoteDependencies = {
   lookup: (lines: readonly LineRequest[]) => Promise<readonly CheckoutVariant[]>;
   now: () => Date;
+  resolveDelivery: (postcode: string) => Promise<DeliveryResolution>;
+  readWarehouseSchedule: () => Promise<WarehouseSchedule | null>;
 };
 
 export async function quoteSelectionWith(
   input: unknown,
   postcodeInput: unknown,
-  { lookup, now }: QuoteDependencies,
+  deps: QuoteDependencies,
 ): Promise<QuoteResult> {
+  const result = await quoteSelectionAndTermsWith(input, postcodeInput, deps);
+  return "quote" in result ? result.quote : result;
+}
+
+export async function quoteSelectionAndTermsWith(
+  input: unknown,
+  postcodeInput: unknown,
+  { lookup, now, resolveDelivery, readWarehouseSchedule }: QuoteDependencies,
+): Promise<Extract<QuoteResult, { status: "error" }> |
+  { quote: Extract<QuoteResult, { status: "ok" }>; terms: DeliveryTerms | null }> {
   const requested = normaliseLines(input);
   if (!requested) return { status: "error", message: "Check that your selection contains valid items and whole quantities." };
 
   let coverage: Extract<QuoteResult, { status: "ok" }>["coverage"] = "unchecked";
   let postcode: string | undefined;
   let deliveryQuote: DeliveryQuote = STANDARD_DELIVERY_QUOTE;
+  let terms: DeliveryTerms | null = null;
   const postcodeText = readPostcodeInput(postcodeInput);
   if (postcodeInput !== undefined && postcodeText !== "") {
-    const result = lookupDeliveryCoverage(postcodeText ?? "", PLACEHOLDER_DELIVERY_COVERAGE);
+    const result = await resolveDelivery(postcodeText ?? "");
     if (!result.ok) {
       if (result.error.code !== "invalid_postcode") return { status: "error", message: quoteUnavailable };
       coverage = "invalid";
     } else {
       postcode = result.value.postcode.normalised;
-      coverage = result.value.kind === "covered" ? "covered" : "unsupported";
-      if (result.value.kind === "covered") deliveryQuote = result.value.quote;
+      terms = result.value.terms;
+      coverage = terms ? "covered" : "unsupported";
+      if (terms) deliveryQuote = terms.quote;
     }
   }
 
@@ -99,9 +112,8 @@ export async function quoteSelectionWith(
       return { status: "error", message: "This selection exceeds the checkout limit. Reduce the quantities and try again." };
     }
 
-    const canEstimateDelivery = coverage === "covered" || coverage === "unchecked";
     const progress = basket.delivery.freeDeliveryProgress;
-    if (canEstimateDelivery && progress) {
+    if ((coverage === "covered" || coverage === "unchecked") && progress) {
       freeDeliveryMessage = progress.remainingPence > 0
         ? `${formatGbp(progress.remainingPence)} more ex VAT for free delivery`
         : "Your selection qualifies for free delivery.";
@@ -110,26 +122,30 @@ export async function quoteSelectionWith(
     const instant = now();
     if (Number.isFinite(instant.getTime())) {
       const authorisedAt = instant.toISOString();
-      const promise = calculateDispatchPromise({ authorisedAt, deliveryQuote: canEstimateDelivery ? deliveryQuote : undefined });
-      if (promise.ok) {
+      const promise = terms && promiseUnderTerms(authorisedAt, terms);
+      if (promise?.ok) {
         ({ dispatchDate, estimatedDeliveryDate } = promise.value);
-      } else if (canEstimateDelivery && promise.error.code === "calendar_out_of_range" && promise.error.calendar === "delivery") {
-        const dispatchOnly = calculateDispatchPromise({ authorisedAt });
-        if (dispatchOnly.ok) dispatchDate = dispatchOnly.value.dispatchDate;
+      } else if (!promise || (promise.error.code === "calendar_out_of_range" && promise.error.calendar === "delivery")) {
+        const schedule = terms ?? await readWarehouseSchedule();
+        if (schedule) {
+          const { warehouseCalendar, cutoffMinutes } = schedule;
+          const dispatchOnly = calculateDispatchPromise({ authorisedAt, warehouseCalendar, cutoffMinutes });
+          if (dispatchOnly.ok) dispatchDate = dispatchOnly.value.dispatchDate;
+        }
       }
     }
   }
 
   const quoteKey = createHash("sha256").update(JSON.stringify({
-    version: 1,
+    version: 2,
     basket: basket && { ...basket, lines: [...basket.lines].sort((a, b) => a.variantId.localeCompare(b.variantId)) },
-    coverage, postcode, dispatchDate, estimatedDeliveryDate,
+    coverage, postcode, dispatchDate, estimatedDeliveryDate, terms,
   })).digest("hex");
 
-  return {
+  return { terms, quote: {
     status: "ok", lines, corrections, basket, freeDeliveryMessage, dispatchDate, estimatedDeliveryDate, coverage,
     ...(postcode && { postcode }),
     ...(Object.keys(photos).length > 0 && { photos }),
     quoteKey,
-  };
+  } };
 }

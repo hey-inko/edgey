@@ -133,9 +133,10 @@ export async function POST(request: Request) {
         const { data } = await paymentStore().from("trade_accounts").select("status").eq("buyer_id", buyer.id).maybeSingle();
         return await decline({ status: "trade-unavailable", reason: data?.status === "suspended" ? "suspended" : "not-approved" }, 403);
       }
-      if (["insufficient_stock", "variant_not_published", "stale_unit_price"].includes(code ?? "")) {
+      if (["insufficient_stock", "variant_not_published", "stale_unit_price", "delivery_terms_changed"].includes(code ?? "")) {
         const fresh = await startCheckoutAttempt(body);
         if (fresh.status === "review") return await decline(fresh, 409);
+        if (code === "delivery_terms_changed" && fresh.status !== "ready") return await decline(fresh, 422);
       }
       throw error;
     }

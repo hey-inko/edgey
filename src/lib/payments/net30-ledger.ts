@@ -1,6 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
-import { calculateDispatchPromise, STANDARD_DELIVERY_QUOTE } from "@/lib/commerce";
+import { promiseForReservedOrder } from "@/lib/delivery/terms";
 import { applyCreditNote, applyInvoicePayment, applyInvoiceRefund, releaseCreditHold, voidInvoice } from "@/lib/credit";
 import { hostedStripeInvoice } from "@/lib/email/confirmation";
 import { assertInvoiceAmounts, assertInvoiceIdentity, rememberTradeInvoice, tradeCustomer, verifyStripeAccount } from "./net30-provider";
@@ -44,8 +44,11 @@ export async function recordTradeInvoiceState(
       throw new PaymentReviewError("Stripe credited the full balance before dispatch authorisation. Review the invoice and stock hold.");
     }
     const authorisedAt = new Date().toISOString();
-    const promise = calculateDispatchPromise({ authorisedAt, deliveryQuote: STANDARD_DELIVERY_QUOTE });
-    if (!promise.ok || !promise.value.estimatedDeliveryDate || order.delivery_service !== STANDARD_DELIVERY_QUOTE.serviceName) {
+    const needsPromise = !order.authorised_at && order.fulfilment_status === "awaiting_authorisation";
+    const promise = needsPromise ? promiseForReservedOrder(order, authorisedAt) : {
+      dispatchDate: order.promised_dispatch_date, deliveryDate: order.estimated_delivery_date,
+    };
+    if (!promise) {
       throw new PaymentReviewError("Could not calculate the delivery promise for the Net 30 authorisation.");
     }
     order = await retryCredit(async () => {
@@ -53,7 +56,7 @@ export async function recordTradeInvoiceState(
         p_order_id: order.id, p_provider_invoice_id: invoice.id, p_stripe_customer_id: customer,
         p_amount_due_pence: order.gross_pence, p_currency: invoice.currency, p_authorised_at: authorisedAt,
         p_issued_at: new Date(issued * 1_000).toISOString(), p_due_at: new Date(due * 1_000).toISOString(),
-        p_dispatch_date: promise.value.dispatchDate, p_delivery_date: promise.value.estimatedDeliveryDate!,
+        p_dispatch_date: promise.dispatchDate, p_delivery_date: promise.deliveryDate,
       }).single();
       if (error) throw error;
       return data;

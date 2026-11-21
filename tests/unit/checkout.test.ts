@@ -4,7 +4,11 @@ import { prepareCheckoutAttempt } from "@/lib/checkout/attempt";
 import { quoteSelectionWith, type QuoteDependencies } from "@/lib/checkout/quote";
 import { startCheckoutAttempt } from "@/lib/checkout/server";
 import type { CheckoutFields, QuoteResult } from "@/lib/checkout/types";
-import type { LineRequest } from "@/lib/commerce";
+import {
+  ENGLAND_WALES_BANK_HOLIDAY_CALENDAR_2026_2027, lookupDeliveryCoverage, PLACEHOLDER_DELIVERY_COVERAGE,
+  STANDARD_DELIVERY_QUOTE, type LineRequest,
+} from "@/lib/commerce";
+import { parseDeliveryTerms, type DeliveryResolution } from "@/lib/delivery/terms";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ getAll: () => [] }) }));
@@ -14,6 +18,15 @@ const secondId = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
 const missingId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const attemptToken = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const londonFriday = "2026-07-17T14:29:00.123Z";
+const terms = parseDeliveryTerms({
+  version: 1,
+  quote: STANDARD_DELIVERY_QUOTE,
+  warehouseCalendar: ENGLAND_WALES_BANK_HOLIDAY_CALENDAR_2026_2027,
+  deliveryCalendar: ENGLAND_WALES_BANK_HOLIDAY_CALENDAR_2026_2027,
+  cutoffMinutes: 930,
+});
+if (!terms) throw new Error("Invalid test delivery terms.");
+const calendar = { warehouseCalendar: terms.warehouseCalendar, cutoffMinutes: terms.cutoffMinutes };
 const z10 = {
   id: z10Id,
   sku: "EDG-Z10",
@@ -41,6 +54,12 @@ function dependencies(
   return {
     lookup: vi.fn<QuoteDependencies["lookup"]>(async (lines) => variants.filter(({ id }) => lines.some(({ variantId }) => variantId === id))),
     now: () => new Date(instant),
+    readWarehouseSchedule: async () => calendar,
+    resolveDelivery: async (postcode: string): Promise<DeliveryResolution> => {
+      const coverage = lookupDeliveryCoverage(postcode, PLACEHOLDER_DELIVERY_COVERAGE);
+      if (!coverage.ok) return coverage;
+      return { ok: true, value: { postcode: coverage.value.postcode, terms: coverage.value.kind === "covered" ? terms : null } };
+    },
   };
 }
 
@@ -164,7 +183,7 @@ describe("selection quote", () => {
   });
 
   it.each([
-    [undefined, "unchecked", undefined, "2026-07-20"],
+    [undefined, "unchecked", undefined, null],
     [" sw1a1aa ", "covered", "SW1A 1AA", "2026-07-20"],
     ["bt1 5gs", "unsupported", "BT1 5GS", null],
     ["PO30 1AA", "unsupported", "PO30 1AA", null],
@@ -175,6 +194,24 @@ describe("selection quote", () => {
     expect(quote).toMatchObject({ coverage, dispatchDate: "2026-07-17", estimatedDeliveryDate: estimate });
     expect(quote.postcode).toBe(canonical);
     if (coverage === "invalid" || coverage === "unsupported") expect(quote.freeDeliveryMessage).toBeNull();
+  });
+
+  it("uses only the configured warehouse cut-off and calendar without coverage, and doesn't invent dates without them", async () => {
+    const deps = dependencies();
+    const resolveDelivery = vi.fn(deps.resolveDelivery);
+    const readWarehouseSchedule = vi.fn<QuoteDependencies["readWarehouseSchedule"]>()
+      .mockResolvedValueOnce({
+        cutoffMinutes: 900,
+        warehouseCalendar: { ...calendar.warehouseCalendar, closures: ["2026-07-20"] },
+      }).mockResolvedValueOnce(null);
+    const scoped = { ...deps, resolveDelivery, readWarehouseSchedule };
+    expect(await quoteSelectionWith([line(1)], undefined, scoped)).toMatchObject({
+      coverage: "unchecked", dispatchDate: "2026-07-21", estimatedDeliveryDate: null,
+    });
+    expect(resolveDelivery).not.toHaveBeenCalled();
+    expect(await quoteSelectionWith([line(1)], "", scoped)).toMatchObject({
+      coverage: "unchecked", dispatchDate: null, estimatedDeliveryDate: null,
+    });
   });
 });
 
@@ -264,8 +301,26 @@ describe("checkout attempt", () => {
       totals: { goodsNetPence: 9975, deliveryNetPence: 695, vatRateBps: 2000, vatPence: 2134, grossPence: 12804 },
       holdExpiresAt: "2026-07-17T15:04:00.000Z",
       deliveryService: "Next working day",
+      deliveryTerms: terms,
       promise: { dispatchDate: "2026-07-17", deliveryDate: "2026-07-20" },
     } });
+  });
+
+  it("requires a fresh acknowledgement after terms change even if the quoted dates and price do not", async () => {
+    const deps = dependencies();
+    const original = ok(await quoteSelectionWith([line(1)], fields.postcode, deps));
+    const revised: QuoteDependencies = { ...deps, resolveDelivery: async (postcode) => {
+      const result = await deps.resolveDelivery(postcode);
+      if (!result.ok || !result.value.terms) throw new Error("Fixture must be covered.");
+      return { ok: true, value: {
+        ...result.value, terms: { ...result.value.terms, cutoffMinutes: 931 },
+      } };
+    } };
+    const next = ok(await quoteSelectionWith([line(1)], fields.postcode, revised));
+    expect(next.dispatchDate).toBe(original.dispatchDate);
+    expect(next.estimatedDeliveryDate).toBe(original.estimatedDeliveryDate);
+    expect(next.basket).toEqual(original.basket);
+    expect(await prepareCheckoutAttempt(input([line(1)], original.quoteKey), revised)).toMatchObject({ status: "review", quote: next });
   });
 });
 
@@ -282,8 +337,11 @@ describe("live checkout adapter", () => {
     vi.stubEnv("EDGEY_REQUEST_HASH_KEY", "test-only-request-hash-key-at-least-32-bytes");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(londonFriday));
-    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) =>
-      Response.json(String(url).endsWith("/consume_request_rate_limit") ? true : [row]));
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (target) => {
+      const path = new URL(String(target)).pathname;
+      return Response.json(path.endsWith("/consume_request_rate_limit") ? true : path.endsWith("/checkout_delivery_terms") ? terms :
+        path.endsWith("/checkout_warehouse_calendar") ? calendar : [row]);
+    });
     vi.stubGlobal("fetch", fetch);
     return fetch;
   }
@@ -291,10 +349,12 @@ describe("live checkout adapter", () => {
   it("only fetches requested published variants without caching or exposing stock or the order input", async () => {
     const fetch = mockSupabase();
     const quote = ok(await quoteSelection([line(2), line(3, z10Id.toUpperCase())], fields.postcode));
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(String(fetch.mock.calls[0]?.[0])).toMatch(/\/rpc\/consume_request_rate_limit$/);
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ p_scope: "selection_quote" });
-    const call = fetch.mock.calls[1];
+    const [, deliveryCall, call] = fetch.mock.calls;
+    expect(new URL(String(deliveryCall?.[0])).pathname).toBe("/rest/v1/rpc/checkout_delivery_terms");
+    expect(deliveryCall?.[1]).toMatchObject({ method: "POST", body: JSON.stringify({ p_postcode: "SW1A 1AA" }) });
     if (!call) throw new Error("No request was made");
     const [target, init] = call;
     const url = new URL(String(target));
@@ -303,12 +363,12 @@ describe("live checkout adapter", () => {
     expect(init).toMatchObject({ method: "POST", cache: "no-store" });
     expect(new Headers(init?.headers).get("apikey")).toBe("fake-service-role-key");
     expect(quote.photos).toEqual({ [z10Id]: "oscillating.webp" });
-    expect(JSON.stringify(quote)).not.toMatch(/service-role|quote_limit|stock_on_hand|stock_reserved/);
+    expect(JSON.stringify(quote)).not.toMatch(/75321|4098|71223|service-role|quote_limit|stock_on_hand|stock_reserved|warehouseCalendar|cutoffMinutes/);
     expect(await startCheckoutAttempt(input([line(5)], quote.quoteKey))).toMatchObject({
       status: "ready", orderInput: { totals: { grossPence: 12804 } },
     });
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(fetch.mock.calls[2]?.[1]?.method).toBe("POST");
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(fetch.mock.calls[4]?.[1]?.method).toBe("POST");
   });
 
   it("rejects oversized or throttled public quotes without reading inventory", async () => {
@@ -345,5 +405,15 @@ describe("live checkout adapter", () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", undefined);
     expect(await quoteSelection([line(1)])).toEqual(error);
     expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("reads only the narrow warehouse schedule when the buyer has not entered a postcode", async () => {
+    const fetch = mockSupabase();
+    const quote = ok(await quoteSelection([line(1)]));
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      "/rest/v1/rpc/consume_request_rate_limit", "/rest/v1/rpc/lookup_selection_quote", "/rest/v1/rpc/checkout_warehouse_calendar",
+    ]);
+    expect(quote).toMatchObject({ coverage: "unchecked", dispatchDate: "2026-07-17", estimatedDeliveryDate: null });
+    expect(JSON.stringify(quote)).not.toMatch(/warehouseCalendar|cutoffMinutes/);
   });
 });

@@ -19,6 +19,8 @@ export function PickDetails({ order, items }: { order: WarehouseOrder; items: Wa
           <dt>Service</dt><dd>{order.delivery_service}</dd>
           <dt>Promised dispatch</dt>
           <dd className="admin-mono"><time dateTime={order.promised_dispatch_date}>{dispatchDate(order.promised_dispatch_date)}</time></dd>
+          <dt>Estimated delivery</dt>
+          <dd className="admin-mono"><time dateTime={order.estimated_delivery_date}>{dispatchDate(order.estimated_delivery_date)}</time></dd>
         </dl>
       </AdminSection>
       <AdminSection title="Pick lines">
