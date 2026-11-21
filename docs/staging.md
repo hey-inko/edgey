@@ -39,6 +39,29 @@ The first four design products use Appendix A prices, not the portable demo's da
 | EDG-SR6223 | Round-shank blade | £25.50 / £22.50 / £19.95 |
 | EDG-Z50 | Decagonal rotary blade | £38.00 / £34.00 / £30.00 |
 
+### Load disposable sales dashboard orders
+
+Use these orders only in local development or on isolated, protected staging. Every order has a `[DEMO]` business and recipient name, an `@edgey-orders-demo.invalid` email, and a **DO NOT SHIP** address. Don't change the orders, link real customer activity to them, or use them to test payments or fulfil real parcels. They intentionally count in staging reports.
+
+```sh
+# Local Supabase, after applying local migrations and with no demo batch loaded:
+pnpm db:start && pnpm db:env && pnpm db:fixture
+pnpm demo:orders --local
+# View the staff Sales dashboard, then remove the batch:
+pnpm demo:orders:clean --local
+
+# Hosted staging: use the direct URL and TLS certificate from the bootstrap above.
+pnpm demo:orders --staging --project-ref "$STAGING_PROJECT_REF"
+pnpm demo:orders:clean --staging --project-ref "$STAGING_PROJECT_REF"
+unset EDGEY_STAGING_DB_URL EDGEY_STAGING_DB_CA_FILE
+```
+
+The loader needs current order, credit and delivery migrations and the published staging catalogue with prices. The warehouse and carrier calendars must cover the current UK week, the previous nine weeks and upcoming delivery promises. It checks free stock before writing anything: Z10 13, Z16 6, Z50 1, SR6223 5, Z71 2, Z1 4, MIM-A45 4, SUM-DRG-36 3 and SUM-TAN-36 1. If the check fails, inspect active orders or receive authorised staging stock through the staff desk. The script does not create stock, change prices or costs, or publish variants. Avoid loading during active warehouse tests; the demo uses available stock until cleaned up.
+
+The 15 orders cover all three price tiers, card and Net 30, dispatches, open picking and reservation states, cancellations, full and partial refunds, and open, overdue and settled balances. The loader runs the database workflows directly with fictional provider IDs and dates orders across ten Europe/London calendar weeks. Stripe and the mail providers are not called. It removes confirmation and approval outbox rows before commit, creates no provider events or retries, and gives each demo order an infinite Stripe replay deadline so the current cron queries cannot select it. The Net 30 buyer has no credentials or sessions and is banned from sign-in. The temporary warehouse/finance actor is removed before commit. No database migration or worker deployment is needed.
+
+Clean up as soon as you've captured the dashboard. Cleanup uses exact IDs and fingerprints from a private manifest created by the loader, locks the fixture and affected stock rows, and reverses only the demo's movement deltas in a single transaction. Subsequent real receipts, shipments, and reservations are kept, including their point-in-time movement snapshots. The command refuses if a fixture row changed, a related real row prevents safe deletion, stock counters disagree with the ledger, a demo SKU was physically count-corrected after loading, or demo identities exist without a manifest. Don't bypass those checks with a broad delete or stock reset; inspect the conflicting records with a database operator. A second cleanup is a no-op, and the empty private manifest table remains available for the next batch.
+
 ## 3. Set up Supabase Auth and the test staff
 
 1. Under **Authentication → URL Configuration**, set **Site URL** to the staging origin and add only the exact callback `https://<staging-host>/auth/confirm` to the hosted redirect allowlist. Keep local redirects in the local stack. Enable the Email provider and email confirmation. Keep the Confirm signup and Magic link templates pointing to `{{ .ConfirmationURL }}`; the callback expects a PKCE `code`, not a `token_hash` query parameter. Open the email link in the browser that requested it.

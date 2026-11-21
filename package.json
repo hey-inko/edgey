@@ -19,6 +19,8 @@
     "db:reset": "supabase db reset",
     "db:env": "node scripts/write-env.mjs",
     "db:fixture": "node scripts/apply-staging-fixture.mjs",
+    "demo:orders": "node scripts/demo-orders.mjs load",
+    "demo:orders:clean": "node scripts/demo-orders.mjs clean",
     "test": "vitest run tests/unit src/lib/commerce",
     "bench:search": "node scripts/bench-search.mjs",
     "test:db": "vitest run tests/db",
