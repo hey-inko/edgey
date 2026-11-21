@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createServerClient } from "@supabase/ssr";
 import { expect, type Page } from "@playwright/test";
 import { localAdminClient } from "../../scripts/seed-admin";
 import { authenticatorCode } from "../helpers/authenticator";
@@ -45,6 +46,41 @@ export async function signInStaff(page: Page, credentials: StaffCredentials) {
     await page.goto("/admin");
   }
   await expect(page.getByRole("heading", { name: "Staff desk" })).toBeVisible();
+}
+
+export async function setVerifiedStaffSession(page: Page, credentials: StaffCredentials, baseURL: string | undefined) {
+  const apiURL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const appURL = baseURL ?? "";
+  const apiKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (![apiURL, appURL].every((value) => ["127.0.0.1", "localhost"].includes(URL.parse(value)?.hostname ?? "")) || !apiKey) {
+    throw new Error("Staff session fixtures require the local Edgey app and Supabase Auth API.");
+  }
+  const jar = new Map<string, string>();
+  const client = createServerClient(apiURL, apiKey, {
+    cookieOptions: { name: "edgey-auth" },
+    cookies: {
+      getAll: () => [...jar].map(([name, value]) => ({ name, value })),
+      setAll: (updates) => {
+        for (const { name, value } of updates) {
+          if (value) jar.set(name, value);
+          else jar.delete(name);
+        }
+      },
+    },
+  });
+  const { email, password } = credentials;
+  const signedIn = await client.auth.signInWithPassword({ email, password });
+  if (signedIn.error) throw signedIn.error;
+  const factor = await client.auth.mfa.enroll({ factorType: "totp" });
+  if (factor.error) throw factor.error;
+  const verified = await client.auth.mfa.challengeAndVerify({
+    factorId: factor.data.id, code: authenticatorCode(factor.data.totp.secret),
+  });
+  if (verified.error) throw verified.error;
+  await activateStaffFactor(credentials, factor.data.id);
+  await page.context().addCookies([...jar].map(([name, value]) => ({
+    name, value, url: appURL, httpOnly: true, sameSite: "Lax",
+  })));
 }
 
 export async function seedPaidAdminOrder({

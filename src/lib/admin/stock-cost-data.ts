@@ -25,8 +25,13 @@ export async function getCurrentStaffCost(db: StaffDb, roles: StaffRole[], varia
 
 export async function getStaffReceiptCosts(db: StaffDb, roles: StaffRole[], variantId: string, movementIds: number[]) {
   if (!canManageCosts(roles) || !movementIds.length) return [];
+  const columns = "stock_movement_id, supplier_unit_minor, currency, landed_unit_pence";
+  const current = await db.from("staff_effective_receipt_costs")
+    .select(columns).eq("variant_id", variantId).in("stock_movement_id", movementIds);
+  if (!current.error) return current.data;
+  if (!stockSchemaUnavailable(current.error)) throw new Error("Could not load receipt costs.");
   const { data, error } = await db.from("staff_receipt_costs")
-    .select("stock_movement_id, supplier_unit_minor, currency, landed_unit_pence")
+    .select(columns)
     .eq("variant_id", variantId).in("stock_movement_id", movementIds);
   if (error && !stockSchemaUnavailable(error)) throw new Error("Could not load receipt costs.");
   return data ?? [];

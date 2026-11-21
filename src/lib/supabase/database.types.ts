@@ -914,6 +914,7 @@ export type Database = {
       staff_variant_cost_audit: ReadOnlyTable<{
         id: number;
         variant_id: string;
+        stock_movement_id: number | null;
         actor_id: string;
         old_cost: Json | null;
         new_cost: Json;
@@ -1483,6 +1484,10 @@ export type Database = {
       };
     };
     Views: {
+      staff_effective_receipt_costs: {
+        Row: StaffUnitCost & { stock_movement_id: number; received_quantity: number };
+        Relationships: [];
+      };
       staff_current_variant_costs: {
         Row: StaffUnitCost & {
           source: "receipt" | "estimate";
@@ -1571,6 +1576,10 @@ export type Database = {
       archive_staff_variant: {
         Args: { p_variant_id: string; p_expected_updated_at: string };
         Returns: string;
+      };
+      correct_staff_receipt_cost: {
+        Args: { p_variant_id: string; p_stock_movement_id: number; p_expected_recorded_at: string; p_cost: Json };
+        Returns: number;
       };
       receive_staff_stock_with_cost: {
         Args: { p_variant_id: string; p_operation_key: string; p_quantity: number; p_cost: Json };

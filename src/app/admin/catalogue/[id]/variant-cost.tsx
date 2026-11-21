@@ -8,7 +8,17 @@ import { saveVariantCost } from "./cost-actions";
 
 export function VariantCost({ id, result }: { id: string; result: Awaited<ReturnType<typeof getCurrentStaffCost>> }) {
   const { available, cost } = result;
-  const actual = cost?.source === "receipt";
+  const receipt = cost?.source === "receipt" && cost.stock_movement_id !== null
+    ? { movementId: cost.stock_movement_id, recordedAt: cost.recorded_at }
+    : null;
+  const form = (
+    <AdminForm action={saveVariantCost.bind(null, id, receipt)} submit={receipt ? "Save receipt cost correction" : "Save cost estimate"}>
+      <p className="admin-muted">{receipt
+        ? "This records a correction to the latest receipt’s costs. It does not change stock or erase the original entry."
+        : "Margins use this estimate until you record a costed receipt."}</p>
+      <CostFields key={cost?.recorded_at ?? "new-estimate"} cost={cost} />
+    </AdminForm>
+  );
   return (
     <AdminSection title="Supplier cost">
       {!available ? <AdminNotice>Supplier costs will be available after the database update.</AdminNotice> : (
@@ -17,7 +27,7 @@ export function VariantCost({ id, result }: { id: string; result: Awaited<Return
             ? <AdminNotice>No cost recorded. Set an estimate or add a cost when receiving stock.</AdminNotice>
             : (
               <dl className="admin-spec">
-                <dt>Cost source</dt><dd>{actual ? "Latest costed receipt" : "Variant estimate"}</dd>
+                <dt>Cost source</dt><dd>{receipt ? "Latest costed receipt" : "Variant estimate"}</dd>
                 <dt>Supplier price per blade</dt><dd className="admin-mono">{formatSupplierCost(cost.supplier_unit_minor, cost.currency)}</dd>
                 <dt>Landed cost per blade</dt><dd className="admin-mono">{formatGbp(cost.landed_unit_pence)}</dd>
                 <dt>Recorded</dt><dd><time dateTime={cost.recorded_at}>{displayTimestamp(cost.recorded_at)}</time></dd>
@@ -28,12 +38,13 @@ export function VariantCost({ id, result }: { id: string; result: Awaited<Return
                 {cost.note && <><dt>Cost note</dt><dd>{cost.note}</dd></>}
               </dl>
             )}
-          {actual ? <p className="admin-muted">Margins use this receipt’s landed cost. A receipt without a cost does not replace it.</p> : (
-            <AdminForm action={saveVariantCost.bind(null, id)} submit="Save cost estimate">
-              <p className="admin-muted">Margins use this estimate until you record a costed receipt.</p>
-              <CostFields key={cost?.recorded_at ?? "new-estimate"} cost={cost} />
-            </AdminForm>
-          )}
+          {receipt ? <>
+            <p className="admin-muted">Margins use this receipt’s landed cost. A receipt without a cost does not replace it.</p>
+            <details className="admin-panel">
+              <summary>Correct latest receipt cost</summary>
+              {form}
+            </details>
+          </> : form}
         </>
       )}
     </AdminSection>

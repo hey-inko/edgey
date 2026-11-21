@@ -7,19 +7,28 @@ import { parseStaffCost } from "@/lib/admin/stock-cost";
 import { stockSchemaUnavailable } from "@/lib/admin/stock-cost-data";
 
 type State = { ok: boolean; message: string };
+type ReceiptCostVersion = { movementId: number; recordedAt: string };
 
-export async function saveVariantCost(id: string, _previous: State | null, form: FormData): Promise<State> {
+export async function saveVariantCost(id: string, receipt: ReceiptCostVersion | null, _previous: State | null, form: FormData): Promise<State> {
   const { db } = await requireStaff("catalogue", "finance");
   if (!catalogueId.test(id)) return { ok: false, message: "This variant does not exist." };
   const parsed = parseStaffCost(form);
   if (!parsed.ok || !parsed.value) {
     return { ok: false, message: "Choose a supplier currency and enter the supplier and landed unit amounts with up to two decimal places. If you enter an exchange rate, it must be positive and have at most eight decimal places." };
   }
-  const { error } = await db.rpc("set_staff_variant_cost", { p_variant_id: id, p_cost: parsed.value });
+  const { error } = receipt
+    ? await db.rpc("correct_staff_receipt_cost", {
+      p_variant_id: id, p_stock_movement_id: receipt.movementId,
+      p_expected_recorded_at: receipt.recordedAt, p_cost: parsed.value,
+    })
+    : await db.rpc("set_staff_variant_cost", { p_variant_id: id, p_cost: parsed.value });
   if (error) return { ok: false, message: stockSchemaUnavailable(error)
-    ? "Cost management is not available until the database update is applied." : "Could not save the cost estimate." };
+    ? "This cost action is not available until the database update is applied."
+    : error.message === "staff_cost_stale" ? "The current receipt or its cost changed. Reload the page and try again."
+      : "Could not save the cost." };
   revalidatePath(`/admin/catalogue/${id}`);
-  return { ok: true, message: "Cost estimate saved." };
+  if (receipt) revalidatePath(`/admin/stock/${id}`);
+  return { ok: true, message: receipt ? "Receipt cost correction saved." : "Cost estimate saved." };
 }
 
 export async function archiveVariant(id: string, _previous: State | null, form: FormData): Promise<State> {

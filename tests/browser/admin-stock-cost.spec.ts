@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
-import { signInStaff } from "./admin-fixtures";
+import { setVerifiedStaffSession } from "./admin-fixtures";
 
 async function createStockVariant() {
   const db = localAdminClient();
@@ -17,13 +17,13 @@ async function createStockVariant() {
   return { id, sku };
 }
 
-test("the owner estimates cost, receives stock at actual cost, then records a signed adjustment", async ({ page }) => {
+test("the owner estimates cost, receives stock at actual cost, then records a signed adjustment", async ({ page, baseURL }) => {
   const db = localAdminClient();
   const staff = await createLocalAdminUser("warehouse");
   const membership = await db.from("staff_members").insert({ user_id: staff.id, role: "catalogue" });
   if (membership.error) throw membership.error;
   const { id, sku } = await createStockVariant();
-  await signInStaff(page, staff);
+  await setVerifiedStaffSession(page, staff, baseURL);
   await page.goto(`/admin/catalogue/${id}`);
   await page.getByLabel("Supplier unit price", { exact: true }).fill("16.90");
   await page.getByLabel("Supplier currency", { exact: true }).selectOption("USD");
@@ -31,6 +31,10 @@ test("the owner estimates cost, receives stock at actual cost, then records a si
   await page.getByRole("button", { name: "Save cost estimate" }).click();
   await expect(page.getByText("Cost estimate saved.", { exact: true })).toBeVisible();
   await expect(page.getByText(/below landed cost/i).first()).toBeVisible();
+  await page.getByLabel("1–4 blades (£ ex VAT)", { exact: true }).fill("20.85");
+  await page.getByRole("button", { name: "Save selling data" }).click();
+  await expect(page.getByText("Selling data saved.", { exact: true })).toBeVisible();
+  expect((await db.from("variants").select("price_1_4_pence").eq("id", id).single()).data?.price_1_4_pence).toBe(2085);
 
   await page.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Stock", exact: true }).click();
   await page.getByRole("link", { name: sku, exact: true }).click();
@@ -70,13 +74,21 @@ test("the owner estimates cost, receives stock at actual cost, then records a si
   await expect(page.getByText("Latest costed receipt", { exact: true })).toBeVisible();
   await expect(page.getByText("£3.50", { exact: true })).toBeVisible();
   await expect(page.getByText(/below landed cost/i)).toHaveCount(0);
+  await page.getByText("Correct latest receipt cost", { exact: true }).click();
+  await page.getByLabel("Landed unit cost (£)", { exact: true }).fill("3.70");
+  await page.getByRole("button", { name: "Save receipt cost correction" }).click();
+  await expect(page.getByText("Receipt cost correction saved.", { exact: true })).toBeVisible();
+  await expect(page.getByText("£3.70", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "View stock and receipts" }).click();
+  await expect(page.getByRole("table", { name: "Movement ledger" }).getByRole("row")).toHaveCount(3);
+  await expect(ledger.getByRole("row").filter({ hasText: "£3.70 landed" })).toContainText("+8");
   expect((await db.from("variants").select("stock_on_hand,stock_reserved").eq("id", id).single()).data)
     .toEqual({ stock_on_hand: 6, stock_reserved: 0 });
 });
 
 test("finance can correct an estimate; warehouse-only staff cannot see cost fields or receipt costs", async ({ page, browser, baseURL }) => {
   const { id } = await createStockVariant();
-  await signInStaff(page, await createLocalAdminUser("finance"));
+  await setVerifiedStaffSession(page, await createLocalAdminUser("finance"), baseURL);
   await page.goto(`/admin/catalogue/${id}`);
   await expect(page.getByRole("heading", { name: "Selling prices" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save selling data" })).toHaveCount(0);
@@ -92,7 +104,7 @@ test("finance can correct an estimate; warehouse-only staff cannot see cost fiel
 
   const warehouse = await browser.newPage({ baseURL });
   try {
-    await signInStaff(warehouse, await createLocalAdminUser("warehouse"));
+    await setVerifiedStaffSession(warehouse, await createLocalAdminUser("warehouse"), baseURL);
     await warehouse.goto(`/admin/catalogue/${id}`);
     await expect(warehouse).toHaveURL("/admin");
     await warehouse.goto(`/admin/stock/${id}`);

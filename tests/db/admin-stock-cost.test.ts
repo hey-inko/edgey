@@ -117,7 +117,8 @@ describe("staff stock and unit costs", () => {
     const runAdjust = () => adjust(id, randomUUID(), 1, "count_correction");
     const runReceive = () => receive(id, randomUUID(), 1);
     const runSetCost = () => setCost(id);
-    const costRelations = ["staff_variant_costs", "staff_receipt_costs", "staff_variant_cost_audit", "staff_current_variant_costs"];
+    const costRelations = ["staff_variant_costs", "staff_receipt_costs", "staff_variant_cost_audit", "staff_current_variant_costs",
+      "staff_effective_receipt_costs"];
     const readCost = async (table: string) => (await db.query(
       `select variant_id from public.${table} where variant_id = $1`, [id],
     )).rows;
@@ -160,6 +161,46 @@ describe("staff stock and unit costs", () => {
     await expect(asStaff(both, () => db.query(
       "update public.stock_movements set adjustment_note = 'changed' where variant_id = $1", [id],
     ))).rejects.toMatchObject(denied);
+  });
+
+  test("corrects the newest receipt through a separate audit entry without rewriting stock or replay data", async () => {
+    const owner = await user("warehouse", "catalogue");
+    const finance = await user("finance");
+    const warehouse = await user("warehouse");
+    const buyer = await user();
+    const { id } = await variant(owner, 0);
+    const key = randomUUID();
+    const receipt = await asStaff(owner, () => receive(id, key, 3));
+    const original = await one<{ recorded_at: string }>(`
+      select recorded_at::text from public.staff_receipt_costs where stock_movement_id = $1
+    `, [receipt]);
+    const correction = { ...cost, landed_unit_pence: 290, freight_unit_pence: null, note: null };
+    const correct = (input = correction, timestamp = original.recorded_at) => rpc("correct_staff_receipt_cost",
+      [id, receipt, timestamp, JSON.stringify(input)]);
+    for (const viewer of [null, buyer, warehouse, { ...finance, steppedUp: false }]) {
+      await expect(asStaff(viewer, () => correct())).rejects.toMatchObject({ code: "42501" });
+    }
+    expect(await asStaff(finance, () => correct())).toBe(receipt);
+    expect(await asStaff(finance, () => correct())).toBe(receipt);
+    await expect(asStaff(finance, () => correct({ ...correction, landed_unit_pence: 310 })))
+      .rejects.toMatchObject({ message: "staff_cost_stale" });
+    expect(await one(`
+      select landed_unit_pence, freight_unit_pence, note from public.staff_receipt_costs where stock_movement_id = $1
+    `, [receipt])).toEqual({ landed_unit_pence: 315, freight_unit_pence: 27, note: "First batch" });
+    expect(await one(`
+      select landed_unit_pence, freight_unit_pence, note, actor_id
+      from public.staff_effective_receipt_costs where stock_movement_id = $1
+    `, [receipt])).toEqual({ landed_unit_pence: 290, freight_unit_pence: null, note: null, actor_id: finance.id });
+    expect(await currentCost(id)).toMatchObject([{ stock_movement_id: receipt, landed_unit_pence: 290 }]);
+    expect(await one(`
+      select old_cost->'landed_unit_pence' as old_pence, new_cost->'landed_unit_pence' as new_pence,
+        actor_id, recorded_at from public.staff_variant_cost_audit where stock_movement_id = $1
+    `, [receipt])).toEqual({ old_pence: 315, new_pence: 290, actor_id: finance.id, recorded_at: expect.any(Date) });
+    expect(await asStaff(owner, () => receive(id, key, 3))).toBe(receipt);
+    expect(await stock(id)).toEqual({ stock_on_hand: 3, stock_reserved: 0 });
+    await asStaff(owner, () => receive(id, randomUUID(), 1));
+    await expect(asStaff(finance, () => correct())).rejects.toMatchObject({ message: "staff_cost_stale" });
+    expect(await currentCost(id)).toMatchObject([{ landed_unit_pence: 315 }]);
   });
 
   test("changes signed stock exactly once and records adjustment details without touching reserves", async () => {
