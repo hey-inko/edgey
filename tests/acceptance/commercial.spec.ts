@@ -54,6 +54,7 @@ test("records an exact match through card authorisation, dispatch and a structur
     await warehousePage.screenshot({ path: test.info().outputPath("commercial-measures.png"), fullPage: true });
 
     await warehousePage.getByRole("button", { name: "Sign out" }).click();
+    await expect(warehousePage).toHaveURL("/admin/sign-in");
     await warehousePage.goto("/admin/commercial");
     await expect(warehousePage.getByRole("heading", { name: "Staff sign-in" })).toBeVisible();
     await page.goto("/privacy");

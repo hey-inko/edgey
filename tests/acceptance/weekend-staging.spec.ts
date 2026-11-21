@@ -324,6 +324,7 @@ test("Isolation and trials", async ({ db, page, browser, request }) => {
   await expect(page.getByRole("table", { name: "Trial blade units" })).toContainText("EDG-Z1");
   expect(await balance()).toEqual(stock);
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL("/admin/sign-in");
   await signInStaff(page, warehouse);
   await page.goto(trialPath);
   await expect(page.getByRole("button", { name: "Record dispatch" })).toHaveCount(0);

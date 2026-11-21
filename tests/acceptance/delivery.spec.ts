@@ -20,6 +20,7 @@ test("warehouse settings quote an agreed card service and capture uses the reser
     await expect(page).toHaveURL("/admin");
     await expect(page.getByRole("link", { name: "Delivery settings" })).toHaveCount(0);
     await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL("/admin/sign-in");
     await signInStaff(page, await createLocalAdminUser("warehouse"));
     await page.getByRole("link", { name: "Delivery settings" }).click();
     await expect(page.getByRole("heading", { name: "Delivery settings" })).toBeVisible();

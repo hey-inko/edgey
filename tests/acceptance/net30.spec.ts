@@ -324,6 +324,7 @@ test("an agreed Net 30 service survives invoice-send recovery and later payment"
     await staffPage.getByRole("button", { name: "Approve trade account" }).click();
     await expect(staffPage.getByRole("link", { name: "View trade account" })).toBeVisible();
     await staffPage.getByRole("button", { name: "Sign out" }).click();
+    await expect(staffPage).toHaveURL("/admin/sign-in");
     await signInStaff(staffPage, warehouse);
 
     await signInBuyer(buyerContext, origin, buyer);
