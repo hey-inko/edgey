@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { normaliseOrderReference } from "@/lib/orders/reference";
+import { setDbClaims } from "../helpers/db-claims";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
@@ -161,8 +163,8 @@ async function rejects(query: () => Promise<unknown>, message: string, code = "2
   }
 }
 
-async function asRole<T>(role: "anon" | "authenticated" | "service_role", id: string | null, run: () => Promise<T>) {
-  await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role, sub: id })]);
+async function asRole<T>(role: "anon" | "authenticated" | "service_role", id: string | null, run: () => Promise<T>, steppedUp = false) {
+  await setDbClaims(db, role, id, steppedUp);
   await db.query(`set local role ${role}`);
   const result = await run();
   await db.query("reset role");
@@ -179,8 +181,10 @@ describe("order transactions", () => {
     const lines = [line(item)];
     const first = await asRole("service_role", null, () => createOrder(lines, { token }));
     const second = await createOrder(lines);
-    expect(first.order_reference).toMatch(/^EDG-[0-9]{8}$/);
-    expect(second.order_reference).toMatch(/^EDG-[0-9]{8}$/);
+    for (const { order_reference } of [first, second]) {
+      expect(order_reference).toMatch(/^EDG-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{5}$/);
+      expect(normaliseOrderReference(order_reference)).toBe(order_reference);
+    }
     expect(first.order_reference).not.toBe(second.order_reference);
     expect(await createOrder(lines, { token })).toMatchObject({ id: first.id, order_reference: first.order_reference });
     expect(await pay(first, key("cs"), key("pi"))).toMatchObject({
@@ -189,6 +193,54 @@ describe("order transactions", () => {
     await rejects(() => db.query("update public.orders set order_reference = $2 where id = $1", [
       first.id, second.order_reference,
     ]), "order_reference_is_immutable", "23514");
+  });
+
+  test("accepts legacy order references and enforces the checksum on new references", async () => {
+    const order = await createOrder([line(await variant(await product(), 2))]);
+    const insertReference = (reference: string) => db.query(`
+      insert into public.orders
+      select (jsonb_populate_record(null::public.orders, to_jsonb(o) || jsonb_build_object(
+        'id', gen_random_uuid(), 'checkout_attempt_token', gen_random_uuid(), 'order_reference', $2::text
+      ))).* from public.orders o where id = $1
+      returning order_reference
+    `, [order.id, reference]);
+    expect((await insertReference("EDG-00000042")).rows).toEqual([{ order_reference: "EDG-00000042" }]);
+    const invalid = order.order_reference.slice(0, -1) + (order.order_reference.endsWith("2") ? "3" : "2");
+    await db.query("savepoint bad_reference");
+    try {
+      await expect(insertReference(invalid)).rejects.toMatchObject({ code: "23514", constraint: "orders_order_reference_check" });
+    } finally {
+      await db.query("rollback to savepoint bad_reference");
+    }
+  });
+
+  test("selection quotes preserve available requests and return only fixed alternatives when short", async () => {
+    const family = await product();
+    const first = await variant(family, 4);
+    const second = await variant(family, 7);
+    const third = await variant(family, 19);
+    const draft = await variant(family, 9);
+    await db.query("update public.variants set publication_status = 'draft' where id = $1", [draft.id]);
+    const query = (quantity: number) => db.query(
+      "select * from public.lookup_selection_quote($1, $2)", [[first.id, second.id, third.id, draft.id], Array(4).fill(quantity)],
+    );
+    const quotes = await asRole("service_role", null, async () => {
+      return { small: (await query(3)).rows, large: (await query(300)).rows };
+    });
+    const byId = (rows: QueryResultRow[]) => Object.fromEntries(rows.map(({ id, quote_limit }) => [id, quote_limit]));
+    expect(byId(quotes.small)).toEqual({ [first.id]: 3, [second.id]: 5, [third.id]: 10 });
+    expect(byId(quotes.large)).toEqual({ [first.id]: 1, [second.id]: 5, [third.id]: 10 });
+    for (const row of [...quotes.small, ...quotes.large]) {
+      expect(Object.keys(row).sort()).toEqual([
+        "id", "option_label", "photo", "price_10_plus_pence", "price_1_4_pence", "price_5_9_pence", "quote_limit", "sku",
+      ].sort());
+    }
+    await asRole("anon", null, () => rejects(
+      () => query(1), "permission denied for function lookup_selection_quote", "42501",
+    ));
+    await asRole("authenticated", null, () => rejects(
+      () => query(1), "permission denied for function lookup_selection_quote", "42501",
+    ));
   });
 
   test("snapshots the exact variant and exhausts its public availability without affecting its sibling", async () => {
@@ -594,7 +646,7 @@ describe("order transactions", () => {
           .toBe(staffRole === "finance" ? 1 : 0);
         expect((await db.query("select event_id from public.provider_events where provider = 'stripe' and event_id = $1", [eventId])).rowCount)
           .toBe(staffRole === "finance" ? 1 : 0);
-      });
+      }, Boolean(staffRole));
     };
     await checkRead(buyer.id, [own.id]);
     await checkRead(other.id, [otherOrder.id]);
@@ -613,7 +665,7 @@ describe("order transactions", () => {
     await asRole("authenticated", finance.id, async () => {
       await rejects(() => db.query("select payload from public.provider_events where event_id = $1", [eventId]),
         "permission denied for table provider_events", "42501");
-    });
+    }, true);
     await asRole("authenticated", buyer.id, async () => {
       await rejects(() => db.query("update public.orders set fulfilment_status = 'cancelled' where id = $1", [own.id]),
         "permission denied for table orders", "42501");

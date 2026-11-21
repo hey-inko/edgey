@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { setDbClaims } from "../helpers/db-claims";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { approveTradeAccount, bindInvoice, createNet30OrderWithHolds, voidInvoice } from "@/lib/credit";
+import { requireStaff } from "@/lib/admin/auth";
+import { approveTradeAccount, bindInvoice, createNet30OrderWithHolds, setCreditLimit, suspendTradeAccount, voidInvoice } from "@/lib/credit";
 import { getVerifiedBuyer } from "@/lib/auth/server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({ getVerifiedBuyer: vi.fn() }));
+vi.mock("@/lib/admin/auth", () => ({ requireStaff: vi.fn() }));
 
 type Account = { id: string; stripe_customer_id: string };
 type Order = { id: string; hold_expires_at: Date };
@@ -135,8 +138,8 @@ async function reject(run: () => Promise<unknown>, message?: string, code = "220
   }
 }
 
-async function asRole(role: "anon" | "authenticated" | "service_role", id: string | null, run: () => Promise<void>) {
-  await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role, sub: id })]);
+async function asRole(role: "anon" | "authenticated" | "service_role", id: string | null, run: () => Promise<void>, steppedUp = false) {
+  await setDbClaims(db, role, id, steppedUp);
   await db.query(`set local role ${role}`);
   try {
     await run();
@@ -446,7 +449,7 @@ describe("trade credit transactions", () => {
     await asRole("authenticated", finance.id, async () => {
       expect((await db.query("select id from public.credit_ledger")).rowCount).toBe(6);
       await reject(() => db.query("update public.trade_accounts set credit_limit_pence = 30000"), undefined, "42501");
-    });
+    }, true);
     await asRole("anon", null, async () => {
       for (const table of ["trade_accounts", "trade_credit_position", "credit_holds", "invoices", "credit_ledger"]) {
         await reject(() => db.query(`select 1 from public.${table}`), undefined, "42501");
@@ -649,9 +652,17 @@ test("the server wrapper uses the verified identity and calls the real local Pos
     vi.mocked(getVerifiedBuyer).mockResolvedValue(null);
     await expect(createNet30OrderWithHolds(input)).rejects.toThrow("A verified session is required");
     const approval = { applicationId, creditLimitPence: 20000, stripeCustomerId: customerId };
-    vi.mocked(getVerifiedBuyer).mockResolvedValue(buyer);
-    await expect(approveTradeAccount(approval)).rejects.toMatchObject({ code: "42501", message: "finance_role_required" });
     vi.mocked(getVerifiedBuyer).mockResolvedValue(finance);
+    vi.mocked(requireStaff).mockRejectedValue(new Error("Staff step-up required."));
+    await expect(approveTradeAccount(approval)).rejects.toThrow("Staff step-up required");
+    const terms = { tradeAccountId: randomUUID(), operationKey: randomUUID() };
+    await expect(setCreditLimit({ ...terms, creditLimitPence: 1 })).rejects.toThrow("Staff step-up required");
+    await expect(suspendTradeAccount({ ...terms, reason: "Fixture reason" })).rejects.toThrow("Staff step-up required");
+    expect(vi.mocked(requireStaff).mock.calls).toEqual([["finance"], ["finance"], ["finance"]]);
+
+    vi.mocked(requireStaff).mockResolvedValueOnce({ userId: buyer.id } as Awaited<ReturnType<typeof requireStaff>>);
+    await expect(approveTradeAccount(approval)).rejects.toMatchObject({ code: "42501", message: "finance_role_required" });
+    vi.mocked(requireStaff).mockResolvedValueOnce({ userId: finance.id } as Awaited<ReturnType<typeof requireStaff>>);
     const approved = await approveTradeAccount(approval);
     account = { id: approved.id, stripe_customer_id: customerId };
     vi.mocked(getVerifiedBuyer).mockResolvedValue(buyer);
@@ -666,6 +677,7 @@ test("the server wrapper uses the verified identity and calls the real local Pos
     await position(account, 0, 0, 20000);
   } finally {
     vi.mocked(getVerifiedBuyer).mockReset();
+    vi.mocked(requireStaff).mockReset();
     await cleanup(account, applicationId, productId, [buyer.id, finance.id]);
   }
 });

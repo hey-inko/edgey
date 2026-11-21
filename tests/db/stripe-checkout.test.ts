@@ -10,7 +10,9 @@ import { quoteCurrentSelection } from "@/lib/checkout/server";
 import { recordProviderEvent } from "@/lib/orders";
 import { reconcileStripePayments, replayStripeEvent } from "@/lib/payments/reconciliation";
 import { readCheckoutSuccess } from "@/lib/payments/success";
+import { requestFingerprint } from "@/lib/requests/rate-limit";
 import { createLocalAdminUser } from "../../scripts/seed-admin";
+import { withExhaustedQuoteBudget } from "../helpers/quote-budget";
 
 const provider = vi.hoisted(() => ({
   create: vi.fn(), list: vi.fn(), session: vi.fn(), intent: vi.fn(), invoice: vi.fn(), refund: vi.fn(), expire: vi.fn(), account: vi.fn(),
@@ -149,6 +151,18 @@ function submit(input: unknown) {
   }));
 }
 
+it("requires a same-origin signal on authenticated card checkout before opening payment", async () => {
+  const buyer = await createLocalAdminUser("buyer");
+  buyerIds.push(buyer.id);
+  vi.mocked(getBuyerSession).mockResolvedValue({ status: "verified", buyer });
+  const input = await checkoutInput(await makeVariant(1), 1);
+  const response = await openCheckout(new Request(origin + "/api/checkout/session", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  }));
+  expect(response.status).toBe(403);
+  expect(provider.create).not.toHaveBeenCalled();
+});
+
 async function checkout(variantId: string, quantity: number) {
   const input = await checkoutInput(variantId, quantity);
   const response = await submit(input);
@@ -157,6 +171,15 @@ async function checkout(variantId: string, quantity: number) {
   expect(response.status).toBe(200);
   return { input, session: sessions.get(data.sessionId)! };
 }
+
+it("does not apply the public quote quota to a current card checkout", async () => {
+  const input = await checkoutInput(await makeVariant(1), 1);
+  await withExhaustedQuoteBudget(db, requestFingerprint("ip", "local"), async () => {
+    const response = await submit(input);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "payment" });
+  });
+});
 
 function paid(session: Stripe.Checkout.Session, amount = session.amount_total!, currency = "gbp") {
   const intentId = id("pi_");
@@ -455,7 +478,7 @@ it("applies refund, invoice and crossed checkout events once and keeps success r
   expect(await readCheckoutSuccess(id("cs_test_"))).toBeNull();
   const snapshot = await readCheckoutSuccess(session.id);
   expect(snapshot).toMatchObject({ kind: "confirmed", reference: order.order_reference, grossPence: 12804, lines: [{ quantity: 5 }] });
-  expect(order.order_reference).toMatch(/^EDG-[0-9]{8}$/);
+  expect(order.order_reference).toMatch(/^EDG-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{5}$/);
   expect(JSON.stringify(snapshot)).not.toContain(orderId);
   expect(snapshot).not.toHaveProperty("email");
   expect(await readCheckoutSuccess(session.id)).toEqual(snapshot);

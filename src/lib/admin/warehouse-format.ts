@@ -1,3 +1,5 @@
+import { normaliseOrderReference } from "@/lib/orders/reference";
+
 export const warehousePageSize = 50;
 
 export function warehousePage(value: unknown) {
@@ -13,7 +15,8 @@ export function isWarehouseId(value: unknown): value is string {
 export type WarehouseOrderLookup = { field: "id" | "order_reference"; value: string };
 
 export function warehouseOrderLookup(value: string): WarehouseOrderLookup | null {
-  if (/^EDG-[0-9]{8}$/i.test(value)) return { field: "order_reference", value: value.toUpperCase() };
+  const reference = normaliseOrderReference(value);
+  if (reference) return { field: "order_reference", value: reference };
   return isWarehouseId(value) ? { field: "id", value } : null;
 }
 

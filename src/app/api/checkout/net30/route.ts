@@ -62,7 +62,9 @@ export async function POST(request: Request) {
   try {
     const origin = checkoutOrigin();
     const sender = request.headers.get("origin");
-    if (sender && sender !== origin) return reply({ status: "error", message: "Start payment from the Edgey checkout." }, 403);
+    if (sender !== origin && (sender !== null || request.headers.get("sec-fetch-site") !== "same-origin")) {
+      return reply({ status: "error", message: "Start payment from the Edgey checkout." }, 403);
+    }
     const buyer = await getVerifiedBuyer();
     if (!buyer) return recovering ? pending() : reply({ status: "trade-unavailable", reason: "not-approved" }, 403);
     let order = await net30Attempt(token, buyer.id);

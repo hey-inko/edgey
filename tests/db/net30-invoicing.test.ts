@@ -8,6 +8,8 @@ import { getBuyerSession, getVerifiedBuyer } from "@/lib/auth/server";
 import { quoteCurrentSelection } from "@/lib/checkout/server";
 import { voidCancelledNet30Invoice } from "@/lib/payments/net30";
 import { reconcileStripePayments } from "@/lib/payments/reconciliation";
+import { requestFingerprint } from "@/lib/requests/rate-limit";
+import { withExhaustedQuoteBudget } from "../helpers/quote-budget";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({ getBuyerSession: vi.fn(), getVerifiedBuyer: vi.fn() }));
@@ -274,6 +276,16 @@ it("serializes two £120 checkouts against £200 of credit and issues one invoic
   expect(stripe.invoices.addLines.mock.calls[0]?.[1].lines.map((line) => [line.amount, lineTax(line)]))
     .toEqual([[9305, 1861], [695, 139]]);
   expect(await position(accountId)).toEqual({ held_pence: 0, outstanding_pence: 12000, available_credit_pence: 8000 });
+});
+
+it("does not apply the public quote quota to a current Net 30 checkout", async () => {
+  const { buyer } = await openAccount();
+  const current = await input(await variant(), buyer.email);
+  await withExhaustedQuoteBudget(db, requestFingerprint("ip", "local"), async () => {
+    const response = await submit(current);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "authorised" });
+  });
 });
 
 it("recovers a committed but timed-out invoice before repricing and never sends twice", async () => {

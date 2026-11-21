@@ -25,8 +25,7 @@ export async function POST(request: Request) {
     await acceptStripeEvent(stripe, event);
     return Response.json({ received: true });
   } catch (error) {
-    return Response.json({
-      error: error instanceof PaymentConfigurationError ? error.message : "Could not record the Stripe event.",
-    }, { status: 503 });
+    if (error instanceof PaymentConfigurationError) console.error("Stripe webhook configuration is unavailable.");
+    return Response.json({ error: "Could not record the Stripe event." }, { status: 503 });
   }
 }

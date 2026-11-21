@@ -1475,6 +1475,14 @@ export type Database = {
       };
     };
     Functions: {
+      activate_staff_authenticator: {
+        Args: { p_user_id: string; p_factor_id: string };
+        Returns: undefined;
+      };
+      get_staff_authenticator: {
+        Args: Record<PropertyKey, never>;
+        Returns: { approved_factor_id: string | null; session_factor_id: string | null }[];
+      };
       admin_catalogue_review: {
         Args: {
           p_actor_id: string;
@@ -1793,6 +1801,19 @@ export type Database = {
       consume_request_rate_limit: {
         Args: { p_email_key: string; p_ip_key: string; p_scope: string };
         Returns: boolean;
+      };
+      lookup_selection_quote: {
+        Args: { p_variant_ids: string[]; p_quantities: number[] };
+        Returns: {
+          id: string;
+          sku: string;
+          option_label: string | null;
+          price_1_4_pence: number;
+          price_5_9_pence: number;
+          price_10_plus_pence: number;
+          quote_limit: number;
+          photo: string | null;
+        }[];
       };
       create_order_with_reservations: {
         Args: {

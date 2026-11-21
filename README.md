@@ -48,6 +48,17 @@ Open `/admin` and sign in with one of the printed test emails. The script
 refuses non-local Supabase URLs and never prints the password. Each run creates
 new users; a local database reset removes them. Playwright provisions separate
 test users and a paid fixture order without touching any external provider.
+
+For a manual local sign-in, set up an authenticator in the staff desk and enter
+its code. Use the Auth UUID from the seed output and the verified factor ID
+shown on the pending-approval screen to approve the local test factor:
+
+```sh
+pnpm exec supabase db query "select public.activate_staff_authenticator('<local Auth UUID>', '<verified factor UUID>')"
+```
+
+Reload the staff page. The enrollment setup key is private and is not needed
+for approval. The CLI command above targets the local database by default.
 In a deployed environment, issue verified Supabase Auth accounts separately
 and assign the minimum required role in `staff_members`; do not run this seed.
 Hosted staff sign-in uses the existing request hashing key and trusted Vercel

@@ -1,5 +1,5 @@
 import "server-only";
-import { isIP } from "node:net";
+import { clientNetwork } from "@/lib/requests/client-network";
 import { requestFingerprint } from "@/lib/requests/rate-limit";
 import { PaymentConfigurationError } from "./config";
 import { paymentStore } from "./store";
@@ -9,7 +9,7 @@ export class CheckoutRateLimitError extends Error {}
 export async function limitCheckout(request: Request, origin: string, scope: "checkout" | "checkout_close", recipient: string) {
   const ip = process.env.VERCEL === "1" ? request.headers.get("x-vercel-forwarded-for")?.trim() : null;
   const local = ["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname);
-  const address = ip && isIP(ip) ? ip.toLowerCase() : local ? "local" : null;
+  const address = (ip && clientNetwork(ip)) || (local ? "local" : null);
   if (!address || Buffer.byteLength(process.env.EDGEY_REQUEST_HASH_KEY ?? "") < 32) {
     throw new PaymentConfigurationError("Checkout rate limiting needs EDGEY_REQUEST_HASH_KEY and a trusted client address.");
   }

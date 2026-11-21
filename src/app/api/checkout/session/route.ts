@@ -43,6 +43,10 @@ export async function POST(request: Request) {
     const previous = normaliseAttemptToken(body.supersedesAttemptToken);
     if (body.supersedesAttemptToken !== undefined && (!previous || previous === token)) return invalidAttempt();
     const actor = await getCheckoutActor();
+    if (actor.status === "ready" && actor.buyerId && sender === null &&
+      request.headers.get("sec-fetch-site") !== "same-origin") {
+      return reply({ status: "error", message: "Start payment from the Edgey checkout." }, 403);
+    }
     const recovering = body.action === "resume" || body.action === "close";
     if (actor.status === "error" && !recovering) return reply(actor, 422);
     const buyerId = actor.status === "ready" ? actor.buyerId ?? null : null;
@@ -100,7 +104,8 @@ export async function POST(request: Request) {
       return reply(error.result, error.result.status === "review" ? 409 : 422);
     }
     if (error instanceof PaymentConfigurationError) {
-      return reply({ status: "error", message: `Card payment isn’t configured. ${error.message}` }, 503);
+      console.error("Card payment configuration is unavailable.");
+      return reply({ status: "error", message: "Card payment is unavailable right now. Try again later." }, 503);
     }
     if (error instanceof CheckoutRateLimitError) return reply({ status: "error", message: error.message }, 429);
     if (error instanceof CheckoutOwnerMismatchError) return reply({

@@ -1,7 +1,7 @@
 import "server-only";
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/database.types";
+import { serviceClient } from "@/lib/supabase/service";
 import { orderReservationArgs } from "./reservation-input";
 
 export type CreateOrderInput = {
@@ -57,26 +57,11 @@ type WarehouseOrderOperation = {
 };
 type Functions = Database["public"]["Functions"];
 
-let client: SupabaseClient<Database> | undefined;
-
 async function call<Name extends keyof Functions>(
   name: Name,
   args: Functions[Name]["Args"],
 ) {
-  if (!client) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key)
-      throw new Error("Supabase service-role configuration is missing.");
-    client = createClient<Database>(url, key, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    });
-  }
-  const { data, error } = await client.rpc(name, args);
+  const { data, error } = await serviceClient().rpc(name, args);
   if (error) throw error;
   if (data === null)
     throw new Error(`Supabase did not return a result for ${name}.`);

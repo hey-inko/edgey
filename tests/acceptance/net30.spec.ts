@@ -186,7 +186,7 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         orderReference = (await db.query<{ order_reference: string }>(
           "select order_reference from public.orders where id=$1", [orderId],
         )).rows[0]!.order_reference;
-        expect(orderReference).toMatch(/^EDG-[0-9]{8}$/);
+        expect(orderReference).toMatch(/^EDG-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{5}$/);
         await expect(buyerPage.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
         await expect(buyerPage.getByText(orderReference, { exact: true })).toBeVisible();
         await expect(buyerPage.getByText(poReference, { exact: true })).toBeVisible();

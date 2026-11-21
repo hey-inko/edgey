@@ -9,7 +9,7 @@ test("staff sign in, print the paid order, then submit dispatch twice without mo
   const { data, error } = await db.from("orders").select("order_reference").eq("id", order.id).single();
   if (error) throw error;
   const reference = data.order_reference;
-  expect(reference).toMatch(/^EDG-[0-9]{8}$/);
+  expect(reference).toMatch(/^EDG-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{5}$/);
   const stock = () => db.from("variants").select("stock_on_hand,stock_reserved").eq("id", order.variant.id).single();
   const before = await stock();
   expect(before.error).toBeNull();

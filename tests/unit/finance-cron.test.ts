@@ -31,12 +31,13 @@ it.each([
     counts: { sent: 1, failed: 0, pending: 0 },
   },
 ] as const)("runs the primary $kind worker even when finance cannot claim retries", async ({ kind, handler, primary, counts }) => {
-  vi.stubEnv("CRON_SECRET", "test-cron");
+  const cronSecret = "test-only-cron-secret-at-least-32-bytes";
+  vi.stubEnv("CRON_SECRET", cronSecret);
   const failure = Promise.withResolvers<never>();
   vi.mocked(drainFinanceRetries).mockReturnValueOnce(failure.promise);
   if (kind === "event") vi.mocked(reconcileStripePayments).mockResolvedValueOnce(counts);
   else vi.mocked(processOrderConfirmations).mockResolvedValueOnce(counts);
-  const response = handler(new Request("https://example.test/api/cron", { headers: { Authorization: "Bearer test-cron" } }));
+  const response = handler(new Request("https://example.test/api/cron", { headers: { Authorization: `Bearer ${cronSecret}` } }));
   expect(primary).toHaveBeenCalledOnce();
   expect(drainFinanceRetries).toHaveBeenCalledWith(kind, expect.any(Function));
   failure.reject(new Error("Fixture internal failure"));

@@ -190,7 +190,7 @@ test("Guest purchase", async ({ page, db, request }) => {
   await drainEmails(request);
   await visitSuccess(page, session);
   const reference = await receiptReference(page);
-  expect(reference).toMatch(/^EDG-[A-Z0-9]+$/);
+  expect(reference).toMatch(/^EDG-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{4}-[2-9A-HJ-NP-TV-Z]{5}$/);
   expect(reference).not.toBe(session.client_reference_id);
   expect((await confirmation(recipient)).text).toContain(invoice.hosted_invoice_url);
   expect((await confirmation(recipient)).subject).toContain(reference);

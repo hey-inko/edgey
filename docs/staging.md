@@ -49,7 +49,15 @@ The first four design products use Appendix A prices, not the portable demo's da
      ('<finance Auth UUID>', 'finance');
    ```
 
-   Use `/admin/sign-in` for staff password sign-in. A buyer account without a role must not open the staff desk. Do not use the local-only `scripts/seed-admin.ts` on hosted staging.
+   Enable TOTP enrollment and verification in hosted Supabase Auth. During in-person onboarding, confirm the staff member's identity independently. Observe them enroll their own authenticator at `/admin/sign-in` and verify the code. Copy the exact factor ID shown on their pending-approval screen in person; do not approve a factor based on an email, chat request, friendly name, or the newest record in Supabase. A trusted operator must activate that verified factor using the hosted SQL editor:
+
+   ```sql
+   select public.activate_staff_authenticator('<staff Auth UUID>', '<observed factor UUID>');
+   ```
+
+   The app and database match the actual GoTrue session's TOTP factor to that approval. A password, magic link, or a verified but unapproved TOTP factor cannot grant staff access. Before making staff access available, confirm this policy on the target Supabase version with a controlled staff account, then verify that each approved staff member reaches only their assigned roles. Migrate existing staff factors through the same check; there is no grandfathering. For lost authenticators, verify identity in person, revoke sessions and remove roles before resetting factors, then restore only the approved role and repeat enrollment and approval. Keep staff accounts separate from buyer accounts. Do not use the local-only `scripts/seed-admin.ts` on hosted staging.
+
+   Before enabling hosted intake, confirm Auth password policy (including leaked-password protection where available), Auth throttles for password/token/OTP/MFA and SMTP send limits. Rate-limit the direct anonymous `search_blades` RPC at the Supabase API boundary; protecting only the Vercel site does not cover it. Exercise the normal Finder, quote, checkout and staff paths after configuring limits. The app limits public selection quotes to 100 lines, 120 priced checks per trusted IP per hour and 10,000 globally. The public quote budget does not gate checkout; payment uses its own limits. Include checkout endpoints in hosted abuse monitoring because initial payment requests may reprice before the reservation limits. Confirm the hosted trusted IP header is present, comes only from the platform and stays correct behind any fronting proxy. Where the deployment permits it, add managed abuse controls for distributed requests, magic-link quota exhaustion and unsolicited receipt emails. Do not treat client-supplied IP or a honeypot as a substitute for hosted limits.
 
 ## 4. Set up Stripe, email and the deployment environment
 
@@ -73,7 +81,7 @@ The first four design products use Appendix A prices, not the portable demo's da
    | `STRIPE_SECRET_KEY` | Server only: full Stripe sandbox secret key (`sk_test_…`); do not use a live key. |
    | `STRIPE_WEBHOOK_SECRET` | Server only: signing secret (`whsec_…`) for the sandbox snapshot endpoint above. |
    | `NET30_CHECKOUT_ENABLED` | Keep `false` until the [Net 30 sandbox sign-off](net30-sandbox.md). Turn it on only in the isolated staging deployment for that test. |
-   | `CRON_SECRET` | Server only: independently generated bearer token that Vercel includes on worker requests. |
+   | `CRON_SECRET` | Server only: independently generated bearer token of at least 32 bytes that Vercel includes on worker requests. |
    | `EMAIL_PROVIDER` | `resend` (the default). The file outbox is local only. |
    | `RESEND_API_KEY` | Server only: API key with sending permission for the verified staging domain. |
    | `EMAIL_FROM` | Verified staging sender, such as `Edgey <orders@staging.example.com>`. |
@@ -92,7 +100,9 @@ The first four design products use Appendix A prices, not the portable demo's da
    );
    ```
 
-   Verify a run in the job history. The job preserves approved trial/trade and converted enquiry records; operations needs a separate retention policy for those and for unconfirmed Auth identities. Restrict access and use controlled inboxes, then set `EDGEY_PUBLIC_REQUESTS_ENABLED=true` and redeploy. A setting change does not update an already-built deployment.
+   Verify a run in the job history and configure failure monitoring. This job preserves approved trial/trade and converted enquiries and does not manage order PII or Auth users. Before opening intake or live sales, the owner must approve separate deletion or minimisation rules for those records, covering statutory invoice retention, active orders and credit, dispute/legal holds, unconfirmed Auth users, and the copies held by email/payment providers and backups. Specify what is removed or retained and when, who may run it, and how the result is audited. Keep intake off until the agreed safeguards are in place, restrict access and use controlled inboxes. A setting change does not update an already-built deployment.
+
+   Keep the Supabase service-role key in server-only configuration, use separate keys and projects per environment, and rotate it on suspected exposure. It bypasses RLS: the staff application verifies the session and derives actor identity before invoking staff service RPCs, and each RPC rechecks the applicable database role. A holder of the master key is not equally constrained. Review Auth logs and the existing per-domain operation/ledger history; confirm production alerting and decide retention for any cross-domain actor audit before adding one.
 
 ## 5. Check the selected environment
 

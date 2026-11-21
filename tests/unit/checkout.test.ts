@@ -39,7 +39,7 @@ function dependencies(
   instant = londonFriday,
 ) {
   return {
-    lookup: vi.fn<QuoteDependencies["lookup"]>(async (ids) => variants.filter(({ id }) => ids.includes(id))),
+    lookup: vi.fn<QuoteDependencies["lookup"]>(async (lines) => variants.filter(({ id }) => lines.some(({ variantId }) => variantId === id))),
     now: () => new Date(instant),
   };
 }
@@ -94,7 +94,7 @@ describe("selection quote", () => {
   it("consolidates canonical variant IDs before pricing but does not share breaks across variants", async () => {
     const deps = dependencies([z10, { ...z10, id: secondId, sku: "EDG-SECOND" }]);
     const quote = ok(await quoteSelectionWith([line(2, ` ${z10Id.toUpperCase()} `), line(4, secondId), line(3)], undefined, deps));
-    expect(deps.lookup).toHaveBeenCalledExactlyOnceWith([z10Id, secondId]);
+    expect(deps.lookup).toHaveBeenCalledExactlyOnceWith([line(5), line(4, secondId)]);
     expect(quote.lines).toEqual([line(5), line(4, secondId)]);
     expect(quote.basket?.lines.map(({ unitNetPence }) => unitNetPence)).toEqual([1995, 2250]);
     const reordered = ok(await quoteSelectionWith([line(4, secondId), line(5)], undefined, deps));
@@ -108,7 +108,7 @@ describe("selection quote", () => {
     const quote = ok(await quoteSelectionWith([line(5), line(1, missingId), line(1, secondId)], undefined, deps));
     expect(quote.lines).toEqual([line(4)]);
     expect(quote.corrections).toEqual([
-      "EDG-Z10: quantity changed from 5 to 4 due to stock availability.",
+      "EDG-Z10: limited stock. We’ve suggested a smaller quantity for you to review.",
       "An unavailable item was removed from your selection.",
       "EDG-SECOND is out of stock and was removed from your selection.",
     ]);
@@ -272,15 +272,18 @@ describe("checkout attempt", () => {
 describe("live checkout adapter", () => {
   const row = {
     id: z10Id, sku: z10.sku, option_label: z10.optionLabel, price_1_4_pence: 2250, price_5_9_pence: 1995,
-    price_10_plus_pence: 1750, stock_on_hand: 75321, stock_reserved: 4098, products: { photo: "oscillating.webp" },
+    price_10_plus_pence: 1750, quote_limit: 10, photo: "oscillating.webp",
   };
 
   function mockSupabase() {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://127.0.0.1:3000");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-role-key");
+    vi.stubEnv("EDGEY_REQUEST_HASH_KEY", "test-only-request-hash-key-at-least-32-bytes");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(londonFriday));
-    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => Response.json([row]));
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) =>
+      Response.json(String(url).endsWith("/consume_request_rate_limit") ? true : [row]));
     vi.stubGlobal("fetch", fetch);
     return fetch;
   }
@@ -288,38 +291,59 @@ describe("live checkout adapter", () => {
   it("only fetches requested published variants without caching or exposing stock or the order input", async () => {
     const fetch = mockSupabase();
     const quote = ok(await quoteSelection([line(2), line(3, z10Id.toUpperCase())], fields.postcode));
-    expect(fetch).toHaveBeenCalledTimes(1);
-    const call = fetch.mock.calls[0];
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(String(fetch.mock.calls[0]?.[0])).toMatch(/\/rpc\/consume_request_rate_limit$/);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ p_scope: "selection_quote" });
+    const call = fetch.mock.calls[1];
     if (!call) throw new Error("No request was made");
     const [target, init] = call;
     const url = new URL(String(target));
-    expect(url.pathname).toBe("/rest/v1/variants");
-    expect(url.searchParams.get("id")).toBe(`in.(${z10Id})`);
-    expect(url.searchParams.get("publication_status")).toBe("eq.published");
-    expect(url.searchParams.get("select")).toBe(
-      "id,sku,option_label,price_1_4_pence,price_5_9_pence,price_10_plus_pence,stock_on_hand,stock_reserved,products!inner(photo:media->>photo)",
-    );
-    expect(init).toMatchObject({ method: "GET", cache: "no-store" });
+    expect(url.pathname).toBe("/rest/v1/rpc/lookup_selection_quote");
+    expect(JSON.parse(String(init?.body))).toEqual({ p_variant_ids: [z10Id], p_quantities: [5] });
+    expect(init).toMatchObject({ method: "POST", cache: "no-store" });
     expect(new Headers(init?.headers).get("apikey")).toBe("fake-service-role-key");
     expect(quote.photos).toEqual({ [z10Id]: "oscillating.webp" });
-    expect(JSON.stringify(quote)).not.toMatch(/75321|4098|71223|service-role|stock_on_hand|stock_reserved/);
+    expect(JSON.stringify(quote)).not.toMatch(/service-role|quote_limit|stock_on_hand|stock_reserved/);
     expect(await startCheckoutAttempt(input([line(5)], quote.quoteKey))).toMatchObject({
       status: "ready", orderInput: { totals: { grossPence: 12804 } },
     });
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch.mock.calls[1]?.[1]?.method).toBe("GET");
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[2]?.[1]?.method).toBe("POST");
+  });
+
+  it("rejects oversized or throttled public quotes without reading inventory", async () => {
+    const fetch = mockSupabase();
+    expect(await quoteSelection(Array(101).fill(line(1)))).toMatchObject({ status: "error" });
+    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockResolvedValueOnce(Response.json(false));
+    expect(await quoteSelection([line(1)])).toMatchObject({ status: "error", message: expect.stringContaining("Too many") });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("prices more than 32 different items up to the existing 100-line checkout input limit", async () => {
+    const fetch = mockSupabase();
+    const variants = Array.from({ length: 100 }, (_, index) => ({
+      ...row, id: z10Id.slice(0, -3) + index.toString(16).padStart(3, "0"),
+    }));
+    fetch.mockResolvedValueOnce(Response.json(true));
+    fetch.mockResolvedValueOnce(Response.json(variants));
+    const quote = ok(await quoteSelection(variants.map(({ id }) => line(1, id))));
+    expect(quote.lines).toHaveLength(100);
+    expect(quote.basket?.lines).toHaveLength(100);
   });
 
   it("fails closed for unavailable credentials, query errors or malformed stock data", async () => {
     const fetch = mockSupabase();
+    fetch.mockResolvedValueOnce(Response.json(true));
     fetch.mockResolvedValueOnce(Response.json({ message: "restricted provider error" }, { status: 500 }));
     const error = await quoteSelection([line(1)]);
     expect(error).toMatchObject({ status: "error" });
     expect(JSON.stringify(error)).not.toContain("restricted provider error");
-    fetch.mockResolvedValueOnce(Response.json([{ ...row, stock_reserved: null }]));
+    fetch.mockResolvedValueOnce(Response.json(true));
+    fetch.mockResolvedValueOnce(Response.json([{ ...row, quote_limit: null }]));
     expect(await quoteSelection([line(1)])).toEqual(error);
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", undefined);
     expect(await quoteSelection([line(1)])).toEqual(error);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 });
