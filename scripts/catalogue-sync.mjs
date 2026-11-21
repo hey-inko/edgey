@@ -7,6 +7,8 @@ const lookups = {
   substrates: "Material",
   brands: "Brand",
 };
+const writeTables = [...Object.keys(lookups), "products", "variants", "compatibility", "variant_substrates"];
+const identityColumns = new Set(["id", "product_id", "variant_id", "family_code", "slug", "sku"]);
 const history = {
   "public.stock_movements": "stock movements",
   "public.order_items": "order lines",
@@ -73,7 +75,7 @@ function makePlan(source, target) {
     if (!row) return add("ADD", kind, key, "", { table, data });
     const fields = Object.keys(data).filter((field) => !isDeepStrictEqual(row[field], data[field]));
     if (!fields.length) return add("KEEP", kind, key, "already matches");
-    add("UPDATE", kind, key, fields.join(", "), { table, id: row.id, data: Object.fromEntries(fields.map((f) => [f, data[f]])) });
+    add("UPDATE", kind, key, fields.join(", "), { table, data: { ...data, id: row.id } });
   };
   const unavailable = {};
   for (const [table, kind] of Object.entries(lookups)) {
@@ -110,12 +112,17 @@ function makePlan(source, target) {
 
   for (const desired of source.products) {
     const key = desired.family_code;
-    const matches = known(targetFamiliesByCode, normaliseCode(key));
+    const code = normaliseCode(key);
+    const matches = known(targetFamiliesByCode, code);
     const match = matches.find(({ row }) => row.family_code === key);
     const current = match?.row;
     const other = targetFamiliesBySlug.get(desired.slug)?.row;
+    const skuOwner = variantsBySku.get(code);
+    const codeOwner = known(registeredCodes, code).find(({ owner }) => owner.product_id !== current?.id)?.owner;
     const familyConflict = matches.length > Number(Boolean(match)) ? "normalised family code already used" :
       other && other.id !== current?.id ? `slug already belongs to ${other.family_code}` :
+      skuOwner && skuOwner.product_id !== current?.id ? `family code matches SKU ${skuOwner.sku} in ${skuOwner.family_code}` :
+      codeOwner ? `family code matches a reference or alias on ${codeOwner.sku}` :
       current && current.slug !== desired.slug ? "existing family uses a different slug" :
       unavailable.tool_categories.has(desired.tool_category) ? "tool category has a conflicting definition" : null;
     const productId = current?.id ?? randomUUID();
@@ -217,6 +224,50 @@ function makePlan(source, target) {
   return plan;
 }
 
+async function applyPlan(db, plan) {
+  const writes = by(plan.filter(({ write }) => write), ({ write }) => write.table);
+  const families = new Set();
+  const variants = new Set();
+  for (const table of writeTables) {
+    const batches = by(known(writes, table), ({ action }) => action);
+    for (const [action, entries] of batches) {
+      const inserting = action === "ADD";
+      const rows = entries.map(({ write: { data } }) => {
+        if (table === "products") families.add(data.id);
+        if (table === "variants") variants.add(data.id);
+        if (data.variant_id) variants.add(data.variant_id);
+        if (inserting && table === "variants") return { ...data, publication_status: "draft", stock_on_hand: 0, stock_reserved: 0 };
+        if (inserting && table === "compatibility") return { ...data, verification_state: "candidate" };
+        return data;
+      });
+      const columnList = Object.keys(rows[0]).filter((column) => inserting || !identityColumns.has(column));
+      const recordset = `jsonb_populate_recordset(null::public.${table}, $1::jsonb)`;
+      const result = inserting
+        ? await db.query(`insert into public.${table} (${columnList.join(", ")})
+            select ${columnList.join(", ")} from ${recordset}`, [JSON.stringify(rows)])
+        : await db.query(`update public.${table} t set ${columnList.map((column) => `${column} = source.${column}`).join(", ")}
+            from ${recordset} as source where t.id = source.id`, [JSON.stringify(rows)]);
+      if (result.rowCount !== rows.length) throw new Error("A catalogue write did not affect the planned rows.");
+    }
+  }
+
+  const baselines = [];
+  if (families.size) {
+    const { rows } = await db.query("select id, to_jsonb(p) as snapshot from public.products p where id = any($1::uuid[])", [[...families]]);
+    for (const { id, snapshot } of rows) baselines.push({ kind: "family", row_id: id, snapshot });
+  }
+  if (variants.size) {
+    for (const { id, snapshot } of await readVariants(db, [...variants])) baselines.push({ kind: "variant", row_id: id, snapshot });
+  }
+  if (baselines.length) {
+    await db.query(`
+      insert into private.catalogue_sync_baselines (kind, row_id, snapshot)
+      select kind, row_id, snapshot from jsonb_populate_recordset(null::private.catalogue_sync_baselines, $1::jsonb)
+      on conflict (kind, row_id) do update set snapshot = excluded.snapshot
+    `, [JSON.stringify(baselines)]);
+  }
+}
+
 export async function runCatalogueSync(db, { apply = false, seed } = {}) {
   await db.query(apply ? "begin isolation level read committed read write" : "begin isolation level repeatable read read only");
   try {
@@ -242,37 +293,8 @@ export async function runCatalogueSync(db, { apply = false, seed } = {}) {
     const familyCodesById = index(target.products.map(({ row }) => row), ({ id }) => id);
     for (const v of target.variants) v.family_code = familyCodesById.get(v.snapshot.variant.product_id).family_code;
     const plan = makePlan(source, target);
-    const families = new Set();
-    const variants = new Set();
     if (apply) {
-      for (const { action, write } of plan) {
-        if (!write) continue;
-        const { table, data, id } = write;
-        const values = action === "ADD" && table === "variants"
-          ? { ...data, publication_status: "draft", stock_on_hand: 0, stock_reserved: 0 }
-          : action === "ADD" && table === "compatibility" ? { ...data, verification_state: "candidate" } : data;
-        const columns = Object.keys(values).join(", ");
-        const record = `select ${columns} from jsonb_populate_record(null::public.${table}, $1::jsonb)`;
-        const result = action === "ADD"
-          ? await db.query(`insert into public.${table} (${columns}) ${record}`, [values])
-          : await db.query(`update public.${table} set (${columns}) = (${record}) where id = $2`, [values, id]);
-        if (result.rowCount !== 1) throw new Error("A planned catalogue write did not affect exactly one row.");
-        if (table === "products") families.add(id ?? data.id);
-        if (table === "variants") variants.add(id ?? data.id);
-        if (table === "compatibility" || table === "variant_substrates") {
-          variants.add(data.variant_id ?? (await db.query("select variant_id from public.compatibility where id = $1", [id])).rows[0].variant_id);
-        }
-      }
-      const { rows: productRows } = await db.query("select id, to_jsonb(p) as snapshot from public.products p where id = any($1::uuid[])", [[...families]]);
-      const variantRows = variants.size ? await readVariants(db, [...variants]) : [];
-      for (const [kind, rows] of [["family", productRows], ["variant", variantRows]]) {
-        for (const { id, snapshot } of rows) {
-          await db.query(`
-            insert into private.catalogue_sync_baselines (kind, row_id, snapshot) values ($1, $2, $3)
-            on conflict (kind, row_id) do update set snapshot = excluded.snapshot
-          `, [kind, id, snapshot]);
-        }
-      }
+      await applyPlan(db, plan);
       await db.query("commit");
     } else await db.query("rollback");
     return plan.map(({ action, kind, key, reason }) => ({ action, kind, key, reason }));

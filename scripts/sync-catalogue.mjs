@@ -38,10 +38,13 @@ async function main() {
     await db.connect();
     const plan = await runCatalogueSync(db, { apply: flags.apply });
     console.log(`${flags.apply ? "Applied" : "Dry run"}: ${flags.local ? "local Supabase" : "hosted project " + ref}`);
-    for (const { action, kind, key, reason } of plan) {
-      console.log(`${action} ${kind} ${JSON.stringify(key)}${reason ? " — " + JSON.stringify(reason) : ""}`);
+    const byAction = Map.groupBy(plan, ({ action }) => action);
+    for (const label of ["CONFLICT", "ADD", "UPDATE", "KEEP"]) {
+      for (const { action, kind, key, reason } of byAction.get(label) ?? []) {
+        console.log(`${action} ${kind} ${JSON.stringify(key)}${reason ? " — " + JSON.stringify(reason) : ""}`);
+      }
     }
-    const count = (action) => plan.filter((entry) => entry.action === action).length;
+    const count = (action) => byAction.get(action)?.length ?? 0;
     console.log(`${count("ADD")} add, ${count("UPDATE")} update, ${count("KEEP")} keep, ${count("CONFLICT")} conflict. ${flags.apply ? "Conflicts were skipped." : "No changes were made."}`);
     return true;
   } catch (error) {

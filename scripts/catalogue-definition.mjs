@@ -49,11 +49,16 @@ export async function catalogueDefinition(db, sql = readFileSync(new URL("../sup
 
   const unique = (rows, key) => new Set(rows.map(key)).size === rows.length;
   const products = new Set(definition.products.map(({ family_code }) => family_code));
+  const familyCodes = new Map(definition.products.map(({ family_code }) => [normaliseCode(family_code), family_code]));
   const skus = new Map(definition.variants.map(({ sku, family_code }) => [sku, family_code]));
   const materials = new Set(definition.substrates.map(({ slug }) => slug));
   const categories = new Set(definition.tool_categories.map(({ slug }) => slug));
   const brands = new Set(definition.brands.map(({ slug }) => slug));
   const sharedCodes = Map.groupBy(definition.compatibility, ({ code }) => normaliseCode(code));
+  const familyCollision = (code, family) => {
+    const other = familyCodes.get(normaliseCode(code));
+    return other !== undefined && other !== family;
+  };
   if (["tool_categories", "substrates", "brands"].some((table) =>
         !unique(definition[table], ({ slug }) => slug) || !unique(definition[table], ({ name }) => name)) ||
       !unique(definition.products, ({ family_code }) => normaliseCode(family_code)) ||
@@ -63,10 +68,10 @@ export async function catalogueDefinition(db, sql = readFileSync(new URL("../sup
       definition.variants.some(({ family_code }) => !products.has(family_code)) ||
       definition.products.some(({ family_code, tool_category }) =>
         !normaliseCode(family_code) || !categories.has(tool_category) || !definition.variants.some((v) => v.family_code === family_code)) ||
-      definition.variants.some(({ sku }) => !normaliseCode(sku)) ||
+      definition.variants.some(({ sku, family_code }) => !normaliseCode(sku) || familyCollision(sku, family_code)) ||
       definition.compatibility.some(({ sku, code, code_kind, brand }) =>
         !skus.has(sku) || !normaliseCode(code) || !["alias", "item_number", "model"].includes(code_kind) ||
-        (brand !== null && !brands.has(brand))) ||
+        (brand !== null && !brands.has(brand)) || familyCollision(code, skus.get(sku))) ||
       [...sharedCodes.values()].some(([first, ...peers]) => peers.some((peer) =>
         peer.code_kind === "alias" || peer.code_kind !== first.code_kind || peer.brand !== first.brand ||
         skus.get(peer.sku) !== skus.get(first.sku))) ||

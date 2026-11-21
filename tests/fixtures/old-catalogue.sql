@@ -18,7 +18,7 @@ select p.id, v.sku, 1440, 1330, 1220, v.demo,
   case when v.demo then 'DEMO-' || v.sku end, case when v.demo then 'Old demo listing' end
 from (values ('EDG-Z10', 'EDG-Z10', true), ('EDG-Z11', 'EDG-Z11', false),
   ('EDG-SUM-TAN', 'EDG-SUM-TAN-36', true), ('EDG-OLD', 'EDG-OLD', true),
-  ('EDG-OLD', 'edg z20', false)) v (family_code, sku, demo) join public.products p using (family_code);
+  ('EDG-OLD', 'edg z20', false), ('EDG-OLD', 'EDG-SUM-DRG', false)) v (family_code, sku, demo) join public.products p using (family_code);
 
 select private.apply_stock_movement('receive', 'old-demo-receipt', id, 25, 0)
 from public.variants where sku = 'EDG-Z10';
@@ -27,7 +27,7 @@ insert into public.compatibility (variant_id, code, code_kind, brand, evidence_s
 select v.id, c.code, c.kind::public.compatibility_code_kind, 'zund', 'Old demo mapping', 'approved', now()
 from (values ('EDG-Z10', 'Z10', 'model'), ('EDG-OLD', '5009802', 'item_number'),
   ('EDG-OLD', 'bld sf217', 'alias'), ('EDG-OLD', 'OLD-DEMO-ALIAS', 'alias'),
-  ('EDG-OLD', 'EDGDF113', 'alias')) c (sku, code, kind) join public.variants v using (sku);
+  ('EDG-OLD', 'EDGDF113', 'alias'), ('EDG-OLD', 'EDG MIM 45', 'alias')) c (sku, code, kind) join public.variants v using (sku);
 
 insert into public.variant_substrates (variant_id, substrate)
 select id, 'foamex' from public.variants where sku in ('EDG-Z10', 'EDG-OLD');

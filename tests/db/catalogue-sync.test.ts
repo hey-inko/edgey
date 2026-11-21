@@ -8,22 +8,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Client } from "pg";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test } from "vitest";
 
 type PlanEntry = { action: string; kind: string; key: string; reason: string };
 const { runCatalogueSync } = createRequire(import.meta.url)("../../scripts/catalogue-sync.mjs") as {
   runCatalogueSync(db: Client, options?: { apply?: boolean; seed?: string }): Promise<PlanEntry[]>;
 };
 const exec = promisify(execFile);
-const root = await mkdtemp(join(tmpdir(), "edgey-catalogue-sync-"));
+let root: string;
 const supabase = (...args: string[]) => exec("pnpm", ["exec", "supabase", "--workdir", root, ...args], { timeout: 120_000 });
 const seed = await readFile("supabase/seed.sql", "utf8");
 const old = await readFile("tests/fixtures/old-catalogue.sql", "utf8");
+const currentFixture = await readFile("supabase/fixtures/staging.sql", "utf8");
 let db: Client;
 let connectionString: string;
 let started = false;
 
-beforeAll(async () => {
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "edgey-catalogue-sync-"));
+  started = false;
   const server = createServer().listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -42,16 +45,16 @@ beforeAll(async () => {
   connectionString = `postgresql://postgres:postgres@127.0.0.1:${address.port}/postgres`;
   db = new Client({ connectionString });
   await db.connect();
-}, 120_000);
+}, 150_000);
 
-afterAll(async () => {
+afterEach(async () => {
   try {
     await db?.end();
     if (started) await supabase("stop", "--no-backup");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-}, 120_000);
+}, 150_000);
 
 const catalogueTables = ["tool_categories", "substrates", "brands", "products", "variants", "compatibility",
   "variant_substrates"].map((name) => "public." + name);
@@ -88,21 +91,27 @@ test("plans and syncs an old demo safely, refreshes only untouched drafts, and r
   const seeded = await catalogueData(null);
   await db.query("rollback");
   expect(seeded).toHaveLength(35);
+  const emptyPlan = await runCatalogueSync(db);
+  expect(emptyPlan.filter(({ action }) => action === "CONFLICT")).toEqual([]);
+  expect(emptyPlan.filter(({ action, kind }) => action === "ADD" && kind === "Variant")).toHaveLength(35);
 
   await db.query(old);
   const before = await snapshot();
   const plan = await runCatalogueSync(db);
   expect(await snapshot()).toEqual(before);
   const additions = plan.filter(({ action, kind }) => action === "ADD" && kind === "Variant").map(({ key }) => key);
-  expect(additions).toHaveLength(27);
+  expect(additions).toHaveLength(22);
   expect(additions).toContain("EDG-SUM-TAN-45");
   expect(line(plan, "Variant", "EDG-Z10")).toMatchObject({ action: "CONFLICT", reason: expect.stringMatching(/staging demo.*order lines.*published/) });
   expect(line(plan, "Variant", "EDG-Z11")).toMatchObject({ action: "KEEP", reason: "not created by catalogue sync" });
   expect(line(plan, "Family", "EDG-Z28")).toMatchObject({ action: "CONFLICT", reason: "slug already belongs to EDG-LEGACY" });
+  expect(line(plan, "Family", "EDG-SUM-DRG")).toMatchObject({ action: "CONFLICT", reason: "family code matches SKU EDG-SUM-DRG in EDG-OLD" });
+  expect(line(plan, "Family", "EDG-MIM-45")).toMatchObject({ action: "CONFLICT", reason: "family code matches a reference or alias on EDG-OLD" });
+  expect(line(plan, "Variant", "EDG-MIM-A45")).toMatchObject({ action: "CONFLICT" });
   expect(line(plan, "Variant", "EDG-Z20")).toMatchObject({ action: "CONFLICT", reason: expect.stringContaining("SKU already belongs to edg z20 in EDG-OLD") });
   expect(line(plan, "Variant", "EDG-SUM-9802")).toMatchObject({ action: "CONFLICT", reason: "OEM reference 500-9802 already belongs to EDG-OLD" });
   expect(line(plan, "Variant", "EDG-Z17")).toMatchObject({ action: "CONFLICT", reason: "Alias BLD-SF217 already belongs to EDG-OLD" });
-  expect(line(plan, "Variant", "EDG-DF113")).toMatchObject({ action: "CONFLICT", reason: "SKU matches a code on EDG-OLD" });
+  expect(line(plan, "Variant", "EDG-DF113")).toMatchObject({ action: "CONFLICT", reason: expect.stringContaining("SKU matches a code on EDG-OLD") });
   expect(line(plan, "Alias", "EDG-OLD / OLD-DEMO-ALIAS")).toMatchObject({ action: "KEEP", reason: "not in repository; never removed" });
   expect(line(plan, "Variant material", "EDG-Z10 / foamex")).toMatchObject({ action: "KEEP" });
   expect(line(plan, "Material", "foamex")).toMatchObject({ action: "KEEP" });
@@ -114,9 +123,19 @@ test("plans and syncs an old demo safely, refreshes only untouched drafts, and r
   const locked = new Client({ connectionString });
   await locked.connect();
   try {
-    await locked.query("begin; lock table public.order_items in row exclusive mode");
-    await expect(cli(["--apply"])).rejects.toMatchObject({ stderr: expect.stringContaining("could not obtain safe locks") });
-    expect(await snapshot()).toEqual(before);
+    for (const statement of [
+      "lock table public.order_items in row exclusive mode",
+      "select id from public.variants where sku = 'EDG-Z10' for no key update",
+    ]) {
+      await locked.query("begin");
+      await locked.query(statement);
+      try {
+        await expect(cli(["--apply"])).rejects.toMatchObject({ stderr: expect.stringContaining("could not obtain safe locks") });
+        expect(await snapshot()).toEqual(before);
+      } finally {
+        await locked.query("rollback");
+      }
+    }
   } finally {
     await locked.end();
   }
@@ -205,4 +224,19 @@ test("plans and syncs an old demo safely, refreshes only untouched drafts, and r
   expect(await snapshot(preservedTables)).toEqual(Object.fromEntries(preservedTables.map((table) => [table, protectedState[table]])));
   expect((await catalogueData(["EDG-Z50"]))[0].family.name).toBe("Staff family name");
   expect(writes(await runCatalogueSync(db, { apply: true, seed: refreshed }))).toEqual([]);
+});
+
+test("leaves the standard staging fixture unchanged and keeps baselines private", async () => {
+  await db.query(seed + "\n" + currentFixture);
+  const { rows: [security] } = await db.query(`
+    select relrowsecurity as rls, (
+      select bool_or(has_table_privilege(role, c.oid, 'select, insert, update, delete, truncate, references, trigger'))
+      from unnest(array['anon', 'authenticated', 'service_role']) as role
+    ) as api_access from pg_class c where c.oid = 'private.catalogue_sync_baselines'::regclass
+  `);
+  expect(security).toEqual({ rls: true, api_access: false });
+  const before = await snapshot();
+  expect(before["public.variants"]?.filter((row) => (row as { publication_status: string }).publication_status === "published")).toHaveLength(11);
+  expect(writes(await runCatalogueSync(db, { apply: true }))).toEqual([]);
+  expect(await snapshot()).toEqual(before);
 });
