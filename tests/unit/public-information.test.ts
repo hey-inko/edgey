@@ -28,6 +28,20 @@ test("the privacy shell links only an approved HTTPS notice without credentials"
   expect(publicPrivacyNotice()).toBe("https://example.test/privacy");
 });
 
+test("the privacy shell hides a self-link but keeps a notice on another page or site", () => {
+  vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://staging.example.test");
+  for (const path of ["/privacy", "/privacy/", "/privacy?from=intake", "/privacy#notice"]) {
+    const url = `https://staging.example.test${path}`;
+    vi.stubEnv("EDGEY_PRIVACY_NOTICE_URL", url);
+    expect(publicPrivacyNotice("/privacy")).toBeUndefined();
+    expect(publicPrivacyNotice()).toBe(url);
+  }
+  for (const url of ["https://staging.example.test/legal/privacy", "https://example.test/privacy"]) {
+    vi.stubEnv("EDGEY_PRIVACY_NOTICE_URL", url);
+    expect(publicPrivacyNotice("/privacy")).toBe(url);
+  }
+});
+
 test("even a valid HTTPS origin is not indexable without an explicit decision", async () => {
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://staging.example.test");
   vi.stubEnv("EDGEY_INDEXING_ENABLED", "false");

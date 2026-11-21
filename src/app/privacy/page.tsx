@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Privacy", robots: { index: false, fo
 export const dynamic = "force-dynamic";
 
 export default async function PrivacyPage() {
-  const notice = publicPrivacyNotice();
+  const notice = publicPrivacyNotice("/privacy");
   const canChoose = finderAttributionEnabled();
   const optedIn = await finderAttributionAllowed();
   return (

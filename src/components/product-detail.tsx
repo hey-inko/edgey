@@ -196,7 +196,7 @@ export function ProductDetail({
       {mode === "dialog" && (
         <p className="fine">
           <a className="textlink" href={productHref(family.slug, family.variants.length > 1 ? variant?.sku : null)}>
-            Full specification and price breaks <ArrowUpRight size={13} aria-hidden="true" className="inline" />
+            Full specification and price <span className="spec-link-end">breaks <ArrowUpRight size={13} aria-hidden="true" /></span>
           </a>
         </p>
       )}

@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "no-referrer" },
         ],
       })),
+      {
+        source: "/admin/sign-in",
+        headers: [{ key: "Referrer-Policy", value: "same-origin" }],
+      },
     ];
   },
 };
