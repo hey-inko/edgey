@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 176" fill="none" stroke="#323735" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" role="img">
+  <title>EDG-SR6310 long-reach round-shank blade</title>
+  <g transform="translate(160 88) rotate(-24)">
+    <path d="M-103 11Q-102 6 -95 3L7 -16H26Q31 -17 35 -17H48L54 -12H70L76 -17H95Q101 -15 101 -1Q101 12 95 15H26L-98 15Q-101 15 -103 11Z" fill="#fafbf8"/>
+    <path d="M-103 11Q-102 6 -95 3L7 -16H16L15 -10 -95 10 -99 14Q-101 14 -103 11Z" fill="#dfe2df"/>
+    <path d="M-103 11 -96 3 -94 9 -99 14Z" fill="#ebede9" stroke="#777d79"/>
+    <path d="M26 -16C18 -12 18 10 26 15M95 -17C88 -10 88 10 95 15M48 -16 54 -10H70L76 -16M33 7H85M-91 12H19" stroke="#777d79"/>
+    <path d="M31 12H84" stroke="#939993" stroke-dasharray="3 4"/>
+  </g>
+</svg>

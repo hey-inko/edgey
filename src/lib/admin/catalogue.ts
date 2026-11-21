@@ -27,7 +27,7 @@ export async function getAdminCatalogueVariant(id: string) {
     id, sku, option_label, tool, angle_deg, shank_mm, cutting_depth_mm, blade_thickness_mm, diameter_mm, specs,
     supplier_name, supplier_part_number, price_1_4_pence, price_5_9_pence, price_10_plus_pence, availability,
     publication_status, approved_at, approved_by, rejected_at, rejected_by, evidence_source, evidence_note, catalogue_updated_at,
-    products(name, family_code, description, tool_category, updated_at), variant_substrates(substrate),
+    products(name, family_code, description, tool_category, media, updated_at), variant_substrates(substrate),
     compatibility(id, code, code_kind, brand, machine, tool, adapter, evidence_source, evidence_note, evidence_url,
       verification_state, is_private, approved_at, approved_by, rejected_at, rejected_by, updated_at)
   `).eq("id", id).order("code", { referencedTable: "compatibility" }).maybeSingle();

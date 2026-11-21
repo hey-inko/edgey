@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 176" fill="none" stroke="#323735" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" role="img">
+  <title>Round-shank kiss-cut blade, reflective-vinyl profile</title>
+  <g transform="translate(162 88) rotate(-23)">
+    <path d="M-99 1H-74Q-63 1 -62 -10V-15H-49V-13H-37V-15H92Q96 -15 97 -12V-2Q96 1 92 1L49 5Q40 6 40 15H-37V13H-49V15H-88Z" fill="#f8f9f6"/>
+    <path d="M-62 -10Q-49 -7 -46 -1C-43 5 -54 10 -70 14L-88 15 -99 1H-74Q-63 1 -62 -10Z" fill="#e1e4df" stroke="#777d79"/>
+    <path d="M-45 4Q-10 9 41 7M-32 -10H85" stroke="#969c96" stroke-width=".95"/>
+    <path d="M-49 -15q2 1 3 2m9 -2 -2 2M92 -15q-3 6 0 16" stroke="#777d79"/>
+    <path d="M-30 12H32" stroke="#939791" stroke-width=".85" stroke-dasharray="3 4"/>
+  </g>
+</svg>

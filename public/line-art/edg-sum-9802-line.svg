@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 176" fill="none" stroke="#323735" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" role="img">
+  <title>Short 50° double-edge drag blade</title>
+  <g transform="translate(159 89) rotate(-23)">
+    <path d="M-86 0 -53 -25H84V25L81 30H-56L-86 0Z" fill="#dfe2de"/>
+    <path d="M-86 0 -53 -25H84V25H-53Z" fill="#f8f9f6"/>
+    <path d="M-86 0 -53 -25H-43L-55 -12Z" fill="#e5e8e3" stroke="#777d79"/>
+    <path d="M-86 0 -55 12 -43 25H-53Z" fill="#e9ece7" stroke="#777d79"/>
+    <path d="m-53 25 -3 5M84 25l-3 5" stroke="#777d79"/>
+    <path d="M-36 28H75" stroke="#939791" stroke-width=".85" stroke-dasharray="3 4"/>
+  </g>
+</svg>

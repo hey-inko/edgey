@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveQuotePhoto } from "@/lib/catalogue/media";
 import {
   calculateBasket,
   calculateDispatchPromise,
@@ -13,7 +14,6 @@ import { promiseUnderTerms, type DeliveryResolution, type DeliveryTerms, type Wa
 import type { QuoteResult } from "./types";
 import { MAX_ORDER_INTEGER, normaliseLines, readPostcodeInput } from "./validation";
 
-const allowedPhotos = ["drag.webp", "oscillating.webp", "cylinder.webp", "rotary.webp"];
 const quoteUnavailable = "We couldn’t check the latest prices and availability. Try again.";
 
 type CheckoutVariant = CommerceVariant & { photo?: unknown };
@@ -97,7 +97,8 @@ export async function quoteSelectionAndTermsWith(
       corrections.push(`${variant.sku}: limited stock. We’ve suggested a smaller quantity for you to review.`);
     }
     lines.push({ variantId: line.variantId, quantity });
-    if (typeof variant.photo === "string" && allowedPhotos.includes(variant.photo)) photos[line.variantId] = variant.photo;
+    const photo = resolveQuotePhoto(variant.sku, variant.photo);
+    if (photo) photos[line.variantId] = photo;
   }
 
   let basket: BasketTotals | null = null;

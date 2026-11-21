@@ -11,4 +11,5 @@ supabase/.temp/
 coverage/
 playwright-report/
 test-results/
+staging-artwork/
 .DS_Store

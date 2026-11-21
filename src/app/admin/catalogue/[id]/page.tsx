@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import Image from "next/image";
+import { resolveCatalogueMedia } from "@/lib/catalogue/media";
 import { AdminField, AdminForm, AdminHeading, AdminLink, AdminNotice, AdminSection } from "@/app/admin/ui";
 import { requireStaff } from "@/lib/admin/auth";
 import { catalogueId, getAdminCataloguePricing, getAdminCatalogueVariant, variantReviewStatus } from "@/lib/admin/catalogue";
@@ -73,6 +75,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
   if (!record) notFound();
 
   const { variant, family, categories, substrates, brands } = record;
+  const media = resolveCatalogueMedia(family.media, family.family_code, variant.sku, variant.publication_status);
   const action = editCatalogueVariant.bind(null, id);
   const selectedSubstrates = new Set(variant.variant_substrates.map(({ substrate }) => substrate));
   const specs = Object.entries(variant.specs ?? {}).map(([label, value]) => `${label}: ${value}`).join("\n");
@@ -83,6 +86,26 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
     <>
       <AdminLink href="/admin/catalogue">Back to catalogue</AdminLink>
       <AdminHeading eyebrow={variant.sku} title={family.name} description={variant.option_label ?? undefined} />
+      {(media.drawing || media.photo) && (
+        <AdminSection title="Identification artwork">
+          <div className="admin-grid max-w-3xl">
+            <figure>
+              <div className="p-card-image">
+                {media.photo
+                  ? <Image src={"/photos/" + media.photo} width={627} height={627} alt={"Photograph for " + variant.sku} unoptimized />
+                  : <span className="plate-code">{variant.sku}</span>}
+              </div>
+              <figcaption className="fine">{!media.photo ? "No photograph for display here." : media.photo.startsWith("staging/") ? "Reference photograph · private staging only." : "Reference photograph."}</figcaption>
+            </figure>
+            {media.drawing && <figure>
+              <div className="p-card-image" data-proof={media.proof}>
+                <Image src={"/line-art/" + media.drawing} width={320} height={176} alt={"Line drawing for " + variant.sku} unoptimized />
+              </div>
+              <figcaption className="fine">Drawing for identification. Not to scale.</figcaption>
+            </figure>}
+          </div>
+        </AdminSection>
+      )}
       <AdminSection title="Publication">
         <dl className="admin-spec">
           <dt>Family code</dt><dd className="admin-mono">{family.family_code}</dd>

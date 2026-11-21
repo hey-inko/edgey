@@ -16,6 +16,7 @@ export type Substrate = { slug: string; name: string; swatch: string | null; sor
 export type Variant = {
   id: string;
   sku: string;
+  media?: Media;
   optionLabel: string | null;
   tool: string | null;
   angleDeg: number | null;

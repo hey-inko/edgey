@@ -33,7 +33,7 @@ const z10 = {
   optionLabel: "36°",
   tierPrices: { oneToFour: 2250, fiveToNine: 1995, tenPlus: 1750 },
   availableQuantity: 72345,
-  photo: "oscillating.webp",
+  photo: "drag.webp",
 };
 const fields: CheckoutFields = {
   businessName: "  Acme   Print  ",
@@ -132,7 +132,7 @@ describe("selection quote", () => {
       "EDG-SECOND is out of stock and was removed from your selection.",
     ]);
     expect(quote.basket?.lines).toMatchObject([{ quantity: 4, unitNetPence: 2250, savingPrompt: null }]);
-    expect(quote.photos).toEqual({ [z10Id]: "oscillating.webp" });
+    expect(quote.photos).toEqual({ [z10Id]: "drag.webp" });
     expect(JSON.stringify(quote)).not.toMatch(/availableQuantity|stock_on_hand|stock_reserved/);
   });
 
@@ -327,7 +327,7 @@ describe("checkout attempt", () => {
 describe("live checkout adapter", () => {
   const row = {
     id: z10Id, sku: z10.sku, option_label: z10.optionLabel, price_1_4_pence: 2250, price_5_9_pence: 1995,
-    price_10_plus_pence: 1750, quote_limit: 10, photo: "oscillating.webp",
+    price_10_plus_pence: 1750, quote_limit: 10, photo: "drag.webp",
   };
 
   function mockSupabase() {
@@ -362,7 +362,7 @@ describe("live checkout adapter", () => {
     expect(JSON.parse(String(init?.body))).toEqual({ p_variant_ids: [z10Id], p_quantities: [5] });
     expect(init).toMatchObject({ method: "POST", cache: "no-store" });
     expect(new Headers(init?.headers).get("apikey")).toBe("fake-service-role-key");
-    expect(quote.photos).toEqual({ [z10Id]: "oscillating.webp" });
+    expect(quote.photos).toEqual({ [z10Id]: "drag.webp" });
     expect(JSON.stringify(quote)).not.toMatch(/75321|4098|71223|service-role|quote_limit|stock_on_hand|stock_reserved|warehouseCalendar|cutoffMinutes/);
     expect(await startCheckoutAttempt(input([line(5)], quote.quoteKey))).toMatchObject({
       status: "ready", orderInput: { totals: { grossPence: 12804 } },

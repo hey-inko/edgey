@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 176" fill="none" stroke="#323735" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" role="img">
+  <title>EDG-Z28 long-reach oscillating blade</title>
+  <g transform="translate(160 87) rotate(-25)">
+    <path d="M-111 -11.5h222v23l-1.5 2h-69l-1-3-136-9Z" fill="#dfe2df"/>
+    <path d="M-111 -11.5h222v23H43q0-2-3.5-2.5L-98 0Z" fill="#fafbf8"/>
+    <path d="M-111 -11.5-98 0 39.5 9q3.5.5 3.5 2.5h2q0-7-4-7.5L-94 -5l-7-6.5Z" fill="#e3e6e0" stroke="#777d79" stroke-width="1"/>
+    <path d="m-98 0 4-5m137 16.5-2 2m70-2-1.5 2"/>
+    <path d="M51 13h50" stroke="#939791" stroke-width=".8" stroke-dasharray="3 4"/>
+  </g>
+</svg>
