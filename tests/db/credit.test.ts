@@ -587,6 +587,41 @@ test("concurrent voids and dispatches on one variant preserve the stock and cred
   }
 });
 
+test("concurrent bind and provider-close updates converge without reviving a closed invoice", async () => {
+  const finance = await user({ role: "finance" });
+  const { buyer, account, applicationId } = await fixture(finance.id);
+  const productId = randomUUID();
+  const workers: Client[] = [];
+  try {
+    const item = await variant(productId);
+    const order = await hold(item, buyer);
+    const invoiceId = stripeId("in");
+    workers.push(await connect(), await connect());
+    await Promise.all(workers.map((client) => client.query("set role service_role")));
+    const [issue, release] = await Promise.allSettled([
+      bind(order, account, invoiceId, {}, workers[0]),
+      rpc("release_credit_hold", [order.id, "concurrent-close", "voided", invoiceId], workers[1]),
+    ]);
+    if (issue.status === "fulfilled") {
+      expect(release).toMatchObject({ status: "rejected", reason: { message: "credit_hold_not_releasable" } });
+      const payment = (worker: Client) => rpc("apply_invoice_payment", [invoiceId, "concurrent-payment", 2000, "GBP"], worker);
+      for (const invoice of await Promise.all(workers.map(payment))) {
+        expect(invoice).toMatchObject({ status: "partially_paid", amount_remaining_pence: 10000 });
+      }
+      await position(account, 0, 10000, 10000);
+      expect(await stock(item)).toEqual({ stock_on_hand: 3, stock_reserved: 1 });
+    } else {
+      expect(issue.reason).toMatchObject({ message: "invoice_already_closed" });
+      expect(release).toMatchObject({ status: "fulfilled", value: { fulfilment_status: "cancelled" } });
+      await position(account, 0, 0, 20000);
+      expect(await stock(item)).toEqual({ stock_on_hand: 3, stock_reserved: 0 });
+    }
+  } finally {
+    await Promise.all(workers.map((client) => client.end()));
+    await cleanup(account, applicationId, productId, [buyer.id, finance.id]);
+  }
+});
+
 test("the server wrapper uses the verified identity and calls the real local PostgREST RPCs", async () => {
   const apiUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!apiUrl || !["localhost", "127.0.0.1"].includes(new URL(apiUrl).hostname)) {

@@ -202,8 +202,9 @@ begin
   if coalesce(length(p_po_number), 0) not between 1 and 200 or p_po_number ~ '[[:cntrl:]]' then
     raise exception using errcode = '22023', message = 'po_number_required';
   end if;
-  perform 1 from auth.users where id = p_buyer_id and email_confirmed_at is not null and not is_anonymous for key share;
-  if not found then
+  if not exists (
+    select 1 from auth.users where id = p_buyer_id and email_confirmed_at is not null and not is_anonymous
+  ) then
     raise exception using errcode = '42501', message = 'verified_buyer_required';
   end if;
 

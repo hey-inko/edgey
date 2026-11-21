@@ -2803,7 +2803,8 @@ export type Database = {
         "opening" | "reserve" | "release" | "dispatch" | "receive" | "restore";
       stock_reservation_state: "held" | "allocated" | "released" | "dispatched";
       trade_account_status: "pending" | "approved" | "suspended";
-      trade_invoice_status: "open" | "partially_paid" | "paid" | "voided";
+      trade_invoice_status:
+        "open" | "partially_paid" | "paid" | "credited" | "voided";
       verification_state: "candidate" | "approved" | "rejected";
     };
     CompositeTypes: {
@@ -2980,7 +2981,13 @@ export const Constants = {
       ],
       stock_reservation_state: ["held", "allocated", "released", "dispatched"],
       trade_account_status: ["pending", "approved", "suspended"],
-      trade_invoice_status: ["open", "partially_paid", "paid", "voided"],
+      trade_invoice_status: [
+        "open",
+        "partially_paid",
+        "paid",
+        "credited",
+        "voided",
+      ],
       verification_state: ["candidate", "approved", "rejected"],
     },
   },
