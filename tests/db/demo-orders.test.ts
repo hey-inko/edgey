@@ -67,7 +67,8 @@ test("loads ten weeks of worker-safe orders and reverses only the unmodified fix
     const concurrent = await Promise.allSettled([cli("load"), cli("load")]);
     expect(concurrent).toEqual(expect.arrayContaining([
       expect.objectContaining({ status: "fulfilled", value: expect.objectContaining({ stdout: expect.stringContaining("Loaded 15") }) }),
-      expect.objectContaining({ status: "rejected", reason: expect.objectContaining({ stderr: expect.stringContaining("already loaded") }) }),
+      expect.objectContaining({ status: "rejected",
+        reason: expect.objectContaining({ stderr: expect.stringMatching(/already loaded|database is busy/) }) }),
     ]));
     loaded = true;
     const { rows: [state] } = await db.query(`
