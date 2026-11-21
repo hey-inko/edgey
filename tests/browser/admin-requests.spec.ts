@@ -33,6 +33,7 @@ test("requests inbox shows states only for the signed-in staff role", async ({ p
   await expect(page.getByRole("table", { name: "Trade applications" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
   await signInStaff(page, await createLocalAdminUser("finance"));
   await page.goto("/admin/requests");
   const tradeRow = page.getByRole("table", { name: "Trade applications" }).getByRole("row").filter({ hasText: company });

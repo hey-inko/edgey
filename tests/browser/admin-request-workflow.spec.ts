@@ -79,6 +79,7 @@ test("catalogue and warehouse take a five-field trial through dispatch to a link
   expect((await readStock()).data).toMatchObject({ stock_reserved: stock.stock_reserved });
 
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
   await signInStaff(page, warehouse);
   const count = page.getByText("Trials linked to a first purchase:", { exact: false });
   const initial = Number(await count.locator("span").textContent());
@@ -143,6 +144,7 @@ test("catalogue and warehouse take a five-field trial through dispatch to a link
   await expect(count.locator("span")).toHaveText(String(initial));
 
   await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/admin\/sign-in$/);
   await signInStaff(page, catalogue);
   await page.goto(trialPath);
   await expect(page.getByRole("heading", { name: "Trial request" })).toBeVisible();
