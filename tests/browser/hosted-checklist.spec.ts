@@ -95,6 +95,7 @@ test.describe("native form submissions", () => {
 
 test("keeps the compact dialog close and checkout action in view", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/blades?q=3910301");
   const card = page.getByRole("link", { name: /EDG-Z10/ }).first();
   await card.click();
@@ -107,8 +108,8 @@ test("keeps the compact dialog close and checkout action in view", async ({ page
   await page.keyboard.press("Tab");
   await expect(specs).toBeFocused();
   await page.keyboard.press("End");
-  await expect.poll(() => specs.evaluate((region) => region.scrollTop)).toBeGreaterThan(0);
-  await spec.scrollIntoViewIfNeeded();
+  await expect.poll(() => specs.evaluate((region) => region.scrollTop > 0 &&
+    region.scrollHeight - region.clientHeight - region.scrollTop <= 1)).toBe(true);
   await expect(spec).toBeInViewport({ ratio: 1 });
   expect(await spec.getByText("breaks", { exact: true }).evaluate((end) => {
     const line = document.createRange();
