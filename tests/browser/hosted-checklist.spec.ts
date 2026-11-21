@@ -101,8 +101,10 @@ test("keeps the compact dialog close and checkout action in view", async ({ page
   await card.click();
   const product = page.getByRole("dialog", { name: /blade/i });
   const close = product.getByRole("button", { name: "Close blade details" });
+  const add = product.getByRole("button", { name: "Add to selection" });
   const spec = product.getByRole("link", { name: "Full specification and price breaks" });
   const specs = product.getByRole("region", { name: "Blade specifications and options" });
+  await expect(add).toBeEnabled();
   await expect(close).toBeInViewport({ ratio: 1 });
   await expect(close).toBeFocused();
   await page.keyboard.press("Tab");
@@ -122,7 +124,7 @@ test("keeps the compact dialog close and checkout action in view", async ({ page
   await close.click();
   await expect(card).toBeFocused();
   await card.click();
-  await product.getByRole("button", { name: "Add to selection" }).click();
+  await add.click();
   const tray = page.getByRole("dialog", { name: "Your selection" });
   const checkout = tray.getByRole("link", { name: "Go to checkout" });
   const details = tray.getByRole("region", { name: "Selection details" });
