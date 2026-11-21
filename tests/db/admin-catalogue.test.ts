@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vitest";
+import { setDbClaims } from "../helpers/db-claims";
 
 type Variant = { id: string; sku: string; updated_at: string };
 type Mapping = { id: string; code: string; updated_at: string };
-type StaffRole = "catalogue" | "warehouse";
+type StaffRole = "catalogue" | "warehouse" | "finance";
 
 let db: Client;
 let connectionString: string;
@@ -151,6 +152,47 @@ async function visible(client: Client, query: string) {
   return (await client.query<{ variant_id: string }>("select variant_id from public.search_blades($1)", [query])).rows
     .some(({ variant_id }) => variant_id === variant.id);
 }
+
+test("only fully verified catalogue staff can archive a current variant version", async () => {
+  const service = await connect("service_role");
+  const anon = await connect("anon");
+  const session = await connect();
+  async function archive(id: string | null, steppedUp: boolean, version: string) {
+    const role = id ? "authenticated" : "anon";
+    await session.query("begin");
+    try {
+      await setDbClaims(session, role, id, steppedUp);
+      await session.query(`set local role ${role}`);
+      const result = await session.query("select public.archive_staff_variant($1, $2) as slug", [variant.id, version]);
+      await session.query("commit");
+      return result.rows;
+    } catch (error) {
+      await session.query("rollback");
+      throw error;
+    }
+  }
+  try {
+    await review(service);
+    await review(service, { record: mapping });
+    await publish(service);
+    expect(await visible(anon, mapping.code)).toBe(true);
+    const current = await version("variants", variant.id);
+    await expect(archive(null, false, current)).rejects.toMatchObject({ code: "42501" });
+    await expect(archive(await staff("warehouse"), true, current)).rejects.toMatchObject({ code: "42501" });
+    await expect(archive(await staff("finance"), true, current)).rejects.toMatchObject({ code: "42501" });
+    await expect(archive(actor, false, current)).rejects.toMatchObject({ code: "42501" });
+    await expect(archive(actor, true, variant.updated_at)).rejects.toMatchObject({ message: "catalogue_stale" });
+    await expect(archive(actor, true, current)).resolves.toEqual([{ slug: family.slug }]);
+    const retired = await version("variants", variant.id);
+    await expect(archive(actor, true, retired)).resolves.toEqual([{ slug: family.slug }]);
+    expect(await version("variants", variant.id)).toEqual(retired);
+    await expect(publish(service)).rejects.toMatchObject({ message: "catalogue_invalid_publication" });
+    expect(await visible(anon, mapping.code)).toBe(false);
+    expect((await anon.query("select id from public.variants where id = $1", [variant.id])).rows).toEqual([]);
+  } finally {
+    await Promise.all([anon.end(), service.end(), session.end()]);
+  }
+});
 
 test("staff can save an unpriced draft and cannot publish until all tiers are set", async () => {
   const service = await connect("service_role");
