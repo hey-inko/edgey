@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "vitest";
+import { setDbClaims } from "../helpers/db-claims";
 import { connectAccountDb, createAccountBuyer } from "../helpers/account-fixture";
 
 test("warehouse alone edits delivery policy and a district overrides its area without fallback", async () => {
@@ -9,11 +10,11 @@ test("warehouse alone edits delivery policy and a district overrides its area wi
     const [warehouse, finance] = [await createAccountBuyer(db), await createAccountBuyer(db)];
     await db.query("insert into public.staff_members (user_id, role) values ($1, 'warehouse'), ($2, 'finance')",
       [warehouse.id, finance.id]);
-    const actor = (id: string, aal = "aal2") => db.query(
-      "select set_config('request.jwt.claims', json_build_object('sub', $1::text, 'aal', $2::text)::text, true)",
-      [id, aal],
-    );
-    await db.query("set local role authenticated");
+    const actor = async (id: string) => {
+      await db.query("reset role");
+      await setDbClaims(db, "authenticated", id, true);
+      await db.query("set local role authenticated");
+    };
     await actor(finance.id);
     expect((await db.query("select * from public.delivery_rules")).rows).toEqual([]);
     expect((await db.query("select * from public.delivery_calendars")).rows).toEqual([]);
