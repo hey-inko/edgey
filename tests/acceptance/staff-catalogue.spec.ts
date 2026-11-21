@@ -32,10 +32,15 @@ test("costs stay out of buyer surfaces and retiring a SKU preserves its paid ord
     await addBlade(page);
     await review(page);
     expect(await page.content()).not.toMatch(privateContent);
-    const checkoutResponse = page.waitForResponse((response) =>
-      response.request().method() === "POST" && new URL(response.url()).pathname === sessionPath);
+    let checkoutBody: string | undefined;
+    await page.route(`**${sessionPath}`, async (route) => {
+      const response = await route.fetch();
+      checkoutBody = await response.text();
+      await route.fulfill({ response });
+    }, { times: 1 });
     const session = await payByCard(page);
-    expect(await (await checkoutResponse).text()).not.toMatch(privateContent);
+    expect(checkoutBody).toEqual(expect.any(String));
+    expect(checkoutBody).not.toMatch(privateContent);
     expect(JSON.stringify(session)).not.toMatch(privateContent);
     await capture(session.id);
     await event(request, "checkout.session.completed", session.id);
