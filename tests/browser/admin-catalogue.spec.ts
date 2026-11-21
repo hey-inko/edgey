@@ -1,29 +1,46 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
+import { connectAccountDb } from "../helpers/account-fixture";
 import { signInStaff } from "./admin-fixtures";
 
 test("a catalogue operator can save specifications before setting a draft's prices", async ({ page }) => {
-  const db = localAdminClient();
-  const { data, error } = await db.from("variants").select("id").eq("sku", "EDG-DF113").single();
-  if (error) throw error;
-  await signInStaff(page, await createLocalAdminUser("catalogue"));
-  await page.goto(`/admin/catalogue/${data.id}`);
-  const firstTier = page.getByLabel("1–4 blades (pence)");
-  await expect(firstTier).toHaveValue("");
-  await firstTier.fill("2150");
-  await page.getByRole("button", { name: "Save selling data" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Enter all three price tiers" })).toBeVisible();
-  await firstTier.clear();
-  const part = page.getByLabel("Supplier part number");
-  await part.fill("TEST-UNPRICED-DRAFT");
-  await page.getByRole("button", { name: "Save selling data" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
-  await expect(firstTier).toHaveValue("");
-  await page.reload();
-  await expect(part).toHaveValue("TEST-UNPRICED-DRAFT");
-  await part.clear();
-  await page.getByRole("button", { name: "Save selling data" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
+  const db = await connectAccountDb();
+  const familyId = randomUUID();
+  const variantId = randomUUID();
+  const fixtureCode = `TEST-BLADES-${familyId}`;
+  try {
+    await db.query(`
+      with family as (
+        insert into public.products (id, family_code, slug, name, tool_category, description)
+        values ($1, $2, lower($2), 'Test blades', 'drag', 'Unpriced blade fixture.') returning id
+      )
+      insert into public.variants (id, product_id, sku) select $3, id, $2 from family
+    `, [familyId, fixtureCode, variantId]);
+    await signInStaff(page, await createLocalAdminUser("catalogue"));
+    await page.goto(`/admin/catalogue/${variantId}`);
+    const firstTier = page.getByLabel("1–4 blades (pence)");
+    await expect(firstTier).toHaveValue("");
+    await firstTier.fill("2150");
+    await page.getByRole("button", { name: "Save selling data" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Enter all three price tiers" })).toBeVisible();
+    await firstTier.clear();
+    const part = page.getByLabel("Supplier part number");
+    await part.fill("TEST-UNPRICED-DRAFT");
+    await page.getByRole("button", { name: "Save selling data" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
+    await expect(firstTier).toHaveValue("");
+    await page.reload();
+    await expect(part).toHaveValue("TEST-UNPRICED-DRAFT");
+    await expect(firstTier).toHaveValue("");
+  } finally {
+    try {
+      await db.query("delete from public.variants where id = $1", [variantId]);
+      await db.query("delete from public.products where id = $1", [familyId]);
+    } finally {
+      await db.end();
+    }
+  }
 });
 
 test("a catalogue operator approves and publishes a draft for public search", async ({ page }) => {
