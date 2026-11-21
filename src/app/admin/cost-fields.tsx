@@ -13,12 +13,13 @@ type CostValues = {
 };
 
 export function CostFields({ cost, optional = false }: { cost?: CostValues | null; optional?: boolean }) {
+  const amountPattern = optional ? undefined : POUNDS_INPUT_PATTERN;
   return (
     <>
       <p className="admin-muted">Enter amounts per blade, for example 3.50. Landed cost is the all-in cost in pounds, including freight and duty where applicable.</p>
       <div className="admin-grid">
         <AdminField label="Supplier unit price">
-          <input name="supplier_unit_minor" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
+          <input name="supplier_unit_minor" inputMode="decimal" maxLength={11} pattern={amountPattern}
             defaultValue={formatPoundsInput(cost?.supplier_unit_minor)} required={!optional} />
         </AdminField>
         <div className="admin-field">
@@ -29,7 +30,7 @@ export function CostFields({ cost, optional = false }: { cost?: CostValues | nul
           </select>
         </div>
         <AdminField label="Landed unit cost (£)">
-          <input name="landed_unit_pence" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
+          <input name="landed_unit_pence" inputMode="decimal" maxLength={11} pattern={amountPattern}
             defaultValue={formatPoundsInput(cost?.landed_unit_pence)} required={!optional} />
         </AdminField>
         <AdminField label="Exchange rate (GBP per supplier currency unit, optional)">
@@ -37,11 +38,11 @@ export function CostFields({ cost, optional = false }: { cost?: CostValues | nul
             defaultValue={cost?.exchange_rate == null ? "" : cost.exchange_rate.toFixed(8).replace(/\.?0+$/, "")} />
         </AdminField>
         <AdminField label="Freight per blade (£, optional)">
-          <input name="freight_unit_pence" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
+          <input name="freight_unit_pence" inputMode="decimal" maxLength={11} pattern={amountPattern}
             defaultValue={formatPoundsInput(cost?.freight_unit_pence)} />
         </AdminField>
         <AdminField label="Duty per blade (£, optional)">
-          <input name="duty_unit_pence" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
+          <input name="duty_unit_pence" inputMode="decimal" maxLength={11} pattern={amountPattern}
             defaultValue={formatPoundsInput(cost?.duty_unit_pence)} />
         </AdminField>
       </div>

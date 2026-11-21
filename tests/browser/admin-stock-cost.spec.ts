@@ -1,15 +1,28 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
 import { signInStaff } from "./admin-fixtures";
+
+async function createStockVariant() {
+  const db = localAdminClient();
+  const family = await db.from("variants").select("product_id").eq("sku", "EDG-SUM-9802").single();
+  if (family.error) throw family.error;
+  const id = randomUUID();
+  const sku = `EDG-ADMIN-STOCK-${id.slice(0, 8).toUpperCase()}`;
+  const { error } = await db.from("variants").insert({
+    id, sku, product_id: family.data.product_id, option_label: "Stock test fixture",
+    price_1_4_pence: 2095, price_5_9_pence: 1850, price_10_plus_pence: 1595,
+  });
+  if (error) throw error;
+  return { id, sku };
+}
 
 test("the owner estimates cost, receives stock at actual cost, then records a signed adjustment", async ({ page }) => {
   const db = localAdminClient();
   const staff = await createLocalAdminUser("warehouse");
   const membership = await db.from("staff_members").insert({ user_id: staff.id, role: "catalogue" });
   if (membership.error) throw membership.error;
-  const original = await db.from("variants").select("id,stock_on_hand,stock_reserved").eq("sku", "EDG-SUM-9802").single();
-  if (original.error) throw original.error;
-  const { id, stock_on_hand: onHand, stock_reserved: reserved } = original.data;
+  const { id, sku } = await createStockVariant();
   await signInStaff(page, staff);
   await page.goto(`/admin/catalogue/${id}`);
   await page.getByLabel("Supplier unit price", { exact: true }).fill("16.90");
@@ -20,7 +33,7 @@ test("the owner estimates cost, receives stock at actual cost, then records a si
   await expect(page.getByText(/below landed cost/i).first()).toBeVisible();
 
   await page.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Stock", exact: true }).click();
-  await page.getByRole("link", { name: "EDG-SUM-9802", exact: true }).click();
+  await page.getByRole("link", { name: sku, exact: true }).click();
   await page.getByLabel("Received quantity").fill("8");
   await page.getByText("Add receipt costs (optional)").click();
   await page.getByLabel("Supplier unit price", { exact: true }).fill("4.20");
@@ -35,35 +48,34 @@ test("the owner estimates cost, receives stock at actual cost, then records a si
 
   await page.getByLabel("Quantity change").fill("-2");
   await page.getByLabel("Adjustment reason").selectOption("other");
-  await page.getByRole("button", { name: "Record stock adjustment" }).click();
-  await expect(page.getByRole("alert")).toContainText("A note is required for Other");
+  const saveAdjustment = page.getByRole("button", { name: "Record stock adjustment" });
+  const feedback = page.locator("form").filter({ has: saveAdjustment }).getByRole("alert");
+  await saveAdjustment.click();
+  await expect(feedback).toContainText("A note is required for Other");
   await page.getByLabel("Quantity change").fill("-2");
   await page.getByLabel("Adjustment reason").selectOption("damaged");
   await page.getByLabel("Adjustment note").fill("Two damaged units in the test delivery");
-  await page.getByRole("button", { name: "Record stock adjustment" }).click();
+  await saveAdjustment.click();
   await expect(page.getByText("Stock adjustment recorded.", { exact: true })).toBeVisible();
   const adjustment = ledger.getByRole("row").filter({ hasText: "Two damaged units" });
   await expect(adjustment).toContainText("Damaged");
   await expect(adjustment).toContainText("-2");
   await expect(adjustment).toContainText(staff.id);
-  await page.getByLabel("Quantity change").fill(String(-(onHand + 7 - reserved)));
+  await page.getByLabel("Quantity change").fill("-7");
   await page.getByLabel("Adjustment reason").selectOption("count_correction");
-  await page.getByRole("button", { name: "Record stock adjustment" }).click();
-  await expect(page.getByRole("alert")).toContainText(/would remove|not enough available/i);
+  await saveAdjustment.click();
+  await expect(feedback).toContainText("not enough available units");
 
   await page.goto(`/admin/catalogue/${id}`);
   await expect(page.getByText("Latest costed receipt", { exact: true })).toBeVisible();
   await expect(page.getByText("£3.50", { exact: true })).toBeVisible();
   await expect(page.getByText(/below landed cost/i)).toHaveCount(0);
   expect((await db.from("variants").select("stock_on_hand,stock_reserved").eq("id", id).single()).data)
-    .toEqual({ stock_on_hand: onHand + 6, stock_reserved: reserved });
+    .toEqual({ stock_on_hand: 6, stock_reserved: 0 });
 });
 
 test("finance can correct an estimate; warehouse-only staff cannot see cost fields or receipt costs", async ({ page, browser, baseURL }) => {
-  const db = localAdminClient();
-  const result = await db.from("variants").select("id").eq("sku", "EDG-SUM-9803").single();
-  if (result.error) throw result.error;
-  const { id } = result.data;
+  const { id } = await createStockVariant();
   await signInStaff(page, await createLocalAdminUser("finance"));
   await page.goto(`/admin/catalogue/${id}`);
   await expect(page.getByRole("heading", { name: "Selling prices" })).toBeVisible();
@@ -73,6 +85,7 @@ test("finance can correct an estimate; warehouse-only staff cannot see cost fiel
   await page.getByLabel("Landed unit cost (£)", { exact: true }).fill("5");
   await page.getByRole("button", { name: "Save cost estimate" }).click();
   await expect(page.getByText("Cost estimate saved.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Supplier currency", { exact: true })).toHaveValue("USD");
   await page.getByLabel("Landed unit cost (£)", { exact: true }).fill("4.75");
   await page.getByRole("button", { name: "Save cost estimate" }).click();
   await expect(page.getByText("£4.75", { exact: true })).toBeVisible();

@@ -31,7 +31,7 @@ export function VariantCost({ id, result }: { id: string; result: Awaited<Return
           {actual ? <p className="admin-muted">Margins use this receipt’s landed cost. A receipt without a cost does not replace it.</p> : (
             <AdminForm action={saveVariantCost.bind(null, id)} submit="Save cost estimate">
               <p className="admin-muted">Margins use this estimate until you record a costed receipt.</p>
-              <CostFields cost={cost} />
+              <CostFields key={cost?.recorded_at ?? "new-estimate"} cost={cost} />
             </AdminForm>
           )}
         </>
