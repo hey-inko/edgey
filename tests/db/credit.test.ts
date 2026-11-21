@@ -556,7 +556,7 @@ test("concurrent voids and dispatches on one variant preserve the stock and cred
   try {
     const count = 12;
     const item = await variant(productId, count);
-    const orders = [];
+    const orders: { order: Order; invoiceId: string }[] = [];
     for (let i = 0; i < count; i++) {
       const order = await hold(item, buyer);
       const invoiceId = stripeId("in");
