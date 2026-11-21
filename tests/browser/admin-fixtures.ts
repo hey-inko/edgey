@@ -10,7 +10,9 @@ export async function signInStaff(page: Page, credentials: { email: string; pass
   await expect(page.getByRole("heading", { name: "Staff desk" })).toBeVisible();
 }
 
-export async function seedPaidAdminOrder({ mismatch = false, sku = "EDG-Z10" }: { mismatch?: boolean; sku?: string } = {}) {
+export async function seedPaidAdminOrder({
+  mismatch = false, sku = "EDG-Z10", email = "warehouse-fixture@example.test", buyerId,
+}: { mismatch?: boolean; sku?: string; email?: string; buyerId?: string } = {}) {
   const db = localAdminClient();
   const { data: variant, error: variantError } = await db.from("variants")
     .select("id,sku,price_1_4_pence")
@@ -28,8 +30,9 @@ export async function seedPaidAdminOrder({ mismatch = false, sku = "EDG-Z10" }: 
   const created = await db.rpc("create_order_with_reservations", {
     p_attempt_token: randomUUID(),
     p_lines: [{ variant_id: variant.id, quantity, unit_price_pence: variant.price_1_4_pence }],
-    p_contact: { email: "warehouse-fixture@example.test", business_name: "Fixture Print Works",
+    p_contact: { email, business_name: "Fixture Print Works",
       recipient_name: recipient, buying_for_work: true },
+    ...(buyerId ? { p_buyer_id: buyerId } : {}),
     p_address: { line1: "1 Fixture Lane", town: "London", postcode: "SW1A 1AA", country: "GB" },
     p_totals: { goods_net_pence: goods, delivery_net_pence: delivery, vat_rate_bps: 2000,
       vat_pence: vat, gross_pence: gross },
