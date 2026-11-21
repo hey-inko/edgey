@@ -1,7 +1,12 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 const project = "abcdefghijklmnopqrst";
+const pooler = `postgresql://postgres.${project}:hidden-password@aws-0-eu-north-1.pooler.supabase.com:5432/postgres`;
 const hostedFixture = (url: string, ref = project) =>
   spawnSync(process.execPath, ["scripts/apply-hosted-staging-fixture.mjs", "--project-ref", ref], {
     env: { NODE_ENV: "test", EDGEY_STAGING_DB_URL: url },
@@ -18,6 +23,8 @@ test.each([
   ["postgresql://postgres:hidden-password@localhost:54322/postgres", "must use the direct host or the session pooler"],
   ["postgresql://postgres:hidden-password@db.zzzzzzzzzzzzzzzzzzzz.supabase.co/postgres", "must use the direct host or the session pooler"],
   [`postgresql://postgres:hidden-password@db.${project}.supabase.co.attacker.example/postgres`, "must use the direct host or the session pooler"],
+  [`postgresql://postgres:hidden-password@db.${project}.supabase.co:6543/postgres`, "must use the direct host or the session pooler"],
+  [`postgresql://postgres.${project}:hidden-password@db.${project}.supabase.co/postgres`, "must use the direct host or the session pooler"],
   [`postgresql://postgres:hidden-password@db.${project}.supabase.co/postgres?sslmode=disable`, "no query string or fragment"],
 ] as const)("refuses a nonmatching or unsafe connection URL before connecting", (url, message) => {
   const result = hostedFixture(url);
@@ -33,13 +40,28 @@ test("requires a downloaded certificate for the confirmed hosted project", () =>
   expect(result.stderr).not.toContain("hidden-password");
 });
 
+test.each([
+  ["direct URL with the default port", `postgres://postgres:hidden-password@db.${project}.supabase.co/postgres`],
+  ["session pooler URL", pooler],
+])("configures verified TLS for a %s without connecting", (_target, url) => {
+  const { stagingDbConnection } = createRequire(import.meta.url)("../../scripts/staging-db-connection.mjs");
+  const directory = mkdtempSync(join(tmpdir(), "edgey-staging-ca-"));
+  try {
+    const path = join(directory, "staging.crt");
+    const ca = "-----BEGIN CERTIFICATE-----\ntest CA contents\n-----END CERTIFICATE-----\n";
+    writeFileSync(path, ca);
+    expect(stagingDbConnection(project, { EDGEY_STAGING_DB_URL: url, EDGEY_STAGING_DB_CA_FILE: path }))
+      .toEqual({ connectionString: url, ssl: { ca, rejectUnauthorized: true }, connectionTimeoutMillis: 10_000 });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 describe.each([
   ["fixture import", ["scripts/apply-hosted-staging-fixture.mjs"]],
   ["demo load", ["scripts/demo-orders.mjs", "load", "--staging"]],
   ["demo cleanup", ["scripts/demo-orders.mjs", "clean", "--staging"]],
 ] as const)("%s through the session pooler", (_command, args) => {
-  const pooler = `postgresql://postgres.${project}:hidden-password@aws-0-eu-north-1.pooler.supabase.com:5432/postgres`;
-
   test.each([
     ["matching ref and session port (requires a CA file)", pooler, "Set EDGEY_STAGING_DB_CA_FILE"],
     ["wrong ref", pooler.replace(project, "zzzzzzzzzzzzzzzzzzzz"), "must use the direct host or the session pooler"],
@@ -48,6 +70,8 @@ describe.each([
     ["missing port", pooler.replace(":5432", ""), "must use the direct host or the session pooler"],
     ["look-alike host", pooler.replace(".supabase.com", ".supabase.com.evil.example"), "must use the direct host or the session pooler"],
     ["bare pooler domain", pooler.replace("aws-0-eu-north-1.", ""), "must use the direct host or the session pooler"],
+    ["wrong database", pooler.replace(/\/postgres$/, "/other"), "no query string or fragment"],
+    ["missing password", pooler.replace(":hidden-password", ""), "no query string or fragment"],
     ["TLS override", pooler + "?sslmode=disable", "no query string or fragment"],
     ["fragment", pooler + "#", "no query string or fragment"],
   ])("%s", (_scenario, url, message) => {

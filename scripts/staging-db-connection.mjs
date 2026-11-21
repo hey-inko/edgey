@@ -4,7 +4,7 @@ export function stagingDbConnection(projectRef, env) {
   const url = URL.parse(env.EDGEY_STAGING_DB_URL ?? "");
   if (!url || !["postgres:", "postgresql:"].includes(url.protocol) || url.pathname !== "/postgres" ||
       !url.password || url.href.includes("?") || url.href.includes("#")) {
-    throw new Error("EDGEY_STAGING_DB_URL must be a Postgres URL for the confirmed staging project, with a password and no query string or fragment.");
+    throw new Error("EDGEY_STAGING_DB_URL must be a Postgres URL for the confirmed staging project's postgres database, with a password and no query string or fragment.");
   }
 
   const direct = url.hostname === `db.${projectRef}.supabase.co` &&
