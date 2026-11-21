@@ -240,7 +240,7 @@ export function ProductDetail({
   if (mode === "dialog") return details;
   return (
     <div className="product-grid">
-      <div>
+      <div className="product-artwork">
         <figure className={"figure-plate" + (media.drawing ? "" : " figure-plate-plain")} data-proof={media.drawing ? media.proof : undefined}>
           {media.drawing ? (
             <Image src={"/line-art/" + media.drawing} alt={"Line drawing of the " + family.name.toLowerCase() + " · " + figureCode}

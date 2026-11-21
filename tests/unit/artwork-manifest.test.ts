@@ -6,6 +6,7 @@ import manifest from "../../docs/artwork-sources.json";
 type Artwork = {
   sku: string;
   drawing: string;
+  proof: string;
   photo: string | null;
   publisher: string | null;
   page: string | null;
@@ -41,6 +42,7 @@ it("covers every non-design-pack variant and keeps public seed metadata free of 
     if (!family || packMedia.has(family)) continue;
     const media = familyMedia.get(family);
     expect(media?.proof).toMatch(/^(prism|coral|cyan|lime|violet)$/);
+    for (const [, sku] of skus) expect(bySku.get(sku!)?.proof).toBe(media?.proof);
     if (skus.length > 1) {
       expect(media).toEqual({ artwork: "by-sku", proof: media?.proof });
       continue;

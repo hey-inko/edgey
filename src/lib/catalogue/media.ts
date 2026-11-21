@@ -17,7 +17,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
-type Artwork = { drawing?: string; photo?: string; rights: "rights not cleared" | "missing" | "cleared" };
+type Artwork = { drawing?: string; photo?: string; proof?: string; rights: "rights not cleared" | "missing" | "cleared" };
 type PublicationStatus = Database["public"]["Enums"]["publication_status"];
 const artwork = new Map<string, Artwork | undefined>();
 
@@ -31,7 +31,8 @@ for (const value of manifest as unknown[]) {
   }
   const drawingName = typeof drawing === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]*\.svg$/.test(drawing) ? drawing : undefined;
   const photoName = photo === sku.toLowerCase() + ".webp" ? photo : undefined;
-  artwork.set(sku, { drawing: drawingName, photo: photoName, rights });
+  const proof = typeof row.proof === "string" && proofs.has(row.proof) ? row.proof : undefined;
+  artwork.set(sku, { drawing: drawingName, photo: photoName, proof, rights });
 }
 
 const restrictedPhotos = new Map([...artwork].flatMap(([sku, entry]) =>
@@ -64,10 +65,11 @@ export function resolveCatalogueMedia(value: unknown, familyCode: string, sku: s
   const row = record(value);
   if (!row) return {};
   const single = familyCode === sku && !Object.hasOwn(row, "artwork") ? row : undefined;
-  const proof = typeof row.proof === "string" && proofs.has(row.proof) ? row.proof : undefined;
   const pack = designPack.get(sku);
   const entry = artwork.get(sku);
-  const fromManifest = Object.keys(row).length === 0 || row.artwork === "by-sku";
+  const legacy = Object.keys(row).length === 0;
+  const proof = legacy ? entry?.proof : typeof row.proof === "string" && proofs.has(row.proof) ? row.proof : undefined;
+  const fromManifest = legacy || row.artwork === "by-sku";
   const drawing = pack
     ? single?.drawing === pack.drawing ? pack.drawing : undefined
     : entry && (fromManifest || single?.drawing === entry.drawing) ? entry.drawing : undefined;
