@@ -119,6 +119,7 @@ export type CatalogueView = {
   materials: (Substrate & { count: number })[];
   activeMaterial: Substrate | null;
   filtered: boolean;
+  finderEventId?: string;
 };
 
 export function buildCatalogueView(families: Family[], hits: SearchHit[] | null, filters: CatalogueFilters): CatalogueView {
@@ -200,4 +201,8 @@ export function queryValue(value: string | string[] | undefined): string {
 
 export function productHref(slug: string, sku?: string | null): string {
   return "/blades/" + slug + (sku ? "?variant=" + encodeURIComponent(sku) : "");
+}
+
+export function brandHref(slug: string): string {
+  return "/brands/" + encodeURIComponent(slug);
 }

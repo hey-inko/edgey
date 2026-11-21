@@ -14,6 +14,7 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
   return (
     <>
       <AdminHeading title="Catalogue" description="Review blade variants, record verified fit and control what appears in the storefront." />
+      <AdminLink href="/admin/catalogue/new">Add draft variant</AdminLink>
       {variants.length === 0 ? <AdminNotice>No catalogue variants on this page.</AdminNotice> : (
         <AdminTable label="Catalogue variants" headers={["Edgey SKU", "Product family", "Variant", "Review", "Publication"]}>
           {variants.slice(0, adminPageSize).map((variant) => (

@@ -156,7 +156,15 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
       });
 
       await test.step("Required PO, gross credit and VAT reach the Stripe invoice before stock can be picked", async () => {
-        await buyerPage.reload();
+        await buyerPage.goto("/trade");
+        await expect(buyerPage.getByText(/Select Pay on account \(Net 30\) at checkout/)).toBeVisible();
+        await buyerPage.goto("/privacy");
+        await buyerPage.getByRole("button", { name: "Turn on Finder analytics" }).click();
+        await expect(buyerPage.getByRole("button", { name: "Turn off Finder analytics" })).toBeVisible();
+        await buyerPage.goto(`/blades?q=${encodeURIComponent(sku)}`);
+        await expect(buyerPage.locator(".cards").getByRole("link").filter({ hasText: "Exact match" })).toContainText(sku);
+        await expect.poll(async () => (await buyerContext.cookies()).some(({ name }) => name === "edgey-finder-match")).toBe(true);
+        await buyerPage.goto("/checkout");
         await buyerPage.getByLabel("Business name").fill(company);
         await buyerPage.getByLabel("Contact email").fill(buyer.email);
         await buyerPage.getByLabel("I’m buying for work").check();
@@ -184,6 +192,9 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         expect(response.status()).toBe(200);
         await expect(buyerPage).toHaveURL(/\/checkout\/net30\/[a-f0-9-]+$/);
         orderId = new URL(buyerPage.url()).pathname.split("/").at(-1)!;
+        expect((await db.query(`select e.normalised_query from private.finder_order_attributions a
+          join public.finder_search_events e on e.id = a.event_id where a.order_id = $1`, [orderId])).rows)
+          .toEqual([{ normalised_query: sku.replace(/[^a-z0-9]/gi, "").toUpperCase() }]);
         orderReference = (await db.query<{ order_reference: string }>(
           "select order_reference from public.orders where id=$1", [orderId],
         )).rows[0]!.order_reference;

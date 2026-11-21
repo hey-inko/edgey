@@ -9,6 +9,7 @@ import { handleTrial } from "../../actions";
 import { AddressInput } from "../../address-input";
 import { RequestTextarea } from "../../request-textarea";
 import { VariantSelect } from "../../variant-select";
+import { TrialMailStatus } from "./trial-mail-status";
 
 export const metadata = { title: "Trial request" };
 
@@ -57,6 +58,7 @@ export default async function TrialPage({ params, searchParams }: {
   return <>
     <AdminHeading title="Trial request" eyebrow="Requests" description={trialStatus(trial.status, fulfilment?.state)} />
     <AdminLink href="/admin/requests">Requests inbox</AdminLink>
+    <TrialMailStatus db={db} id={id} />
     <div className="admin-grid">
       <AdminSection title="Submitted details">
         <dl className="admin-spec">

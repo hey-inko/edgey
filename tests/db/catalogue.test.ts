@@ -82,11 +82,13 @@ test("the draft import has exactly 23 families and preserves corrected reference
     const { rows } = await db.query(`
       select
         (select count(*)::int from public.products) as families,
+        (select count(*)::int from public.products where name ~ '^[A-Z]'
+         and description ~ '^[A-Z].+[.]$' and name <> family_code) as families_with_plain_copy,
         (select count(*)::int from public.variants where publication_status = 'draft') as drafts,
         (select bool_and(stock_on_hand = 0 and stock_reserved = 0) from public.variants
          where publication_status = 'draft') as draft_stock_is_zero
     `);
-    expect(rows).toEqual([{ families: 23, drafts: 19, draft_stock_is_zero: true }]);
+    expect(rows).toEqual([{ families: 23, families_with_plain_copy: 23, drafts: 19, draft_stock_is_zero: true }]);
     const { rows: mapped } = await db.query(`
       select v.sku, c.code from public.variants v
       join public.compatibility c on c.variant_id = v.id

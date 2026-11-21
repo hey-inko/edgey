@@ -1,4 +1,5 @@
 import "server-only";
+import { attributeFinderCheckout } from "@/lib/commercial/checkout";
 import type Stripe from "stripe";
 import { createOrderWithReservations, type CreateOrderInput } from "@/lib/orders";
 import type { ReservationRateKeys } from "@/lib/orders/reservation-input";
@@ -65,6 +66,7 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
   if (!matchesAttempt(order, attempt, items)) {
     throw new CheckoutUnavailableError("This payment attempt cannot be used for a changed order.");
   }
+  await attributeFinderCheckout(order.id, attempt.attemptToken, attempt.buyerId);
   return openReservedPayment(order, items);
 }
 

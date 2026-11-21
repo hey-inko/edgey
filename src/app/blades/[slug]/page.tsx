@@ -7,6 +7,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductDetail } from "@/components/product-detail";
 import {
+  brandHref,
   familyBrands,
   formatNumber,
   productHref,
@@ -153,7 +154,7 @@ function VariantSpecification({ family, variant }: { family: Family; variant: Va
                   <th scope="row" className="code">
                     {record.code}
                   </th>
-                  <td>{record.brand?.name ?? "—"}</td>
+                  <td>{record.brand ? <Link className="textlink" href={brandHref(record.brand.slug)}>{record.brand.name}</Link> : "—"}</td>
                   <td>{record.machine ?? "—"}</td>
                   <td>{record.tool ?? "—"}</td>
                   <td>{record.adapter ?? "—"}</td>
