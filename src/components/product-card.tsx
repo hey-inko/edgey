@@ -7,6 +7,7 @@ import { formatPence, incVatLabel } from "@/lib/catalogue/display-prices";
 // A family without approved artwork shows its part code on the plain plate.
 export function ProductCard({ card }: { card: CatalogueCard }) {
   const { family, match, variants, matchedCode } = card;
+  const media = variants[0]?.media ?? family.media;
   const lowest = Math.min(...variants.map((variant) => variant.prices.oneToFour));
   const priceVaries = variants.some((variant) => variant.prices.oneToFour !== lowest);
   const fit = fitLine(card);
@@ -16,11 +17,11 @@ export function ProductCard({ card }: { card: CatalogueCard }) {
       className="p-card"
       href={card.href}
       scroll={false}
-      data-proof={family.media.drawing ? family.media.proof : undefined}
+      data-proof={media.drawing ? media.proof : undefined}
     >
       <span className="p-card-image">
-        {family.media.drawing ? (
-          <Image alt="" src={"/line-art/" + family.media.drawing} width={388} height={200} unoptimized />
+        {media.drawing ? (
+          <Image alt="" src={"/line-art/" + media.drawing} width={388} height={200} unoptimized />
         ) : (
           <span className="plate-code" aria-hidden="true">{family.familyCode}</span>
         )}

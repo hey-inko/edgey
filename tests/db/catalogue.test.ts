@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { Client } from "pg";
+import manifest from "../../docs/artwork-sources.json";
 
 let db: Client;
 
@@ -148,7 +149,10 @@ test("the three accepted tier sets are seeded in pence without approving or publ
       ["EDG-SUM-9802", 2095, 1850, 1595],
       ["EDG-SUM-9803", 2095, 1850, 1595],
     ].map(([sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence]) => ({
-      sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence, media: {},
+      sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence,
+      media: expect.objectContaining({
+        drawing: (manifest as { sku: string; drawing: string }[]).find((entry) => entry.sku === sku)?.drawing,
+      }),
       publication_status: "draft", stock_on_hand: 0, approved_at: null,
       evidence_source: "Owner-supplied specifications (2026-11-21; unverified)",
     })));

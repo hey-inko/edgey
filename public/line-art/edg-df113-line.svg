@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 176" fill="none" stroke="#323735" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" role="img">
+  <title>EDG-DF113 flat double-edge drag blade</title>
+  <g transform="translate(161 88) rotate(-23)">
+    <path d="M-102 0 -75 -15H97V14L94 18H-74L-102 3Z" fill="#dfe2df"/>
+    <path d="M-102 0 -75 -15H97V14H-75Z" fill="#fafbf8"/>
+    <path d="M-102 0 -75 -15H-60Z" fill="#eceeea" stroke="#777d79"/>
+    <path d="M-102 0 -75 14H-60Z" fill="#d9ddda" stroke="#777d79"/>
+    <path d="M-75 14 -74 18M93 17 97 14M-62 -11H92" stroke="#777d79"/>
+    <path d="M-66 16H86" stroke="#969b95" stroke-width=".9" stroke-dasharray="3 4"/>
+  </g>
+</svg>

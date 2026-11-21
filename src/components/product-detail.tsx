@@ -39,6 +39,8 @@ export function ProductDetail({
   const [sku, setSku] = useState(preselected?.sku ?? null);
   const [quantityInput, setQuantityInput] = useState("1");
   const variant = family.variants.find((candidate) => candidate.sku === sku) ?? null;
+  const media = variant?.media ?? family.media;
+  const figureCode = variant?.sku ?? family.familyCode;
   const Heading = mode === "dialog" ? "h2" : "h1";
   const { add, open, hydrated } = useSelection();
 
@@ -66,21 +68,24 @@ export function ProductDetail({
       ? "This variant is out of stock and cannot be added."
       : null;
 
-  return (
+  const details = (
     <>
       {mode === "dialog" &&
-        (family.media.photo ? (
+        (media.photo ? (
           <Image
             className="dialog-img"
-            src={"/photos/" + family.media.photo}
-            alt={"Illustrative " + family.name.toLowerCase()}
+            src={"/photos/" + media.photo}
+            alt={"Illustrative " + family.name.toLowerCase() + " · " + figureCode}
             width={450}
             height={175}
             unoptimized
           />
         ) : (
           <div className="dialog-plate">
-            <span className="plate-code">{family.familyCode}</span>
+            {media.drawing
+              ? <Image className="h-full w-full object-contain" src={"/line-art/" + media.drawing}
+                  alt={"Line drawing for " + figureCode} width={320} height={176} unoptimized />
+              : <span className="plate-code">{figureCode}</span>}
           </div>
         ))}
       <p className="eyebrow">{variant?.sku ?? family.familyCode}</p>
@@ -230,5 +235,26 @@ export function ProductDetail({
         </div>
       )}
     </>
+  );
+
+  if (mode === "dialog") return details;
+  return (
+    <div className="product-grid">
+      <div>
+        <figure className={"figure-plate" + (media.drawing ? "" : " figure-plate-plain")} data-proof={media.drawing ? media.proof : undefined}>
+          {media.drawing ? (
+            <Image src={"/line-art/" + media.drawing} alt={"Line drawing of the " + family.name.toLowerCase() + " · " + figureCode}
+              width={776} height={400} priority unoptimized />
+          ) : <span className="plate-code">{figureCode}</span>}
+        </figure>
+        {media.drawing && (
+          <p className="fine figure-note">
+            Drawing for identification. Not to scale.
+            {media.photo && <> <a className="textlink" href={"/photos/" + media.photo}>View photograph</a></>}
+          </p>
+        )}
+      </div>
+      <section className="product-panel" aria-label="Fit, availability and price">{details}</section>
+    </div>
   );
 }

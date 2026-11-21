@@ -2,7 +2,6 @@ import { getFamily } from "@/lib/catalogue/server";
 import { siteUrl } from "@/lib/catalogue/site-url";
 import { withVatPence } from "@/lib/catalogue/display-prices";
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductDetail } from "@/components/product-detail";
@@ -64,28 +63,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
         <span aria-hidden="true">/</span>
         <span aria-current="page">{family.familyCode}</span>
       </nav>
-      <div className="product-grid">
-        <div>
-          <figure className={"figure-plate" + (family.media.drawing ? "" : " figure-plate-plain")} data-proof={family.media.drawing ? family.media.proof : undefined}>
-            {family.media.drawing ? (
-              <Image
-                src={"/line-art/" + family.media.drawing}
-                alt={"Line drawing of the " + family.name.toLowerCase()}
-                width={776}
-                height={400}
-                priority
-                unoptimized
-              />
-            ) : (
-              <span className="plate-code">{family.familyCode}</span>
-            )}
-          </figure>
-          {family.media.drawing && <p className="fine figure-note">Drawing for identification. Not to scale.</p>}
-        </div>
-        <section className="product-panel" aria-label="Fit, availability and price">
-          <ProductDetail key={family.slug + (initialSku ?? "")} family={family} initialSku={initialSku} mode="page" grossBreaks={grossBreaks} />
-        </section>
-      </div>
+      <ProductDetail key={family.slug + (initialSku ?? "")} family={family} initialSku={initialSku} mode="page" grossBreaks={grossBreaks} />
 
       <div className="product-more">
         <div>
@@ -182,7 +160,6 @@ function modelCodes(family: Family): string[] {
 // Prices are the business price: GBP excluding VAT, flagged as such.
 function structuredData(family: Family) {
   const url = siteUrl(productHref(family.slug));
-  const image = family.media.drawing ? siteUrl("/line-art/" + family.media.drawing) : undefined;
   const product = (variant: Variant) => ({
     "@type": "Product",
     name: family.name + (family.variants.length > 1 ? ", " + variantLabel(variant) : ""),
@@ -190,7 +167,7 @@ function structuredData(family: Family) {
     description: family.description,
     category: family.toolType.name + " blade",
     brand: { "@type": "Brand", name: "Edgey" },
-    image,
+    image: (variant.media ?? family.media).drawing ? siteUrl("/line-art/" + (variant.media ?? family.media).drawing) : undefined,
     additionalProperty: variant.compatibility.map((record) => ({
       "@type": "PropertyValue",
       name: "OEM reference",
