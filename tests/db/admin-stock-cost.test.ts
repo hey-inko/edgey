@@ -124,6 +124,7 @@ describe("staff stock and unit costs", () => {
     )).rows;
 
     await asStaff(catalogue, runSetCost);
+    await expect(asStaff(finance, runSetCost)).resolves.toBe(id);
     await asStaff(both, runReceive);
     for (const run of [runAdjust, runReceive, runSetCost]) {
       await expect(asStaff(null, run)).rejects.toMatchObject(denied);
@@ -138,7 +139,7 @@ describe("staff stock and unit costs", () => {
     await expect(asStaff(warehouse, runSetCost)).rejects.toMatchObject(denied);
     await expect(asStaff(warehouse, runReceive)).rejects.toMatchObject(denied);
     await expect(asStaff(warehouse, runAdjust)).resolves.toEqual(expect.any(String));
-    await expect(asStaff(finance, runSetCost)).resolves.toBe(id);
+    await expect(asStaff(finance, runSetCost)).rejects.toMatchObject({ message: "staff_cost_stale" });
     for (const table of costRelations) {
       await expect(asStaff(null, () => readCost(table))).rejects.toMatchObject(denied);
       for (const session of [buyer, warehouse, { ...both, steppedUp: false }, unapprovedSession]) {
@@ -320,7 +321,7 @@ describe("staff stock and unit costs", () => {
     const second = await asStaff(both, () => receive(id, randomUUID(), 4, updated));
     await rpc("receive_stock", [id, randomUUID(), 1, both.id]);
     const revised = { ...cost, landed_unit_pence: 999 };
-    await asStaff(both, () => setCost(id, revised));
+    await expect(asStaff(both, () => setCost(id, revised))).rejects.toMatchObject({ message: "staff_cost_stale" });
     expect(await stock(id)).toEqual({ stock_on_hand: 12, stock_reserved: 0 });
     expect(await currentCost(id)).toEqual([{
       ...updated, variant_id: id, source: "receipt", stock_movement_id: second, received_quantity: 4,
@@ -344,7 +345,6 @@ describe("staff stock and unit costs", () => {
       where variant_id = $1 order by id
     `, [id])).rows).toEqual([
       { old_cost: null, new_cost: auditCost, actor_id: catalogue.id, recorded_at: expect.any(Date) },
-      { old_cost: auditCost, new_cost: { ...auditCost, landed_unit_pence: 999 }, actor_id: both.id, recorded_at: expect.any(Date) },
     ]);
   });
 });

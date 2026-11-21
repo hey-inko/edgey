@@ -305,6 +305,9 @@ begin
   end if;
   select to_jsonb(e) - array['variant_id', 'actor_id', 'recorded_at'] into previous_cost
   from public.staff_variant_costs e where variant_id = p_variant_id;
+  if exists (select 1 from public.staff_receipt_costs where variant_id = p_variant_id) then
+    raise exception using errcode = '22023', message = 'staff_cost_stale';
+  end if;
   if previous_cost = to_jsonb(cost) then
     return p_variant_id;
   end if;

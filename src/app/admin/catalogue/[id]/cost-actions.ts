@@ -24,7 +24,7 @@ export async function saveVariantCost(id: string, receipt: ReceiptCostVersion | 
     : await db.rpc("set_staff_variant_cost", { p_variant_id: id, p_cost: parsed.value });
   if (error) return { ok: false, message: stockSchemaUnavailable(error)
     ? "This cost action is not available until the database update is applied."
-    : error.message === "staff_cost_stale" ? "The current receipt or its cost changed. Reload the page and try again."
+    : error.message === "staff_cost_stale" ? "The current cost or receipt changed. Reload the page and try again."
       : "Could not save the cost." };
   revalidatePath(`/admin/catalogue/${id}`);
   if (receipt) revalidatePath(`/admin/stock/${id}`);
