@@ -8,7 +8,7 @@ export default function StorefrontError({ reset }: { reset: () => void }) {
   const id = path === "/" || path === "/blades" ? "catalogue" : "main-content";
   return (
     <main id={id} tabIndex={-1} className="frame simple-page">
-      <p className="kicker">Catalogue unavailable</p>
+      <p className="kicker"><span className="register" aria-hidden="true" />Catalogue unavailable</p>
       <h1>We couldn’t load the blades</h1>
       <p>The catalogue didn’t respond. Try again in a moment.</p>
       <div className="empty-actions">

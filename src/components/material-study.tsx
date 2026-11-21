@@ -22,7 +22,7 @@ export function MaterialStudy() {
         <BoardDrawing texture={"/proofs/proof-" + proof + ".webp"} />
       </div>
       <p className="layer-key">
-        Print face <span> / </span> Fluted core <span> / </span> Back liner
+        Print face <span aria-hidden="true"> / </span> Fluted core <span aria-hidden="true"> / </span> Back liner
       </p>
       <figcaption>
         <span>Printed corrugated board</span>

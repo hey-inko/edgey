@@ -10,6 +10,7 @@ import {
 } from "../browser/fixtures/net30-data";
 import { startStripeFixture } from "../browser/fixtures/net30-stripe";
 import { confirmation, drainEmails } from "./storefront-fixtures";
+import { scanBothThemes } from "../helpers/accessibility";
 
 const test = base.extend<{
   net30Data: Net30Data;
@@ -181,8 +182,10 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         const placeOrder = buyerPage.getByRole("button", { name: "Place order on account" });
         await placeOrder.click();
         await expect(po).toHaveAccessibleDescription("Enter a purchase order reference on one line.");
+        await scanBothThemes(buyerPage);
         expect(stripe.calls.filter(({ path }) => path.startsWith("/v1/invoices"))).toEqual([]);
         await po.fill(poReference);
+        await scanBothThemes(buyerPage);
         await capture(buyerPage, "02-checkout");
         const submitted = buyerPage.waitForResponse((response) =>
           new URL(response.url()).pathname === "/api/checkout/net30" && response.request().method() === "POST");

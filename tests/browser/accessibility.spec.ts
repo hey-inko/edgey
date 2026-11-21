@@ -1,0 +1,267 @@
+import { randomUUID } from "node:crypto";
+import { readdirSync } from "node:fs";
+import { sep } from "node:path";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { localAdminClient } from "../../scripts/seed-admin";
+import { connectAccountDb, createAccountCatalogue } from "../helpers/account-fixture";
+import { scanAccessibility, themes, saveThemeBeforeLoad, type Theme } from "../helpers/accessibility";
+import { seedPaidAdminOrder, signInStaff } from "./admin-fixtures";
+import { company, withNet30Data } from "./fixtures/net30-data";
+
+const noPage = "We could not find that page";
+const product = "Flat-stock drag blade";
+
+test("every App Router page is accounted for in the accessibility suite", () => {
+  const pages = readdirSync("src/app", { recursive: true, encoding: "utf8" })
+    .map((path) => path.split(sep).join("/"))
+    .filter((path) => path === "page.tsx" || path.endsWith("/page.tsx"))
+    .sort();
+  expect(pages, "Add a route-state scan or record its existing coverage in the inventory").toEqual([
+    "@modal/(.)blades/[slug]/page.tsx",
+    "@modal/[...catchAll]/page.tsx",
+    "@modal/page.tsx",
+    "account/orders/[id]/page.tsx",
+    "account/page.tsx",
+    "admin/catalogue/[id]/page.tsx",
+    "admin/catalogue/new/page.tsx",
+    "admin/catalogue/page.tsx",
+    "admin/commercial/page.tsx",
+    "admin/delivery/page.tsx",
+    "admin/finance/accounts/[id]/page.tsx",
+    "admin/finance/page.tsx",
+    "admin/page.tsx",
+    "admin/requests/enquiries/[id]/page.tsx",
+    "admin/requests/page.tsx",
+    "admin/requests/trade/[id]/page.tsx",
+    "admin/requests/trials/[id]/page.tsx",
+    "admin/sign-in/page.tsx",
+    "admin/stock/[id]/page.tsx",
+    "admin/stock/page.tsx",
+    "admin/warehouse/[id]/page.tsx",
+    "admin/warehouse/[id]/print/page.tsx",
+    "admin/warehouse/page.tsx",
+    "blades/[slug]/page.tsx",
+    "blades/page.tsx",
+    "brands/[slug]/page.tsx",
+    "checkout/net30/[id]/page.tsx",
+    "checkout/page.tsx",
+    "checkout/success/page.tsx",
+    "contact/page.tsx",
+    "enquiry/page.tsx",
+    "page.tsx",
+    "privacy/page.tsx",
+    "sample-pack/page.tsx",
+    "trade/page.tsx",
+  ]);
+});
+
+async function scanRoutes(page: Page, theme: Theme, routes: readonly (readonly [string, string | RegExp])[]) {
+  for (const [url, heading] of routes) {
+    await test.step(url, async () => {
+      await page.goto(url);
+      await expect(page.getByRole("heading", { level: 1, name: heading, exact: typeof heading === "string" })).toBeVisible();
+      await scanAccessibility(page, theme);
+    });
+  }
+}
+
+async function expectFallbackTheme(context: BrowserContext, route: string, theme: Theme, status: 404 | 500) {
+  const page = await context.newPage();
+  try {
+    await page.route(/\/_next\/static\/.*\.js(?:\?|$)/, (request) => request.abort());
+    await saveThemeBeforeLoad(page, theme);
+    expect((await page.goto(route))?.status()).toBe(status);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(page.locator("body")).toHaveCSS("background-color", theme === "light" ? "rgb(250, 250, 248)" : "rgb(20, 22, 23)");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", theme === "light" ? "#FAFAF8" : "#141617");
+  } finally {
+    await page.close();
+  }
+}
+
+for (const theme of themes) {
+  test.describe(theme, () => {
+    test.beforeEach(async ({ page }) => saveThemeBeforeLoad(page, theme));
+
+    test("public catalogue, fit details and not-found states", async ({ page }) => {
+      await scanRoutes(page, theme, [
+        ["/", /The cutting/],
+        ["/?q=3910301", /The cutting/],
+        ["/blades", "Blade catalogue"],
+        ["/blades?q=spb%200030", "Blade catalogue"],
+        ["/blades?q=no-such-reference", "Blade catalogue"],
+        ["/blades/edg-z10", product],
+        ["/blades/edg-mim-45", /Mimaki|drag blade/i],
+        ["/brands/mimaki", "Mimaki blade references"],
+        ["/brands/graphtec", noPage],
+        ["/blades/edg-sum-drg?variant=EDG-SUM-DRG-60", "Summa-pattern drag plotter blade"],
+        ["/blades/missing-blade", noPage],
+        ["/blades/edg-z46", noPage],
+        ["/missing-edgey-page", noPage],
+      ]);
+    });
+
+    test("request forms, sign-ins and public checkout returns", async ({ page }) => {
+      await scanRoutes(page, theme, [
+        ["/enquiry", "Ask us to match this blade"],
+        ["/enquiry?postcode=HS1%202AA", "Ask about delivery"],
+        ["/sample-pack", "Request two trial blades"],
+        ["/contact", "Contact"],
+        ["/privacy", "Privacy"],
+        ["/trade", "Apply for a trade account"],
+        ["/account", "Sign in to your account"],
+        ["/admin/sign-in", "Staff sign-in"],
+        ["/checkout", "Checkout"],
+        ["/checkout/success", "Checkout not found"],
+        ["/checkout/net30/" + randomUUID(), "Checkout not found"],
+      ]);
+      await page.goto("/enquiry");
+      await page.getByRole("button", { name: "Send enquiry" }).click();
+      await expect(page.getByRole("heading", { name: "Check the form" })).toBeFocused();
+      await scanAccessibility(page, theme);
+    });
+
+    test("product and selection dialogs, populated checkout and validation", async ({ page }) => {
+      const tray = page.getByRole("dialog", { name: "Your selection" });
+      await page.goto("/blades");
+      await page.getByRole("button", { name: "Selection 0 blades" }).click();
+      await expect(tray).toContainText("Your selection is empty");
+      await scanAccessibility(page, theme);
+      await page.keyboard.press("Escape");
+
+      await page.getByRole("link", { name: /EDG-MIM-45/ }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toContainText("Choose the configuration");
+      await scanAccessibility(page, theme);
+      await page.keyboard.press("Escape");
+      await page.getByRole("link", { name: /EDG-Z10 Flat-stock drag blade/ }).click();
+      await expect(dialog).toContainText(product);
+      await scanAccessibility(page, theme);
+      await dialog.getByRole("button", { name: "Add to selection" }).click();
+      await expect(tray.getByRole("button", { name: "Remove EDG-Z10" })).toBeVisible();
+      await scanAccessibility(page, theme);
+
+      await tray.getByRole("link", { name: "Go to checkout" }).click();
+      await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Order summary" })).toContainText("EDG-Z10");
+      await scanAccessibility(page, theme);
+      await page.getByRole("button", { name: "Continue to payment" }).click();
+      await expect(page.getByLabel("Business name")).toHaveAttribute("aria-invalid", "true");
+      await scanAccessibility(page, theme);
+    });
+
+    test("catalogue error recovery and its initial document colour", async ({ page, context }) => {
+      const db = await connectAccountDb();
+      let fixture: Awaited<ReturnType<typeof createAccountCatalogue>> | undefined;
+      try {
+        fixture = await createAccountCatalogue(db);
+        await db.query("update public.variants set specs = '{\"Fixture\": {\"invalid\": true}}' where id = $1", [fixture.available.id]);
+        const route = "/blades/" + fixture.available.sku.replace(/-45$/, "").toLowerCase();
+        await expectFallbackTheme(context, route, theme, 500);
+        await scanRoutes(page, theme, [[route, "We couldn’t load the blades"]]);
+      } finally {
+        try {
+          if (fixture) {
+            await db.query("delete from public.stock_movements where variant_id in (select id from public.variants where product_id = $1)", [fixture.productId]);
+            await db.query("delete from public.variants where product_id = $1", [fixture.productId]);
+            await db.query("delete from public.products where id = $1", [fixture.productId]);
+          }
+        } finally {
+          await db.end();
+        }
+      }
+    });
+
+    test("authenticated staff routes show the intended desk and detail screens", async ({ page, context }) => {
+      test.setTimeout(60_000);
+      await withNet30Data(async ({ db, buyer, warehouse: staff, application, sku, variantId }) => {
+        const admin = localAdminClient();
+        const order = await seedPaidAdminOrder({ sku, buyerId: buyer.id, email: buyer.email });
+        const enquiry = randomUUID();
+        const trial = randomUUID();
+        try {
+          const [roles, match, sample, variants] = await Promise.all([
+            admin.from("staff_members").insert([
+              { user_id: staff.id, role: "catalogue" },
+              { user_id: staff.id, role: "finance" },
+            ]),
+            admin.rpc("submit_enquiry", {
+              p_id: enquiry, p_kind: "compatibility", p_email: buyer.email,
+              p_query: "Fixture blade", p_message: "Can you confirm the correct part?",
+            }),
+            admin.rpc("submit_trial_request", {
+              p_id: trial, p_machine_brand: "Zünd", p_oem_code: "3910301",
+              p_email: buyer.email, p_company: company, p_postcode: "SW1A 1AA",
+            }),
+            admin.from("variants").select("id,sku").in("sku", ["EDG-Z10", "EDG-Z11"]),
+          ]);
+          const error = roles.error ?? match.error ?? sample.error ?? variants.error;
+          if (error) throw error;
+          const ids = Object.fromEntries(variants.data!.map((variant) => [variant.sku, variant.id]));
+          await signInStaff(page, staff);
+          const missing = `/admin/warehouse/${randomUUID()}`;
+          await expectFallbackTheme(context, missing, theme, 404);
+          await scanRoutes(page, theme, [
+            ["/admin", "Staff desk"],
+            ["/admin/delivery", "Delivery settings"],
+            ["/admin/commercial", "Commercial measures"],
+            ["/admin/catalogue/new", "Add draft variant"],
+            ["/admin/warehouse", "Pick and dispatch"],
+            ["/admin/warehouse?view=history", "Dispatch and cancellation history"],
+            ["/admin/warehouse?view=blocked", "Payment blocks"],
+            [`/admin/warehouse/${order.id}`, "Warehouse order"],
+            [missing, noPage],
+            ["/admin/stock", "Stock"],
+            [`/admin/stock/${variantId}`, sku],
+            ["/admin/catalogue", "Catalogue"],
+            [`/admin/catalogue/${ids["EDG-Z10"]}`, product],
+            [`/admin/catalogue/${ids["EDG-Z11"]}`, /blade/i],
+            ["/admin/finance", "Finance"],
+            ["/admin/requests", "Requests"],
+            [`/admin/requests/enquiries/${enquiry}`, "Compatibility enquiry"],
+            [`/admin/requests/trials/${trial}`, "Trial request"],
+            [`/admin/requests/trade/${application}`, company],
+          ]);
+          await page.setViewportSize({ width: 320, height: 800 });
+          await page.goto(`/admin/catalogue/${ids["EDG-Z10"]}`);
+          await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+          const materials = page.getByRole("group", { name: "Verified materials" });
+          const technicalFabric = materials.getByRole("checkbox", { name: "Carbon and aramid fabric" });
+          const label = materials.getByText("Carbon and aramid fabric", { exact: true });
+          await expect(label).toBeVisible();
+          expect(await materials.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+            await materials.evaluate((element) => element.clientWidth),
+          );
+          await technicalFabric.focus();
+          await expect(technicalFabric).toBeFocused();
+          await page.keyboard.press("Space");
+          await expect(technicalFabric).toBeChecked();
+          await scanAccessibility(page, theme);
+          await page.goto(`/admin/warehouse/${order.id}/print`);
+          await expect(page.getByRole("heading", { name: "Pick list" })).toBeVisible();
+          await scanAccessibility(page, theme);
+          await page.emulateMedia({ media: "print" });
+          await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+          await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+          await expect(page.getByRole("banner")).toBeHidden();
+          await expect(page.getByRole("heading", { name: "Pick list" })).toBeVisible();
+          await page.emulateMedia({ media: "screen" });
+          const cancellation = await admin.rpc("cancel_order", {
+            p_actor_id: staff.id, p_order_id: order.id, p_operation_key: randomUUID(),
+          });
+          if (cancellation.error) throw cancellation.error;
+          await page.goto("/admin/finance");
+          const confirmRefund = page.getByRole("row").filter({ hasText: order.reference })
+            .getByRole("checkbox", { name: "Confirm full remaining refund" });
+          await expect(confirmRefund).toBeVisible();
+          await expect(confirmRefund).toHaveCSS("width", "24px");
+          await expect(confirmRefund).toHaveCSS("height", "24px");
+          await scanAccessibility(page, theme);
+        } finally {
+          await db.query("delete from public.trial_requests where id = $1", [trial]);
+          await db.query("delete from public.enquiries where id = $1", [enquiry]);
+        }
+      });
+    });
+  });
+}

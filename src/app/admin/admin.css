@@ -95,8 +95,8 @@ body:has(> .admin) .footer-proof { display: none; }
 .admin-table td .primary { max-width: 100%; white-space: nowrap; }
 .admin-request-message { min-width: 15rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin-preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
-.admin-check { display: flex; align-items: baseline; gap: 9px; }
-.admin-check input { flex: none; }
+.admin-check { display: flex; align-items: flex-start; gap: 9px; }
+.admin-check input { flex: none; inline-size: 24px; block-size: 24px; }
 .admin-email { white-space: nowrap; }
 .admin-pagination { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
 .admin-spec {

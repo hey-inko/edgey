@@ -17,6 +17,7 @@ export function CatalogueSection({
   const query = filters.q.trim();
   const count = bladeCount(view.cards.length);
   const Heading = asPage ? "h1" : "h2";
+  const EmptyHeading = asPage ? "h2" : "h3";
 
   return (
     <section className={"catalogue" + (asPage ? " is-page" : "")} id="catalogue" tabIndex={-1} aria-labelledby="catalogue-title">
@@ -40,7 +41,7 @@ export function CatalogueSection({
           ))}
           {view.cards.length === 0 && (
             <div className="empty">
-              <h3>{query ? "No verified match for “" + query + "”" : "No matching blades"}</h3>
+              <EmptyHeading>{query ? "No verified match for “" + query + "”" : "No matching blades"}</EmptyHeading>
               <p>
                 {query
                   ? "Check the code on the packet, or open a compatibility enquiry."

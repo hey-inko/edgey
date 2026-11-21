@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { scanAccessibility, scanBothThemes } from "../helpers/accessibility";
 import type { Client } from "pg";
 import {
   accountEmail,
@@ -192,6 +193,7 @@ test("verified buyers can read and reorder their history without exposing foreig
     await test.step("Show the application decision without implying that approval grants credit", async () => {
       const trade = page.getByRole("region", { name: "Trade account", exact: true });
       await expect(trade.getByRole("heading", { name: "Application pending", exact: true })).toBeVisible();
+      await scanBothThemes(page);
       await db.query(`
         update public.trade_applications
         set status = 'rejected', reviewed_at = now(), reviewed_by = $2
@@ -225,6 +227,7 @@ test("verified buyers can read and reorder their history without exposing foreig
       ]) await expect(delivery.getByText(text, { exact: true })).toBeVisible();
       await expect(delivery.getByRole("link", { name: "View invoice" })).toHaveAttribute("href", dispatched.invoiceUrl!);
       await expect(page.getByRole("main")).not.toContainText(dispatched.providerInvoiceId!);
+      await scanBothThemes(page);
       for (const order of [pending, refunded]) {
         await page.goto(orderPath(order.id));
         await expect(page.getByRole("heading", { name: "Order items", exact: true })).toBeVisible();
@@ -285,6 +288,7 @@ test("verified buyers can read and reorder their history without exposing foreig
           const preview = reorderPreview(page);
           await expect(preview.getByRole("heading", { name: "Review reorder" })).toBeFocused();
           await expectViewportFits(page, width);
+          if (width === 1440) await scanAccessibility(page, theme);
           await capture("reorder");
           await focusByKeyboard(page, preview.getByRole("button", { name: "Cancel", exact: true }));
           await page.keyboard.press("Enter");
@@ -303,7 +307,7 @@ test("verified buyers can read and reorder their history without exposing foreig
       await expect(unavailable).toContainText(/Out of stock/i);
       const repriced = preview.getByRole("listitem").filter({ hasText: catalogue.available.sku });
       await expect(repriced).toContainText(/price changed from £21\.00 to £23\.50/i);
-      await expect(page.getByRole("button", { name: "Open selection, 3 blades" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Selection 3 blades" })).toBeVisible();
       await preview.getByRole("button", { name: "Cancel", exact: true }).press("Enter");
       await expect(preview).toHaveCount(0);
       const readSelection = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}"), selectionKey);
@@ -326,9 +330,9 @@ test("verified buyers can read and reorder their history without exposing foreig
       await expect(replace).toBeEnabled();
       await replace.press("Enter");
       await expect(preview).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Open selection, 2 blades" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Selection 2 blades" })).toBeVisible();
       await expect.poll(readSelection).toEqual({ [catalogue.available.id]: 2 });
-      await page.getByRole("button", { name: "Open selection, 2 blades" }).click();
+      await page.getByRole("button", { name: "Selection 2 blades" }).click();
       const selection = page.getByRole("dialog", { name: "Your selection" });
       await expect(selection).toContainText("2 × £23.50");
       await expect(selection).toContainText(catalogue.available.sku);
