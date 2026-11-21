@@ -7,17 +7,23 @@ import {
 } from "@/lib/orders";
 import { commercialDb } from "@/lib/commercial/database";
 import { isReportedLookupCode, isReturnCategory } from "@/lib/commercial/returns";
+import { isStockAdjustmentReason, parseStaffCost, parseStockAdjustmentQuantity } from "./stock-cost";
+import { canManageCosts, stockSchemaUnavailable } from "./stock-cost-data";
 import { isWarehouseId } from "./warehouse-format";
 
 type State = { message: string; ok: boolean } | null;
 type WarehouseAction =
   | { kind: "pick" | "dispatch" | "cancel" | "return"; orderId: string; key: string }
   | { kind: "restore"; orderId: string; returnId: string; key: string }
-  | { kind: "receive"; variantId: string; key: string };
+  | { kind: "receive" | "adjust"; variantId: string; key: string };
 
 const errors: Readonly<Record<string, string>> = {
   carrier_and_tracking_required: "Enter both the carrier and tracking number.",
   invalid_stock_receipt: "Enter a positive whole number of units.",
+  stock_adjustment_below_reserved: "There are not enough available units for this reduction. It would put the balance below zero or take stock reserved for orders or trials.",
+  invalid_stock_adjustment: "Check the adjustment and current balance. The resulting stock balance may be too large.",
+  stock_variant_not_found: "This variant could not be found.",
+  staff_cost_role_required: "Catalogue or finance permission is required to record costs.",
   order_return_reported_lookup_shape: "Enter only the blade part number or SKU for a wrong-fit return.",
   operation_key_conflict: "This form was already used with different values. Reload the page before starting a new operation.",
   order_cannot_be_cancelled: "This order can no longer be cancelled. Reload to check its current status.",
@@ -42,9 +48,9 @@ function refused(message: string) {
 }
 
 export async function runWarehouseAction(action: WarehouseAction, _previous: State, form: FormData) {
-  const { userId: actorId, db } = await requireStaff("warehouse");
+  const { userId: actorId, db, roles } = await requireStaff("warehouse");
   if (!action || !(form instanceof FormData) || !isWarehouseId(action.key) || (
-    action.kind === "receive" ? !isWarehouseId(action.variantId) : !isWarehouseId(action.orderId)
+    "variantId" in action ? !isWarehouseId(action.variantId) : !isWarehouseId(action.orderId)
   )) {
     return refused("This form is no longer valid. Reload the page and try again.");
   }
@@ -109,14 +115,50 @@ export async function runWarehouseAction(action: WarehouseAction, _previous: Sta
         message = "Inspected units restored to saleable stock.";
         break;
       case "receive":
-        await receiveStock({ variantId: action.variantId, actorId, operationKey, quantity });
+      {
+        const parsed = parseStaffCost(form, true);
+        if (!parsed.ok) return refused("For a costed receipt, choose the supplier currency and enter the supplier and landed unit amounts with up to two decimal places. Otherwise leave all cost fields blank.");
+        if (parsed.value) {
+          if (!canManageCosts(roles)) return refused(errors.staff_cost_role_required!);
+          const { error } = await db.rpc("receive_staff_stock_with_cost", {
+            p_variant_id: action.variantId, p_operation_key: operationKey, p_quantity: quantity, p_cost: parsed.value,
+          });
+          if (error) throw error;
+          revalidatePath(`/admin/catalogue/${action.variantId}`);
+        } else {
+          await receiveStock({ variantId: action.variantId, actorId, operationKey, quantity });
+        }
         affectedVariant = action.variantId;
         message = "Stock receipt recorded.";
         break;
+      }
+      case "adjust": {
+        const adjustment = parseStockAdjustmentQuantity(units);
+        const reason = text(form, "reason");
+        const note = text(form, "adjustmentNote");
+        if (adjustment === null) return refused("Enter a non-zero whole number, such as -2 or +3.");
+        if (!isStockAdjustmentReason(reason)) return refused("Choose a reason for this adjustment.");
+        if (adjustment > 0 && reason !== "count_correction" && reason !== "other") {
+          return refused("Use Count correction or Other to add units, or Receive stock for a delivery.");
+        }
+        if (note.length > 500 || (reason === "other" && !note)) return refused("Enter a note of up to 500 characters. A note is required for Other.");
+        const { error } = await db.rpc("adjust_staff_stock", {
+          p_variant_id: action.variantId, p_operation_key: operationKey, p_quantity: adjustment,
+          p_reason: reason, p_note: note || undefined,
+        });
+        if (error) throw error;
+        affectedVariant = action.variantId;
+        message = "Stock adjustment recorded.";
+        break;
+      }
       default:
         return refused("This warehouse operation is not available.");
     }
   } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string" &&
+      stockSchemaUnavailable({ code: error.code })) {
+      return refused("This action is not available until the database update is applied.");
+    }
     if (typeof error === "object" && error !== null && "message" in error &&
       typeof error.message === "string" && Object.hasOwn(errors, error.message)) {
       return refused(errors[error.message] ?? "The warehouse operation was refused.");
@@ -124,7 +166,7 @@ export async function runWarehouseAction(action: WarehouseAction, _previous: Sta
     return refused("The update could not be confirmed. Try again with the same values.");
   }
 
-  if (action.kind !== "receive") {
+  if ("orderId" in action) {
     revalidatePath("/admin/warehouse");
     revalidatePath(`/admin/warehouse/${action.orderId}`);
   }

@@ -5,6 +5,7 @@ import { serviceClient } from "@/lib/supabase/service";
 import { commercialDb } from "@/lib/commercial/database";
 import type { Database } from "@/lib/supabase/database.types";
 import { type WarehouseOrderLookup, warehousePageSize } from "./warehouse-format";
+import { stockSchemaUnavailable } from "./stock-cost-data";
 
 type StaffDb = SupabaseClient<Database>;
 export type WarehouseView = "queue" | "history" | "blocked";
@@ -93,10 +94,23 @@ export async function getStockVariant(db: StaffDb, variantId: string, page: numb
   if (!variant) return null;
 
   const first = (page - 1) * warehousePageSize;
-  const { data, error: movementError } = await db.from("stock_movements")
-    .select("id,kind,on_hand_delta,reserved_delta,created_at,order_id,return_id,trial_request_id")
+  const readMovements = <Columns extends string>(columns: Columns) => db.from("stock_movements").select(columns)
     .eq("variant_id", variantId).order("created_at", { ascending: false })
     .order("id", { ascending: false }).range(first, first + warehousePageSize);
-  if (movementError) throw movementError;
-  return { variant, movements: data.slice(0, warehousePageSize), hasMore: data.length > warehousePageSize };
+  const common = "id,kind,on_hand_delta,reserved_delta,created_at,order_id,return_id,trial_request_id,actor_id";
+  const current = await readMovements(`${common},adjustment_reason,adjustment_note,on_hand_before,on_hand_after,reserved_before,reserved_after` as const);
+  if (!current.error) return {
+    variant, movements: current.data.slice(0, warehousePageSize), hasMore: current.data.length > warehousePageSize,
+    adjustmentsAvailable: true,
+  };
+  if (!stockSchemaUnavailable(current.error)) throw current.error;
+  const legacy = await readMovements(common);
+  if (legacy.error) throw legacy.error;
+  return {
+    variant, movements: legacy.data.slice(0, warehousePageSize).map((row) => ({
+      ...row, adjustment_reason: null, adjustment_note: null, on_hand_before: null, on_hand_after: null,
+      reserved_before: null, reserved_after: null,
+    })),
+    hasMore: legacy.data.length > warehousePageSize, adjustmentsAvailable: false,
+  };
 }

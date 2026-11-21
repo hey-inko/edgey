@@ -14,7 +14,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       <AdminHeading
         title="Stock"
         eyebrow="Warehouse"
-        description="Available units are the physical stock on hand less all held or allocated units."
+        description="Choose a SKU to receive stock, record an adjustment or review its movements. Available stock excludes units held for orders and trials."
       />
       <div><AdminLink href="/admin/warehouse">Picking queue</AdminLink></div>
       <AdminSection title="Variant balances">
