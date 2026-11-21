@@ -25,6 +25,14 @@ export const fulfilmentLabels = {
   cancelled: "Cancelled",
 } satisfies Record<OrderFulfilmentStatus, string>;
 
+export const tradeInvoiceLabels = {
+  open: "Open",
+  partially_paid: "Partially paid",
+  paid: "Paid",
+  credited: "Credited",
+  voided: "Voided",
+} satisfies Record<Database["public"]["Enums"]["trade_invoice_status"], string>;
+
 const londonDate = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",

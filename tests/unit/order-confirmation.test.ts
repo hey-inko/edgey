@@ -29,6 +29,8 @@ const order = {
   vat_rate_bps: 2_000,
   vat_pence: 979,
   gross_pence: 5_874,
+  payment_method: "card" as const,
+  po_number: null,
   delivery_service: "Standard & tracking",
   promised_dispatch_date: "2026-11-23",
   estimated_delivery_date: "2026-11-24",
@@ -54,6 +56,16 @@ test("renders the order snapshot in text and safe HTML, including VAT, dates and
   expect(result.html).toContain("A &lt;script&gt; &amp; &quot;B&quot;");
   expect(result.html).toContain("Tool &lt; 40 mm");
   expect(result.html).not.toContain("<script>");
+});
+
+test("tells trade buyers the order is on account rather than paid", () => {
+  const result = renderConfirmation({ ...order, payment_method: "net30", po_number: "PO <42>" }, items, "orders@example.test",
+    "https://invoice.stripe.com/i/test");
+  expect(result.text).toContain("Order total (inc VAT): £58.74");
+  expect(result.text).toContain("Payment terms: Net 30");
+  expect(result.html).toContain("PO &lt;42&gt;");
+  expect(result.text).not.toContain("Total paid");
+  expect(result.text).not.toContain("invoice.stripe.com");
 });
 
 test("rejects unsafe recipients and omits missing or unsafe invoice links", () => {

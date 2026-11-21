@@ -158,6 +158,41 @@
   margin-block-end: 0;
 }
 
+.invoiceSection {
+  margin-block-start: 1.4rem;
+}
+
+.invoiceSection h3 {
+  margin-block-end: .65rem;
+}
+
+.invoiceList {
+  border-block-start: 1px solid var(--line);
+  font-size: .875rem;
+}
+
+.invoiceList > li {
+  padding-block: .75rem;
+  border-block-end: 1px solid var(--line);
+}
+
+.invoiceHeader, .invoiceLinks {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .2rem .75rem;
+}
+
+.invoiceLinks {
+  justify-content: flex-start;
+}
+
+.invoiceLinks :global(.textlink) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
 .totals {
   display: grid;
   gap: .4rem;

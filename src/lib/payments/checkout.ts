@@ -10,24 +10,35 @@ import { reconcileSession } from "./settle";
 import { getOrderItems, paymentStore, type Order } from "./store";
 import { getStripe } from "./stripe";
 
-export type CardAttempt = Pick<CreateOrderInput, "attemptToken" | "contact" | "address"> & {
+type CardAttemptIdentity = { attemptToken: string; buyerId: string | null };
+type CardAttempt = CardAttemptIdentity & Pick<CreateOrderInput, "contact" | "address"> & {
   lines: readonly { variantId: string; quantity: number }[];
 };
-type PriceAttempt = () => Promise<Omit<CreateOrderInput, "attemptToken" | "holdExpiresAt">>;
+type PriceAttempt = () => Promise<Omit<CreateOrderInput, "attemptToken" | "holdExpiresAt" | "buyerId">>;
 
 export class CheckoutUnavailableError extends Error {
   constructor(message: string, readonly attemptClosed = false) { super(message); }
 }
 
-async function guestAttempt(token: string) {
+export class CheckoutOwnerMismatchError extends Error {
+  constructor() {
+    super("This payment attempt was started under a different sign-in. Return to the original sign-in state to resume or close it.");
+  }
+}
+
+async function findCardAttempt({ attemptToken, buyerId }: CardAttemptIdentity) {
   const { data, error } = await paymentStore().from("orders").select("*")
-    .eq("checkout_attempt_token", token).eq("payment_method", "card").is("buyer_id", null).maybeSingle();
+    .eq("checkout_attempt_token", attemptToken).maybeSingle();
   if (error) throw error;
+  if (data && data.buyer_id !== buyerId) throw new CheckoutOwnerMismatchError();
+  if (data && data.payment_method !== "card") {
+    throw new CheckoutUnavailableError("This attempt can’t be used for card payment.");
+  }
   return data;
 }
 
 export async function beginCardPayment(attempt: CardAttempt, priceAttempt: PriceAttempt, beforeReserve: () => Promise<void>) {
-  const existing = () => guestAttempt(attempt.attemptToken);
+  const existing = () => findCardAttempt(attempt);
   const holdExpiresAt = new Date((Math.floor(Date.now() / 1_000) + 35 * 60) * 1_000).toISOString();
   let order = await existing();
   if (!order) {
@@ -39,7 +50,9 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
       }
       getStripe();
       await beforeReserve();
-      await createOrderWithReservations({ ...priced, attemptToken: attempt.attemptToken, holdExpiresAt });
+      await createOrderWithReservations({
+        ...priced, attemptToken: attempt.attemptToken, holdExpiresAt, buyerId: attempt.buyerId ?? undefined,
+      });
     } catch (error) {
       order = await existing();
       if (!order) throw error;
@@ -55,19 +68,19 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
   return openReservedPayment(order, items);
 }
 
-export async function resumeCardPayment(attemptToken: string) {
-  const order = await guestAttempt(attemptToken);
+export async function resumeCardPayment(attempt: CardAttemptIdentity) {
+  const order = await findCardAttempt(attempt);
   return order ? openReservedPayment(order, await getOrderItems(order.id)) : null;
 }
 
-export async function closeCardPayment(attemptToken: string, beforeCloseMissing: () => Promise<void>) {
-  let order = await guestAttempt(attemptToken);
+export async function closeCardPayment(attempt: CardAttemptIdentity, beforeCloseMissing: () => Promise<void>) {
+  let order = await findCardAttempt(attempt);
   if (!order) {
     await beforeCloseMissing();
-    const { data, error } = await paymentStore().rpc("close_missing_checkout_attempt", { p_attempt_token: attemptToken });
+    const { data, error } = await paymentStore().rpc("close_missing_checkout_attempt", { p_attempt_token: attempt.attemptToken });
     if (error) throw error;
     if (data) return null;
-    order = await guestAttempt(attemptToken);
+    order = await findCardAttempt(attempt);
     if (!order) throw new CheckoutUnavailableError("We can’t verify the previous checkout.");
   }
   if (order.fulfilment_status === "cancelled" && !order.paid_pence && !order.payment_review_reason) return null;
@@ -172,8 +185,7 @@ async function openReservedPayment(order: Order, items: Awaited<ReturnType<typeo
 }
 
 function matchesAttempt(order: Order, { contact, address, lines }: CardAttempt, items: Awaited<ReturnType<typeof getOrderItems>>) {
-  return order.buyer_id === null && order.payment_method === "card" &&
-    order.email === contact.email && order.business_name === contact.businessName &&
+  return order.email === contact.email && order.business_name === contact.businessName &&
     order.recipient_name === contact.recipientName && order.phone === (contact.phone ?? null) &&
     order.address_line1 === address.line1 && order.address_line2 === (address.line2 ?? null) &&
     order.address_town === address.town && order.address_region === (address.region ?? null) &&

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { formatGbp } from "@/lib/commerce";
 import { checkoutSessionId } from "@/lib/payments/session-identity";
 import { readCheckoutSuccess } from "@/lib/payments/success";
 import { CheckoutStatus } from "./checkout-status";
 import { ClearPaidSelection } from "./clear-paid-selection";
+import { ConfirmedOrderSummary } from "./order-summary";
 import styles from "./success.module.css";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,6 @@ export const metadata: Metadata = {
 };
 
 const dateFormat = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeZone: "Europe/London" });
-const vatRateFormat = new Intl.NumberFormat("en-GB", { style: "percent", maximumFractionDigits: 2 });
 
 type Props = { searchParams: Promise<{ session_id?: string | string[] }> };
 
@@ -52,27 +51,7 @@ export default async function CheckoutSuccessPage({ searchParams }: Props) {
             <dt>Delivery service</dt>
             <dd>{confirmation.deliveryService}</dd>
           </dl>
-          <section aria-labelledby="order-summary" className={styles.summary}>
-            <h2 id="order-summary" className={styles.summaryHeading}>Order summary</h2>
-            <ul className={styles.lines} role="list">
-              {confirmation.lines.map((line) => (
-                <li key={line.variantId} className={styles.line}>
-                  <div className={styles.item}>
-                    <p className={styles.code}>{line.sku}</p>
-                    <p>{line.optionLabel}</p>
-                    <p className={styles.unit}>{line.quantity} × {formatGbp(line.unitPricePence)} ex VAT</p>
-                  </div>
-                  <p className={styles.figure}>{formatGbp(line.netPence)}</p>
-                </li>
-              ))}
-            </ul>
-            <dl className={styles.totals}>
-              <div><dt>Subtotal ex VAT</dt><dd>{formatGbp(confirmation.goodsNetPence)}</dd></div>
-              <div><dt>Delivery ex VAT</dt><dd>{formatGbp(confirmation.deliveryNetPence)}</dd></div>
-              <div><dt>VAT ({vatRateFormat.format(confirmation.vatRateBps / 10_000)})</dt><dd>{formatGbp(confirmation.vatPence)}</dd></div>
-              <div className={styles.total}><dt>Total paid inc VAT</dt><dd>{formatGbp(confirmation.grossPence)}</dd></div>
-            </dl>
-          </section>
+          <ConfirmedOrderSummary order={confirmation} totalLabel="Total paid inc VAT" />
         </>
       )}
       <div className="empty-actions">

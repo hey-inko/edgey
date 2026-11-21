@@ -58,8 +58,10 @@ async function deliver(claim: Claim): Promise<DeliveryStatus> {
     if (claim.order_id) {
       const order = await getOrder(claim.order_id);
       if (!order) return finish("preparation_failed");
-      const invoice = await invoiceLink(order.provider_invoice_id);
-      if (!invoice && Date.now() - Date.parse(claim.created_at) < invoiceGraceMs) return finish("defer_invoice");
+      const invoice = order.payment_method === "card" ? await invoiceLink(order.provider_invoice_id) : null;
+      if (order.payment_method === "card" && !invoice && Date.now() - Date.parse(claim.created_at) < invoiceGraceMs) {
+        return finish("defer_invoice");
+      }
       const items = await getOrderItems(order.id);
       try {
         payload = JSON.stringify(renderConfirmation(order, items, from, invoice));

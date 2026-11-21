@@ -613,6 +613,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -665,6 +669,10 @@ export type Database = {
           stripe_checkout_account_id?: string | null;
           stripe_checkout_request?: Json | null;
           stripe_checkout_started_at?: string | null;
+          stripe_net30_account_id?: string | null;
+          stripe_net30_invoice_id?: string | null;
+          stripe_net30_sent?: boolean;
+          stripe_net30_started_at?: string | null;
           stripe_reconciliation_error?: string | null;
           stripe_replay_after?: string;
           tracking_number?: string | null;
@@ -716,6 +724,10 @@ export type Database = {
           stripe_checkout_account_id?: string | null;
           stripe_checkout_request?: Json | null;
           stripe_checkout_started_at?: string | null;
+          stripe_net30_account_id?: string | null;
+          stripe_net30_invoice_id?: string | null;
+          stripe_net30_sent?: boolean;
+          stripe_net30_started_at?: string | null;
           stripe_reconciliation_error?: string | null;
           stripe_replay_after?: string;
           tracking_number?: string | null;
@@ -1041,6 +1053,8 @@ export type Database = {
       };
       trade_applications: {
         Row: {
+          approval_started_at: string | null;
+          approval_stripe_account_id: string | null;
           billing_line1: string;
           billing_line2: string | null;
           billing_postcode: string;
@@ -1051,6 +1065,7 @@ export type Database = {
           created_at: string;
           email: string;
           id: string;
+          rejection_reason: string | null;
           reviewed_at: string | null;
           reviewed_by: string | null;
           status: string;
@@ -1058,6 +1073,8 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          approval_started_at?: string | null;
+          approval_stripe_account_id?: string | null;
           billing_line1: string;
           billing_line2?: string | null;
           billing_postcode: string;
@@ -1068,12 +1085,15 @@ export type Database = {
           created_at?: string;
           email: string;
           id: string;
+          rejection_reason?: string | null;
           reviewed_at?: string | null;
           reviewed_by?: string | null;
           status?: string;
           updated_at?: string;
         };
         Update: {
+          approval_started_at?: string | null;
+          approval_stripe_account_id?: string | null;
           billing_line1?: string;
           billing_line2?: string | null;
           billing_postcode?: string;
@@ -1084,6 +1104,7 @@ export type Database = {
           created_at?: string;
           email?: string;
           id?: string;
+          rejection_reason?: string | null;
           reviewed_at?: string | null;
           reviewed_by?: string | null;
           status?: string;
@@ -1525,6 +1546,16 @@ export type Database = {
         Args: { p_kind: string; p_target_id: string; p_worker_token: string; p_result: string };
         Returns: undefined;
       };
+      close_unstarted_net30_order: {
+        Args: { p_order_id: string };
+        Returns: Database["public"]["Tables"]["orders"]["Row"][];
+        SetofOptions: { from: "*"; to: "orders"; isOneToOne: false; isSetofReturn: true };
+      };
+      close_absent_net30_order: {
+        Args: { p_order_id: string };
+        Returns: Database["public"]["Tables"]["orders"]["Row"][];
+        SetofOptions: { from: "*"; to: "orders"; isOneToOne: false; isSetofReturn: true };
+      };
       close_missing_checkout_attempt: {
         Args: { p_attempt_token: string };
         Returns: boolean;
@@ -1594,6 +1625,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -1658,6 +1693,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -1732,6 +1771,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -1807,6 +1850,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -1873,6 +1920,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2070,6 +2121,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2163,6 +2218,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2232,6 +2291,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2272,6 +2335,37 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      begin_trade_account_approval: {
+        Args: { p_actor_id: string; p_application_id: string; p_stripe_account_id: string };
+        Returns: Database["public"]["Tables"]["trade_applications"]["Row"];
+        SetofOptions: {
+          from: "*";
+          to: "trade_applications";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      reinstate_trade_account: {
+        Args: { p_actor_id: string; p_operation_key: string; p_reason: string; p_trade_account_id: string };
+        Returns: Database["public"]["Tables"]["trade_accounts"]["Row"];
+        SetofOptions: {
+          from: "*";
+          to: "trade_accounts";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      review_admin_trade_application: {
+        Args: {
+          p_actor_id: string;
+          p_application_id: string;
+          p_credit_limit_pence?: number;
+          p_decision: string;
+          p_reason?: string;
+          p_stripe_customer_id?: string;
+        };
+        Returns: string;
+      };
       review_trade_application: {
         Args: {
           p_actor_id: string;
@@ -2291,6 +2385,11 @@ export type Database = {
           sku: string;
           variant_id: string;
         }[];
+      };
+      start_net30_invoice: {
+        Args: { p_account_id: string; p_order_id: string };
+        Returns: Database["public"]["Tables"]["orders"]["Row"][];
+        SetofOptions: { from: "*"; to: "orders"; isOneToOne: false; isSetofReturn: true };
       };
       start_picking: {
         Args: {
@@ -2341,6 +2440,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2507,6 +2610,22 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      bind_issued_net30_invoice: {
+        Args: {
+          p_amount_due_pence: number;
+          p_authorised_at: string;
+          p_currency: string;
+          p_delivery_date: string;
+          p_dispatch_date: string;
+          p_due_at: string;
+          p_issued_at: string;
+          p_order_id: string;
+          p_provider_invoice_id: string;
+          p_stripe_customer_id: string;
+        };
+        Returns: Database["public"]["Tables"]["orders"]["Row"][];
+        SetofOptions: { from: "*"; to: "orders"; isOneToOne: false; isSetofReturn: true };
+      };
       bind_invoice: {
         Args: {
           p_amount_due_pence: number;
@@ -2562,6 +2681,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2634,6 +2757,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2699,6 +2826,10 @@ export type Database = {
           stripe_checkout_account_id: string | null;
           stripe_checkout_request: Json | null;
           stripe_checkout_started_at: string | null;
+          stripe_net30_account_id: string | null;
+          stripe_net30_invoice_id: string | null;
+          stripe_net30_sent: boolean;
+          stripe_net30_started_at: string | null;
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
@@ -2800,7 +2931,8 @@ export type Database = {
         | "payment"
         | "credit_note"
         | "void"
-        | "refund";
+        | "refund"
+        | "reinstate";
       order_fulfilment_status:
         | "awaiting_authorisation"
         | "ready_to_pick"
@@ -2970,6 +3102,7 @@ export const Constants = {
         "credit_note",
         "void",
         "refund",
+        "reinstate",
       ],
       order_fulfilment_status: [
         "awaiting_authorisation",

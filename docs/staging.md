@@ -53,11 +53,12 @@ The first four design products use Appendix A prices, not the portable demo's da
 
 ## 4. Set up Stripe, email and the deployment environment
 
-1. In the isolated Stripe sandbox enable cards and allow Apple Pay/Google Pay where eligible. Use that sandbox's `sk_test_…` key. Add a **snapshot** webhook in the same sandbox at `https://<staging-host>/api/webhooks/stripe`, API version **2026-11-18.endive**. Subscribe to all nine events:
+1. In the isolated Stripe sandbox enable cards and allow Apple Pay/Google Pay where eligible. Use that sandbox's `sk_test_…` key. Add a **snapshot** webhook in the same sandbox at `https://<staging-host>/api/webhooks/stripe`, API version **2026-11-18.endive**. Subscribe to:
 
    - `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`
    - `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed`
-   - `invoice.finalized`
+   - `invoice.finalized`, `invoice.sent`, `invoice.paid`, `invoice.payment_succeeded`, `invoice_payment.paid`
+   - `invoice.voided`, `invoice.deleted`, `invoice.marked_uncollectible`, `invoice.overdue`, `credit_note.created`, `credit_note.voided`
 
    Save that endpoint's signing secret, not the secret from a local Stripe CLI listener. If Vercel protects the domain, [configure its automation bypass](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation) on the Stripe endpoint URL with the `x-vercel-protection-bypass` query parameter so Stripe can reach it. Keep that endpoint URL with its token private and verify an actual signed delivery; it must not be redirected to a login. Keep the Stripe sandbox fixed while any orders are pending.
 2. In the staging Vercel project's **Settings → Environment Variables**, configure the following for **Production**. Generate the hash key and Cron token independently with `openssl rand -hex 32` in a private terminal and store them securely. Enable Vercel's system environment variables so `VERCEL=1` is available and the app uses Vercel's trusted client IP; do not spoof the header or set `VERCEL` yourself.
@@ -71,6 +72,7 @@ The first four design products use Appendix A prices, not the portable demo's da
    | `EDGEY_REQUEST_HASH_KEY` | Server only: stable random key of at least 32 bytes for checkout, staff sign-in, request limits and Finder fingerprints. |
    | `STRIPE_SECRET_KEY` | Server only: full Stripe sandbox secret key (`sk_test_…`); do not use a live key. |
    | `STRIPE_WEBHOOK_SECRET` | Server only: signing secret (`whsec_…`) for the sandbox snapshot endpoint above. |
+   | `NET30_CHECKOUT_ENABLED` | Keep `false` until the [Net 30 sandbox sign-off](net30-sandbox.md). Turn it on only in the isolated staging deployment for that test. |
    | `CRON_SECRET` | Server only: independently generated bearer token that Vercel includes on worker requests. |
    | `EMAIL_PROVIDER` | `resend` (the default). The file outbox is local only. |
    | `RESEND_API_KEY` | Server only: API key with sending permission for the verified staging domain. |
@@ -132,3 +134,7 @@ Keep automated acceptance results separate from this hosted evidence. Review [th
 If a Stripe event stalls, check the sandbox delivery and Finance queue before replaying. Never free a hold when Stripe creation or capture is ambiguous. If email delivery is uncertain, look up the order reference in Resend before any manual send. Do not force a resend by resetting an outbox row. A sandbox invoice is not evidence of statutory VAT compliance.
 
 Trial notice delivery states are not yet displayed in the staff desk. In the staging Supabase SQL Editor, check `message_key`, `state` and `last_error` in `public.order_outbox` for the request's `trial_request_id`. An unsent approval withdrawn on cancellation is intentionally suppressed.
+
+## 7. Run the Net 30 sandbox sign-off
+
+Finance should follow the [Net 30 checklist](net30-sandbox.md) in the isolated staging deployment. Check the request worker's `trade_approved` and `trade_rejected` delivery against a controlled mailbox; approval is not proof that mail was sent. Trade decision delivery state is available in the same outbox by `trade_application_id`. Reset the flag after the exercise if terms are not approved for ongoing use.

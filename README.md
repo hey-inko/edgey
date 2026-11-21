@@ -70,7 +70,7 @@ pnpm bench:search                  # 100 warm calls to the anonymous HTTP RPC
 pnpm build
 pnpm exec playwright install chromium
 pnpm test:e2e                       # Uses the fixture and starts the production build on port 3100
-pnpm test:acceptance                # PRD §7 card and trial journeys; also runs in CI
+pnpm test:acceptance                # PRD §7 card, trial and Net 30 journeys; also runs in CI
 ```
 
 The acceptance command starts and removes a disposable Supabase stack on free
@@ -138,7 +138,7 @@ are counted by outcome without keeping the query.
    `pnpm dev` after changing the environment.
 
    ```sh
-   stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,charge.refunded,refund.created,refund.updated,refund.failed,invoice.finalized --forward-to http://localhost:3000/api/webhooks/stripe
+   stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,charge.refunded,refund.created,refund.updated,refund.failed,invoice.finalized,invoice.sent,invoice.paid,invoice.payment_succeeded,invoice_payment.paid,invoice.voided,invoice.deleted,invoice.marked_uncollectible,invoice.overdue,credit_note.created,credit_note.voided --forward-to http://localhost:3000/api/webhooks/stripe
    ```
 
 3. Open `http://localhost:3000/blades/edg-z10`, add 5 blades and check out with

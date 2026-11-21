@@ -14,6 +14,7 @@ const secret = () => randomBytes(32).toString("hex");
 const runtime = Object.fromEntries([
   "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "LC_ALL", "TERM", "CI",
   "PNPM_HOME", "COREPACK_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "PLAYWRIGHT_BROWSERS_PATH",
+  "EDGEY_NET30_RENDERS",
 ].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
 const docker = Object.fromEntries(["DOCKER_HOST", "DOCKER_CONFIG", "XDG_RUNTIME_DIR"]
   .filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
@@ -84,6 +85,7 @@ try {
   };
   const run = (args) => execFileSync("pnpm", args, { env, stdio: "inherit" });
   run(["db:fixture"]);
+  run(["exec", "vitest", "run", "tests/db/net30-invoicing.test.ts"]);
   run(["build"]);
   const result = await new Promise((resolve, reject) => {
     const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.acceptance.config.ts", ...process.argv.slice(2)], { env, stdio: "inherit" });

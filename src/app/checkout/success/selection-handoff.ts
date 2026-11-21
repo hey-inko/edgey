@@ -53,11 +53,15 @@ export async function captureCheckoutSelection(lines: readonly LineRequest[]): P
   }) ?? null;
 }
 
+export async function createHashScope(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export async function rememberCheckoutSelection(sessionId: string, nonce: string | null) {
   if (!nonce) return;
   try {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sessionId));
-    const scope = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    const scope = await createHashScope(sessionId);
     await withSelectionLock(() => {
       const marker = readMarker();
       if (marker?.nonce !== nonce || marker.scopes.includes(scope)) return;

@@ -1,12 +1,12 @@
 # Edgey release status
 
-The weekend staging code is in place, but hosted acceptance is still pending. First live sales and Net 30 are not ready. The [staff trial and enquiry workflows](https://github.com/hey-inko/edgey/pull/13) and [trade-credit database](https://github.com/hey-inko/edgey/pull/11) are on main.
+Weekend staging and trade-credit code are in place, but hosted acceptance is still pending. First live sales and Net 30 aren't ready to enable.
 
 | Release | Built | Evidence and remaining work |
 | --- | --- | --- |
 | **Weekend staging** | Blade Finder, catalogue and product pages, selection and guest Stripe test checkout, sample intake, and staff picking and dispatch. The app has Stripe reconciliation and queued confirmation/request email. | Local tests use Supabase and simulated provider responses or a local inbox, not hosted providers. A real staging test must show one exact packet-to-dispatch journey, including a Stripe sandbox invoice and one Resend confirmation, and that two buyers cannot buy the last blade. Hosted Auth, workers, wallets and email delivery still need checking. Follow the [staging checklist](staging.md#6-run-the-weekend-staging-checklist-on-the-deployed-site). |
 | **First live release** | Guest checkout and fulfilment code, request and trade application intake, stock management, cancellation and returns records. Staff can review, approve and dispatch trials; the request worker sends trial notices and staff replies. | Test-only Stripe keys and placeholder delivery coverage are not live sales. Request and confirmation delivery was exercised without hosted Resend; verify it on staging. Refunds are handled in Stripe. An authorised operator still needs to complete one controlled live-mode purchase, check the pick list, then cancel and reconcile the refund before dispatch. Replace all staging stock and mappings with approved records in a separate live environment. |
-| **Trade credit** | The buyer portal shows linked orders, dispatch status and reorder. The database supports finance-controlled credit limits, gross credit holds, PO-linked invoices, settlement and buyer-only invoice access. | Card checkout is still guest-scoped; it doesn't attach signed-in orders or fill the portal's invoice link. Buyers can't yet order on account, submit a PO at checkout or receive a Net 30 Stripe invoice. Finance has tested the database rules locally, not the full provider lifecycle. Keep terms disabled until Finance can trace a PO through dispatch and settlement in staging. |
+| **Trade credit** | Signed-in card orders appear in the buyer portal, and approved buyers can place Net 30 orders with a PO. Finance can review applications, change limits, suspend or reinstate accounts, follow up overdue invoices and resolve payment exceptions. The buyer portal shows credit, balance, order history and linked Net 30 invoices. | Local Supabase and a simulated Stripe API cover concurrent checkout, lost responses, dispatch and settlement. Keep `NET30_CHECKOUT_ENABLED=false` until finance traces a real sandbox invoice through the [Net 30 sign-off](net30-sandbox.md), including PDF, VAT, partial payment, void and refund. |
 
 ## Decisions before opening up
 
@@ -20,6 +20,5 @@ Use the [design acceptance pass](../design.md#visual-acceptance-pass) to review 
 
 ## Acceptance evidence
 
-- `pnpm test:acceptance` covers the seven card/trial scenarios in PRD §7 and the §1 weekend journey. It uses the production build and local Supabase, with simulated Stripe and a local email outbox. The visual checklist uses separate Chromium contact sheets and the browser suite checks the two visual regressions.
-- The credit database suite covers limit permissions, concurrent holds and dispatch followed by settlement. It doesn't prove concurrent Stripe invoice creation, retries or settlement in the storefront. Those are trade-credit release gates.
+- `pnpm test:acceptance` covers the card, trial and Net 30 acceptance scenarios in PRD §7 and the §1 weekend journey. Net 30 runs the concurrent checkout and timeout cases against local Supabase, then drives finance approval, checkout, dispatch, partial payment and settlement through the production build in Chromium. All provider responses are simulated; webhook verification uses signed request bytes. The visual checklist uses separate Chromium captures.
 - The staff enquiry page shows reply delivery state. Trial notice failures aren't listed in the staff desk yet; operations can check them in the staging Supabase outbox.
