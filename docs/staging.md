@@ -21,14 +21,21 @@ pnpm exec supabase db push --remote="$STAGING_PROJECT_REF" --skip-vault
 pnpm exec supabase migration list --remote="$STAGING_PROJECT_REF"
 ```
 
-Do not pass `--include-seed`: the guarded import below runs the draft seed and publishes the test subset together. From **Connect → Direct connection**, load the staging Postgres URL with its URL-encoded password, omitting any query string, into `EDGEY_STAGING_DB_URL` using your secret store. Set `EDGEY_STAGING_DB_CA_FILE` to the local path of the [server root certificate](https://supabase.com/docs/guides/database/psql#connecting-with-ssl) downloaded from that project. Run from a network with IPv6 or with Supabase's direct IPv4 add-on. The script does not accept a pooler URL, localhost or unverified TLS.
+Do not pass `--include-seed`: the guarded import below runs the draft seed and publishes the test subset together. From **Connect** in the **staging** project's Supabase dashboard, choose one of these endpoints:
+
+| Connection | When to use it | `EDGEY_STAGING_DB_URL` shape |
+| --- | --- | --- |
+| **Direct connection** | Your network can reach the direct host over IPv6, or the project has Supabase's direct IPv4 add-on. | `postgresql://postgres:<encoded-password>@db.<project-ref>.supabase.co:5432/postgres` |
+| [**Session pooler**](https://supabase.com/docs/guides/database/connecting-to-postgres#pooler-session-mode) | Your network is IPv4-only and cannot reach the direct host. Copy the pooler host from **Connect**; don't construct it from the region. | `postgresql://postgres.<project-ref>:<encoded-password>@<host>.pooler.supabase.com:5432/postgres` |
+
+Load the URL into `EDGEY_STAGING_DB_URL` using your secret store, with the URL-encoded staging database password and no query string or fragment. For **either connection**, set `EDGEY_STAGING_DB_CA_FILE` to the local path of the **Server root certificate** (Supabase Root 2021 CA) downloaded from the staging project's **Database Settings → SSL Configuration**. [Supabase's TLS example for the session pooler](https://supabase.com/docs/guides/database/psql#connecting-with-ssl) uses that same download. The scripts use the file to verify the server certificate and hostname, so don't add SSL parameters to the URL. They reject the transaction pooler on port `6543`, which doesn't preserve session state across transactions, as well as localhost and unverified TLS.
 
 ```sh
 pnpm db:fixture:staging --project-ref "$STAGING_PROJECT_REF"
 unset EDGEY_STAGING_DB_URL EDGEY_STAGING_DB_CA_FILE
 ```
 
-The importer requires the explicit ref to match the database hostname. It refuses a database that already has catalogue, customer intake, order or Auth user rows. That makes it a one-time bootstrap for a fresh migrated project, not a way to restore sold stock or rerun fixtures in an existing project. For local development, `pnpm db:reset && pnpm db:env && pnpm db:fixture` is repeatable; `db:reset` wipes local data and `db:fixture` refuses non-local addresses. For subsequent staging sessions, receive stock through the staff desk or use a fresh, isolated project; never reset a hosted database to rerun a test.
+The importer requires the explicit ref to match the direct host's project ref or the session pooler username's project ref. It refuses a database that already has catalogue, customer intake, order or Auth user rows. That makes it a one-time bootstrap for a fresh migrated project, not a way to restore sold stock or rerun fixtures in an existing project. For local development, `pnpm db:reset && pnpm db:env && pnpm db:fixture` is repeatable; `db:reset` wipes local data and `db:fixture` refuses non-local addresses. For subsequent staging sessions, receive stock through the staff desk or use a fresh, isolated project; never reset a hosted database to rerun a test.
 
 The first four design products use Appendix A prices, not the portable demo's data. Check these names and per-unit prices excluding VAT at 1–4 / 5–9 / 10+ units:
 
@@ -50,7 +57,7 @@ pnpm demo:orders --local
 # View the staff Sales dashboard, then remove the batch:
 pnpm demo:orders:clean --local
 
-# Hosted staging: use the direct URL and TLS certificate from the bootstrap above.
+# Hosted staging: set the ref, direct or session pooler URL, and TLS CA as above.
 pnpm demo:orders --staging --project-ref "$STAGING_PROJECT_REF"
 pnpm demo:orders:clean --staging --project-ref "$STAGING_PROJECT_REF"
 unset EDGEY_STAGING_DB_URL EDGEY_STAGING_DB_CA_FILE
