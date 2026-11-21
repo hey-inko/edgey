@@ -21,7 +21,7 @@ The first release proves that journey from search to a pickable order. Approved 
 
 ## 2. Catalogue and Blade Finder
 
-The buying matrix in Appendix A contains **23 proposed product families**. A family has a product page. A **variant** is one purchasable physical blade with its own permanent SKU, stock count and picking label. A single-variant family may reuse its family code as its SKU. Multi-variant families require distinct SKUs for each stocked angle, shank or holder combination. Five and ten are quantities of the same blade.
+The buying matrix in Appendix A contains **26 draft product families**. A family has a product page. A **variant** is one purchasable physical blade with its own permanent SKU, stock count and picking label. A single-variant family may reuse its family code as its SKU. Multi-variant families require distinct SKUs for each stocked angle, shank or holder combination. Five and ten are quantities of the same blade.
 
 For each launch variant the catalogue owner records its supplier part number, Edgey SKU, OEM reference and brand, tool or holder, any necessary adapter or machine restriction, verified dimensions, applicable substrates, source and approval date. Distinguish the manufacturer’s description of the original from the supplier’s evidence that the Edgey replacement fits it. Record material and carbide-grade claims only where supported. A family can go live as soon as it has one approved variant with complete selling data. JWEI and iEcho can be selected on an enquiry from day one. Publish brand landing pages and compatibility claims when a verified mapping exists.
 
@@ -145,7 +145,7 @@ Neither document settles these. Each has a recommendation. None blocks the catal
 1. **How do the product dialog and the product page connect?** Recommendation: a card opens the dialog as approved and the address becomes `/blades/[slug]`, so the view can be shared and Back closes it. A direct visit to that address shows the full page.
 2. **Where does “Blade catalogue” in the masthead go, and does `/` list the whole range?** Recommendation: `/` shows the full published catalogue below the hero, as designed. `/blades` is the same catalogue without the hero. The link scrolls on `/` and opens `/blades` elsewhere.
 3. **“Pack quantity” or “Quantity”?** The design labels the control “Pack quantity”. §2 says five and ten are quantities of the same blade, not packs. Recommendation: label it “Quantity”.
-4. **Who supplies the missing artwork?** The pack has four line drawings, four illustrative photographs and three substrate swatches. The range has 23 families, more tool types and more substrates. Recommendation: the design owner supplies drawings and swatches under “A new illustration” and “A new material”. Until then a family without its own drawing shows the neutral figure plate with its part code and no proof crop, and no illustrative photograph stands in for a different blade.
+4. **Who supplies the missing artwork?** The pack has four line drawings, four illustrative photographs and three substrate swatches. The range has 26 families, more tool types and more substrates. Recommendation: the design owner supplies drawings and swatches under “A new illustration” and “A new material”. Until then a family without its own drawing shows the neutral figure plate with its part code and no proof crop, and no illustrative photograph stands in for a different blade.
 5. **What are the product display names?** The demo uses plain names such as “Flat-stock drag blade”. Appendix A has model references and applications. Recommendation: the catalogue owner writes a sentence-case plain name for each family in the demo’s style, and the machine reference stays in the specification list.
 6. **Which availability words, and are counts shown?** Recommendation: “In stock” and “Out of stock” only, with no stock counts.
 7. **“Before VAT” or “ex VAT” in the saving prompt?** §3 quotes “Add one blade and save £4.55 before VAT”. The design’s price language is “ex VAT”. Recommendation: “Add one blade and save £4.55 ex VAT”.
@@ -213,55 +213,101 @@ Use these as release evidence alongside typecheck and build. The product owner s
 
 Build the catalogue and database permissions first, then the Finder and product pages. Add the basket, shared pricing and test-mode card payment before connecting picking and dispatch. Complete the two enquiry flows, trial fulfilment and trade application for the first live release. Deliver the trade account portal and credit checkout once finance has exercised the invoice lifecycle.
 
-## Appendix A. Proposed range and price book
+## Appendix A. Draft range and price book
 
-GBP per blade, excluding VAT. The last three price columns set the rates at quantities 1–4, 5–9 and 10+. The benchmark column retains the initial buying estimates for research against Bit & Blade, Victory Design and Wideformat Solutions. Treat each as unverified until a like-for-like listing, pack size and observation date are recorded. Family codes carry forward the proposed assortment. The references and applications below are the buying team’s working list. Import them into staging as **draft**, with zero available stock. Use a separate staging-only test fixture with positive stock to exercise checkout and contention. Production publishes only the specific mappings approved under §2. A listed OEM identity tells the catalogue owner which original to check. It does not establish an Edgey fit.
+The first inventory order covers 32 physical variants. Three unordered variants are retained in draft, for 35 variants across 26 families. Each row is one SKU with its own stock balance. The local catalogue seed starts every SKU as **draft, zero stock**. The separate staging fixture uses invented approvals and stock for testing. Neither the order nor this appendix authorises publication.
 
-### Zünd and proposed Summa F-Series cross-references
+Prices are GBP per blade excluding VAT. Each tier applies to quantities of the same SKU. Existing Appendix A prices carry forward, including for the two angles already listed for each Graphtec holder. A missing price is not £0.
 
-| Family code | Reference model and options | Reference codes to review | Application to verify | Prior UK benchmark (internal) | 1–4 | 5–9 | 10+ |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| `EDG-Z10` | Zünd Z10 | `500-9802`, `3910301` | Drag (UCT) 50°. Foamex, Correx, PVC, vinyl, banner | £28.00 / ea | £22.50 | £19.95 | £17.50 |
-| `EDG-Z11` | Zünd Z11 | `500-9803`, `3910309` | Drag (UCT) 60°. Folding carton, thin plastics, tight corners | £28.00 / ea | £22.50 | £19.95 | £17.50 |
-| `EDG-Z46` | Zünd Z46 | `500-9807`, `4800073` | Heavy Drag 45° (20 mm). Thick Foamex, tough plastics, high-speed runs | £43.00 / ea | £36.50 | £32.50 | £28.50 |
-| `EDG-Z16` | Zünd Z16 | `3910306`, `SEF-16` | Oscillating (EOT). Corrugated board, foam board, Correx | £24.00–£27.50 / ea | £21.50 | £18.50 | £15.95 |
-| `EDG-Z17` | Zünd Z17 | `3910307`, `SEF-17` | Oscillating (EOT). Corrugated board, foam board, tight radii | £24.00–£27.50 / ea | £21.50 | £18.50 | £15.95 |
-| `EDG-Z20` | Zünd Z20 | `500-9811`, `3910313` | Oscillating 0.63 mm (14 mm). Detailed corrugated, display board | £27.50 / ea (£55/2pk) | £23.50 | £20.50 | £18.00 |
-| `EDG-Z21` | Zünd Z21 | `500-9812`, `3910314` | Oscillating 0.63 mm (17 mm). Double-wall corrugated, fluted board | £29.00 / ea (£58/2pk) | £24.50 | £21.50 | £18.95 |
-| `EDG-Z28` | Zünd Z28 | `500-9814`, `3910318` | Long Oscillating (26 mm). Thick foam, Re-board, honeycomb | £36.50 / ea (£73/2pk) | £31.50 | £27.50 | £24.50 |
-| `EDG-Z71` | Zünd Z71 | `500-9826`, `5006045` | V-Cut (VCT). Re-board, Xanita, honeycomb POS displays | £41.00 / ea | £34.50 | £30.50 | £27.00 |
-| `EDG-Z50` | Zünd Z50 | `500-9860`, `RC110`, `3910335` | Rotary 25 mm Decagonal. Tension fabrics, textiles, soft signage | £45.00 / ea | £38.00 | £34.00 | £30.00 |
-| `EDG-Z52` | Zünd Z52 | `500-9862`, `3910337` | Rotary 32 mm Decagonal. Heavy textiles, carbon/aramid, banners | £52.00 / ea | £44.00 | £39.00 | £35.00 |
-| `EDG-Z1` | Zünd Z1 | `SEK-01`, `KC101`, `3910105` | Kiss-Cut (KCT) 45°. Self-adhesive vinyl, decals | £11.50 / ea (£23/2pk) | £9.95 | £8.50 | £7.50 |
-| `EDG-Z2` | Zünd Z2 | `SEK-02`, `KC102`, `3910110` | Kiss-Cut (KCT) 60°. Thick vinyl, reflective films, small lettering | £11.50 / ea (£23/2pk) | £9.95 | £8.50 | £7.50 |
+Luke supplied the ordered specifications on 21 November 2026. Their original source and the replacement fit are unverified. Verify the packet and fit in the named tool before approving a public mapping under §2. The listed cross-references are candidates, not evidence of interchangeability.
+
+### Zünd and Summa flatbed
+
+| SKU | Product and option | Reference codes | Compatible machines and tools | Type and angle | Dimensions and depth or offset | 1–4 | 5–9 | 10+ |
+| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| `EDG-Z10` | Flat-stock drag blade | `Z10`, `3910301` | Zünd G3, S3, L3, D3, PN (UCT, SCT); JWEI / iEcho (50mm holders) | Double-edge flat drag · 50° | 50 × 8 × 1.5 mm · Max depth 4.8 mm | £22.50 | £19.95 | £17.50 |
+| `EDG-Z11` | Tight-corner drag blade | `Z11`, `3910309` | Zünd G3, S3, L3, D3, PN (UCT, SCT); JWEI / iEcho (50mm holders) | Double-edge flat drag · 60° | 50 × 8 × 1.5 mm · Max depth 6.9 mm | £22.50 | £19.95 | £17.50 |
+| `EDG-SUM-9802` | Short flat-stock drag blade | `500-9802`, `BLD-DF112` | Summa F-Series (F1612, F1330, F1832, F3220) Double-Edge Cutout Tool; Esko BLD-DF112 | Double-edge flat drag · 50° | 25 × 8 × 1.5 mm · Max depth 4.8 mm | price to be set by owner | — | — |
+| `EDG-SUM-9803` | Short tight-corner drag blade | `500-9803` | Summa F-Series (F1612, F1330, F1832, F3220) Double-Edge Cutout Tool | Double-edge flat drag · 60° | 25 × 8 × 1.5 mm · Max depth 6.5 mm | price to be set by owner | — | — |
+| `EDG-Z46` | Heavy drag blade | `Z46`, `3910328`, `500-9807` | Zünd G3, S3, L3 (UCT, SCT); Summa F-Series (500-9807 Heavy-Duty Cutout) | Single-edge heavy drag · 45° | 50 × 6 × 1.5 mm · Max depth 20.0 mm | £36.50 | £32.50 | £28.50 |
+| `EDG-Z16` | Oscillating blade | `Z16`, `3910306`, `BLD-SF216` | Zünd G3, S3, L3 (EOT, POT, UCT); Esko Kongsberg (BLD-SF216 adapter); Lectra | Pointed flat oscillating/drag · 54° | 26 × 5.6 × 0.63 mm · Max depth 7.4 mm | £21.50 | £18.50 | £15.95 |
+| `EDG-Z17` | Tight-radius oscillating blade | `Z17`, `3910307`, `BLD-SF217` | Zünd G3, S3, L3 (EOT, POT, UCT); Esko Kongsberg (BLD-SF217 adapter) | Pointed flat oscillating/drag · 65° | 25 × 5.6 × 0.63 mm · Max depth 12.0 mm | £21.50 | £18.50 | £15.95 |
+| `EDG-Z20` | Detail oscillating blade | `Z20`, `3910313`, `500-9811`, `SF427` | Zünd G3, S3, L3 (EOT, POT); Summa F-Series (500-9811 EOT); Kongsberg (SF427) | Pointed oscillating · 63° / 84° | 25 × 4 × 0.63 mm · Max depth 14.3 mm | £23.50 | £20.50 | £18.00 |
+| `EDG-Z21` | Fluted-board oscillating blade | `Z21`, `3910314`, `500-9812` | Zünd G3, S3, L3 (EOT, POT); Summa F-Series (500-9812 EOT) | Pointed oscillating · 63° / 84° | 28 × 4 × 0.63 mm · Max depth 17.2 mm | £24.50 | £21.50 | £18.95 |
+| `EDG-Z28` | Long oscillating blade | `Z28`, `3910318`, `500-9814` | Zünd G3, S3, L3 (EOT, POT); Summa F-Series (500-9814 EOT) | Long-reach pointed oscillating · 45° / 86° | 38 × 4 × 0.63 mm · Max depth 26.0 mm | £31.50 | £27.50 | £24.50 |
+| `EDG-Z71` | V-cut blade | `Z71`, `3910334`, `500-9826` | Zünd G3, S3, L3 (VCT V-Cut Tool); Summa F-Series (500-9826 V-Cut Tool) | V-Cut bevel blade · 90° (for 0°–45° V-cut heads) | 50 × 8 × 1.5 mm · Max depth 16.0 mm | £34.50 | £30.50 | £27.00 |
+| `EDG-Z50` | Decagonal rotary blade | `Z50`, `3910335`, `500-9860` | Zünd G3, S3, L3 (DRT, PRT Driven/Power Rotary); Summa F-Series (500-9860 Rotary) | Decagonal (10-sided) rotary blade | Ø25 mm OD × Ø8 mm bore × 0.63 mm · Max depth 3.5 mm | £38.00 | £34.00 | £30.00 |
+| `EDG-Z52` | Large decagonal rotary blade | `Z52`, `3910337`, `500-9862` | Zünd G3, S3, L3 (DRT, PRT Driven/Power Rotary); Summa F-Series (500-9862 Rotary) | Decagonal (10-sided) rotary blade | Ø32 mm OD × Ø8 mm bore × 0.63 mm · Max depth 7.0 mm | £44.00 | £39.00 | £35.00 |
+| `EDG-Z1` | Kiss-cut blade | `Z1`, `3910110` | Zünd G3, S3, L3 (KCT, KCM-S, C2 Kiss-Cut Tools) | Round-shank kiss-cut drag · 35° (standard vinyl) | Ø3 mm shank × 18.5 mm · Max depth ~1.0 mm | £9.95 | £8.50 | £7.50 |
+| `EDG-Z2` | Thick-vinyl kiss-cut blade | `Z2`, `3910115` | Zünd G3, S3, L3 (KCT, KCM-S, C2 Kiss-Cut Tools) | Round-shank kiss-cut drag · 35° (thicker/reflective vinyl) | Ø3 mm shank × 18.5 mm · Max depth ~1.5 mm | £9.95 | £8.50 | £7.50 |
 
 ### Kongsberg
 
-| Family code | Reference model and options | Reference codes to review | Application to verify | Prior UK benchmark (internal) | 1–4 | 5–9 | 10+ |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| `EDG-SR6223` | BLD-SR6223 | `42437293`, `SER-23` | 6 mm Oscillating (12 mm). Single/double corrugated, Correx, <5 mm Foamex | £30.00 / ea | £25.50 | £22.50 | £19.95 |
-| `EDG-SR6224` | BLD-SR6224 | `42438135`, `SER-24` | 6 mm Reinforced Osc (12 mm). High-recycled corrugated, heavy display board | £30.00–£32.00 / ea | £26.50 | £23.50 | £20.95 |
-| `EDG-SR6310` | BLD-SR6310 | `42441626`, `SER-310` | 6 mm oscillating, 20 mm OEM maximum in cited configuration. Triple-wall corrugated, honeycomb, Re-board | £36.00 / ea | £30.50 | £27.00 | £24.00 |
-| `EDG-SR6315` | BLD-SR6315 | `42449504`, `SER-315` | 6 mm Slender Osc (14 mm). Soft foam board, tight curves, low overcut | £32.00–£35.00 / ea | £28.50 | £25.00 | £22.00 |
+| SKU | Product and option | Reference codes | Compatible machines and tools | Type and angle | Dimensions and depth or offset | 1–4 | 5–9 | 10+ |
+| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| `EDG-SR6223` | Round-shank blade | `BLD-SR6223`, `G42437293` | Kongsberg X, XN, XL, XP, C, XE, V (HF VibraCut, MP HF, Oscillating w/ 6mm adapter) | Single-edge 6mm round-shank oscillating · 66° cut / 24° tip | Ø6 mm shank × 39 mm × 0.64 mm · Max depth 12.0 mm (single/double-wall corrugated) | £25.50 | £22.50 | £19.95 |
+| `EDG-SR6224` | Reinforced round-shank blade | `BLD-SR6224`, `G42438135` | Kongsberg X, XN, XL, XP, C, XE, V (HF VibraCut, MP HF, Oscillating w/ 6mm adapter) | Single-edge 6mm round-shank oscillating · 66° cut / 24° tip (stiffer profile for tough/recycled board) | Ø6 mm shank × 39 mm × 0.64 mm · Max depth 12.0 mm | £26.50 | £23.50 | £20.95 |
+| `EDG-SR6310` | Long-reach round-shank blade | `BLD-SR6310`, `G42441626` | Kongsberg X, XN, XL, XP, C (HF VibraCut, MP HF, Long Stroke w/ 6mm adapter) | Single-edge 6mm round-shank oscillating · 79° cut / 11° tip | Ø6 mm shank × 39 mm × 0.64 mm · Max depth 20.0 mm (triple-wall corrugated, Re-board) | £30.50 | £27.00 | £24.00 |
+| `EDG-SR6315` | Slender round-shank blade | `BLD-SR6315`, `G42449504` | Kongsberg X, XN, XL, XP, C (HF VibraCut, MP HF, Long Stroke w/ 6mm adapter) | Slender single-edge 6mm round-shank oscillating · 75° cut / 15° tip (tight arcs / low overcut) | Ø6 mm shank × 39 mm × 0.60 mm · Max depth 14.0 mm (foam board, PVC, corrugated) | £28.50 | £25.00 | £22.00 |
+| `EDG-DF113` | Flat drag sword knife | `BLD-DF113`, `G42443036` | Kongsberg X, XN, XL, XP, C, V (Static Knife Tool, Heavy Duty Knife) | Double-edge flat drag sword knife · 60° | 50 × 8 × 1.5 mm · Max depth 6.5 mm (vinyl, carton, styrene, banner) | price to be set by owner | — | — |
 
-### DYSS and roll plotters
+### Roll plotters
 
-| Family code | Reference model and options | Reference codes to review | Application to verify | Prior UK benchmark (internal) | 1–4 | 5–9 | 10+ |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| `EDG-HTR040` | DYSS HTR-040 | `DYSS-40MM` | 40 mm Circular Rotary. Textiles, flag fabric, soft signage | £45.00–£55.00 / ea | £39.50 | £35.00 | £31.00 |
-| `EDG-MIM-45` | Mimaki 30°/45°/60° | `SPB-0030`, `MD300V` | Roll plotter. Cast/calendered vinyl, reflective, flock | £13.55–£22.90 / ea | £11.95 | £9.00 | £7.50 |
-| `EDG-ROL-45` | Roland 30°/45°/60° | `ZEC-U1005`, `ZEC-U5025` | Roll plotter. Standard vinyl, sandblast, heat transfer | £13.55–£23.99 / ea | £11.50 | £8.50 | £7.00 |
-| `EDG-SUM-DRG` | Summa Roll Drag | `391-360` (36°), `391-231` (60°) | Summa D/S-Class Drag. Vinyl, thick laminate, reflective | £13.55–£20.83 / ea | £11.95 | £9.00 | £7.50 |
-| `EDG-SUM-TAN` | Summa Tangential | `390-534` (36°), `390-560` (45°) | Summa S-Class Tangential. Heavy vinyl, high-speed lettering | £22.60–£36.00 / ea | £19.50 | £17.00 | £14.95 |
-| `EDG-GRP-CB` | Graphtec CB09/CB15 | `CB09UB`, `CB15U` (45°/60°) | Roll plotter, confirm holder and angle separately. Vinyl, stencil film, flock | £13.55–£25.12 / ea | £11.95 | £9.00 | £7.50 |
+| SKU | Product and option | Reference codes | Compatible machines and tools | Type and angle | Dimensions and depth or offset | 1–4 | 5–9 | 10+ |
+| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| `EDG-MIM-A45` | Mimaki-pattern plotter blade, 45° | Part number not supplied | Mimaki CG-SRIII, CG-AR, CG-FXII, CJV150 / CJV300, UCJV series | Standard vinyl drag blade · 45° | Ø1.5 mm × 20 mm · 0.25–0.30 mm offset | £11.95 | £9.00 | £7.50 |
+| `EDG-MIM-A60` | Mimaki-pattern plotter blade, 60° | Part number not supplied | Mimaki CG-SRIII, CG-AR, CG-FXII, CJV150 / CJV300, UCJV series | Thick/reflective/flock drag blade · 60° | Ø1.5 mm × 20 mm · 0.50 mm offset | £11.95 | £9.00 | £7.50 |
+| `EDG-ROL-A45` | Roland-pattern plotter blade, 45° | Part number not supplied | Roland VersaCAMM, TrueVIS, CAMM-1 (GS-24, GR2, GX series); Mutoh; GCC | Standard vinyl drag blade · 45° | Ø2.0 mm × 23.5 mm · 0.25 mm offset | £11.50 | £8.50 | £7.00 |
+| `EDG-ROL-A60` | Roland-pattern plotter blade, 60° | Part number not supplied | Roland VersaCAMM, TrueVIS, CAMM-1 (GS-24, GR2, GX series); Mutoh; GCC | Thick/reflective/sandblast drag blade · 60° | Ø2.0 mm × 23.5 mm · 0.25 mm offset | £11.50 | £8.50 | £7.00 |
+| `EDG-SUM-DRG-36` | Summa-pattern drag plotter blade, 36° | `391-360` | SummaCut, Summa S Class 2 / 3 D-Series (Drag) & Summa F-Series Drag Module | Standard vinyl drag blade · 36° | Ø1.5 mm × 19 mm · Max depth 0.25 mm | £11.95 | £9.00 | £7.50 |
+| `EDG-SUM-DRG-60` | Summa-pattern drag plotter blade, 60° | `391-231` | SummaCut, Summa S Class 2 / 3 D-Series (Drag) & Summa F-Series Drag Module | Thick/reflective/flock drag blade · 60° | Ø1.5 mm × 19 mm · Max depth 0.60 mm | £11.95 | £9.00 | £7.50 |
+| `EDG-SUM-TAN-36` | Tangential plotter blade, 36° | `390-534` | Summa S Class 2 / 3 T-Series (Tangential) & Summa F-Series Tangential Module | Standard tangential knife · 36° | Ø2.5 mm × 31 mm · Max depth 0.25 mm | £19.50 | £17.00 | £14.95 |
+| `EDG-SUM-TAN-45` | Tangential plotter blade, 45° | `390-560` | Summa S Class 2 / 3 T-Series (Tangential) & Summa F-Series Tangential Module | Wedge tangential knife · 45° (40°/25°) | Ø2.5 mm × 31 mm · Max depth 1.00 mm | £19.50 | £17.00 | £14.95 |
+| `EDG-GRP-CB09-45` | Graphtec-pattern plotter blade, CB09 holder · 45° | `CB09U` | Graphtec CE6000, CE7000, CE8000, FC8600, FC9000 (PHP33-CB09N-HS blue holder) | Standard vinyl drag blade · 45° | Ø0.9 mm × 19 mm · 0.25 mm offset | £11.95 | £9.00 | £7.50 |
+| `EDG-GRP-CB09-60` | Graphtec-pattern plotter blade, CB09 holder · 60° | `CB09U` | Graphtec CE6000, CE7000, CE8000, FC8600, FC9000 (PHP33-CB09N-HS blue holder) | Small lettering / thick vinyl drag · 60° | Ø0.9 mm × 19 mm · 0.25 mm offset | £11.95 | £9.00 | £7.50 |
+| `EDG-GRP-CB15-45` | Graphtec-pattern plotter blade, CB15 holder · 45° | `CB15U` | Graphtec FC8600, FC9000, CE7000/CE8000 (PHP33-CB15N-HS red holder) | Heavy-duty vinyl/reflective drag · 45° | Ø1.5 mm × 19 mm · 0.25 mm offset | £11.95 | £9.00 | £7.50 |
+| `EDG-GRP-CB15-60` | Graphtec-pattern plotter blade, CB15 holder · 60° | `CB15U` | Graphtec FC8600, FC9000, CE7000/CE8000 (PHP33-CB15N-HS red holder) | Heavy-duty reflective/sandblast drag · 60° | Ø1.5 mm × 19 mm · 0.25 mm offset | £11.95 | £9.00 | £7.50 |
 
-### Catalogue evidence and corrections
+### Unordered drafts retained
 
-| Family | Evidence to carry into catalogue review |
-| --- | --- |
-| Zünd Z71 | The Z71 OEM item is `5006045`. Item `5201345` belongs to the Z60 oscillating blade. Remove that association from Z71, including aliases and redirects. [Zünd consumables catalogue](https://books.zund.com/catalog-en) |
-| Kongsberg SR6224 and SR6315 | Kongsberg lists `42438135` for BLD-SR6224 and `42449504` for BLD-SR6315. Exclude the former brief’s unsubstantiated codes `42442525` and `42443366` from those mappings. [Kongsberg tool and blade catalogue](https://store.kongsbergsystems.com/cms/delivery/media/MCT7MYITJDOZE3ZEZAE73L6V3OYU) |
-| Kongsberg SR6310 | Kongsberg lists `42441626` and a 20 mm maximum for the configuration cited. Publish dimensions for the supplied replacement and its verified tool configuration. [Kongsberg tool and blade catalogue](https://store.kongsbergsystems.com/cms/delivery/media/MCT7MYITJDOZE3ZEZAE73L6V3OYU) |
-| Zünd and Summa | Zünd’s item numbers include `3910105` for Z1, `3910110` for Z2 and `3910335` for Z50. Check Summa equivalents against the specific tool and document the Edgey fit separately. [Zünd catalogue](https://books.zund.com/catalog-en) · [Zünd Z50](https://my.zund.com/en/shop/product/3910335) · [Summa F-Series consumables](https://www.summa.com/media/jrujznt0/f_series_optionsconsumablesaccessories_eu_rev001_en.pdf) |
+| SKU | Product and option | Legacy references and application to verify | 1–4 | 5–9 | 10+ |
+| --- | --- | --- | ---: | ---: | ---: |
+| `EDG-HTR040` | Circular rotary blade | DYSS `HTR-040`, `DYSS-40MM`; 40 mm rotary for textiles, flag fabric and soft signage | £39.50 | £35.00 | £31.00 |
+| `EDG-MIM-A30` | Mimaki-pattern plotter blade, 30° | `SPB-0030` and `MD300V` are legacy candidates not mapped to an angle | £11.95 | £9.00 | £7.50 |
+| `EDG-ROL-A30` | Roland-pattern plotter blade, 30° | `ZEC-U1005` and `ZEC-U5025` are legacy candidates not mapped to an angle | £11.50 | £8.50 | £7.00 |
 
-For the plotter families, map each code to the actual angle and holder on the supplier’s packet. In particular, keep CB09 and CB15 stock separate. A family label listing several angles gives the buyer choices only after each option is verified. Additional brand aliases and benchmark prices need dated evidence before they can support a public claim.
+### Checks before publication
+
+- Keep Zünd Z10/Z11 (50 mm) and Summa 500-9802/500-9803 (25 mm) on four different SKUs. DF113 is stated equivalent to Z11, but its stated depth is 6.5 mm rather than 6.9 mm. Keep separate stock and do not give DF113 a Z11 Finder mapping.
+- The owner-supplied Zünd item numbers replace the old working references. In particular, do not map packet code `5201345` (Z60) to Z71. Verify conflicting Z71, Z1 and Z2 references against the actual packets and current OEM documentation before approval.
+- Confirm whether Graphtec `CB09U` and the prior `CB09UB` reference denote the same blade or pack. Confirm the holder and angle for each of the four Graphtec SKUs. The code alone does not identify the angle.
+- `BLD-SF216` and `BLD-SF217` identify adapters, so those rows are staff-only and not exact public blade matches. The owner lists `SF427` for Z20 as a cross-reference; verify its identity before approving it.
+- Confirm the actual Mimaki and Roland OEM code and holder for each angle. The seed keeps the previous code candidates unverified; the owner supplied brand, angle and compatible machines, not a confirmed code for an individual option.
+- Use the existing neutral plate for products without artwork. Receive only physically counted saleable blades against the confirmed SKU; do not enter order or staging-demo quantities as opening stock.
+
+### Previous UK benchmarks (internal)
+
+These buying estimates predate the order. Verify the listing, pack size and observation date before using them to set prices. Do not transfer Zünd benchmarks to the separate Summa flatbed variants or to DF113.
+
+| Earlier family codes | Prior benchmark per blade |
+| --- | ---: |
+| Z10, Z11 | £28.00 |
+| Z46 | £43.00 |
+| Z16, Z17 | £24.00–£27.50 |
+| Z20 | £27.50 (£55/2pk) |
+| Z21 | £29.00 (£58/2pk) |
+| Z28 | £36.50 (£73/2pk) |
+| Z71 | £41.00 |
+| Z50 | £45.00 |
+| Z52 | £52.00 |
+| Z1, Z2 | £11.50 (£23/2pk) |
+| SR6223 | £30.00 |
+| SR6224 | £30.00–£32.00 |
+| SR6310 | £36.00 |
+| SR6315 | £32.00–£35.00 |
+| HTR040 | £45.00–£55.00 |
+| Mimaki plotter | £13.55–£22.90 |
+| Roland plotter | £13.55–£23.99 |
+| Summa drag plotter | £13.55–£20.83 |
+| Summa tangential | £22.60–£36.00 |
+| Graphtec plotter | £13.55–£25.12 |

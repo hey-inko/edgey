@@ -64,7 +64,7 @@ export function familyBrands(family: Family): { slug: string; name: string }[] {
 }
 
 // What tells one variant from a similar one: holder, angle, shank or size.
-export function variantFit(variant: Variant): string[] {
+export function variantFit(variant: Variant, includeDimensions = true): string[] {
   const parts = [
     variant.tool,
     ...variant.compatibility.flatMap((record) =>
@@ -72,10 +72,12 @@ export function variantFit(variant: Variant): string[] {
     ),
   ].filter((part): part is string => Boolean(part));
   if (variant.angleDeg !== null) parts.push(formatNumber(variant.angleDeg) + "°");
-  if (variant.shankMm !== null) parts.push(formatNumber(variant.shankMm) + " mm shank");
-  if (variant.diameterMm !== null) parts.push(formatNumber(variant.diameterMm) + " mm diameter");
-  if (variant.bladeThicknessMm !== null) parts.push(formatNumber(variant.bladeThicknessMm) + " mm thick");
-  if (variant.cuttingDepthMm !== null) parts.push(formatNumber(variant.cuttingDepthMm) + " mm cutting depth");
+  if (includeDimensions) {
+    if (variant.shankMm !== null) parts.push(formatNumber(variant.shankMm) + " mm shank");
+    if (variant.diameterMm !== null) parts.push(formatNumber(variant.diameterMm) + " mm diameter");
+    if (variant.bladeThicknessMm !== null) parts.push(formatNumber(variant.bladeThicknessMm) + " mm thick");
+    if (variant.cuttingDepthMm !== null) parts.push(formatNumber(variant.cuttingDepthMm) + " mm cutting depth");
+  }
   return [...new Set(parts)];
 }
 
@@ -88,12 +90,12 @@ export function variantReference(variant: Variant): string | null {
   if (variant.compatibility.length === 0) return null;
   const groups = new Map<string, string[]>();
   for (const record of variant.compatibility) {
-    const machine = [record.brand?.name, record.machine].filter(Boolean).join(" ");
-    const codes = groups.get(machine) ?? [];
+    const brand = record.brand?.name ?? "";
+    const codes = groups.get(brand) ?? [];
     codes.push(record.code);
-    groups.set(machine, codes);
+    groups.set(brand, codes);
   }
-  return [...groups].map(([machine, codes]) => [machine, codes.join(" / ")].filter(Boolean).join(" ")).join(" · ");
+  return [...groups].map(([brand, codes]) => [brand, codes.join(" / ")].filter(Boolean).join(" ")).join(" · ");
 }
 
 export function formatNumber(value: number): string {

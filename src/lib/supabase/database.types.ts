@@ -1352,9 +1352,9 @@ export type Database = {
           id: string;
           is_staging_fixture: boolean;
           option_label: string | null;
-          price_1_4_pence: number;
-          price_10_plus_pence: number;
-          price_5_9_pence: number;
+          price_1_4_pence: number | null;
+          price_10_plus_pence: number | null;
+          price_5_9_pence: number | null;
           product_id: string;
           publication_status: Database["public"]["Enums"]["publication_status"];
           rejected_at: string | null;
@@ -1387,9 +1387,9 @@ export type Database = {
           id?: string;
           is_staging_fixture?: boolean;
           option_label?: string | null;
-          price_1_4_pence: number;
-          price_10_plus_pence: number;
-          price_5_9_pence: number;
+          price_1_4_pence?: number | null;
+          price_10_plus_pence?: number | null;
+          price_5_9_pence?: number | null;
           product_id: string;
           publication_status?: Database["public"]["Enums"]["publication_status"];
           rejected_at?: string | null;
@@ -1421,9 +1421,9 @@ export type Database = {
           id?: string;
           is_staging_fixture?: boolean;
           option_label?: string | null;
-          price_1_4_pence?: number;
-          price_10_plus_pence?: number;
-          price_5_9_pence?: number;
+          price_1_4_pence?: number | null;
+          price_10_plus_pence?: number | null;
+          price_5_9_pence?: number | null;
           product_id?: string;
           publication_status?: Database["public"]["Enums"]["publication_status"];
           rejected_at?: string | null;

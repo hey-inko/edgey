@@ -62,7 +62,7 @@ test("presents every ambiguous configuration, and a distinct SKU preselects the 
   await page.goto("/blades?q=spb%200030");
   const family = page.getByRole("link", { name: /EDG-MIM-45 Mimaki-pattern plotter blade/ });
   await expect(family).toContainText("Exact match · SPB-0030");
-  await expect(family).toContainText("45° or 60°");
+  await expect(family).toContainText("45° · 1.5 mm diameter or 60° · 1.5 mm diameter");
   await family.click();
   await expect(page).toHaveURL(/\/blades\/edg-mim-45$/);
   const dialog = page.getByRole("dialog");
@@ -133,6 +133,7 @@ test("direct visits render a standalone verified product with per-blade price br
   await expect(page.getByRole("heading", { name: "Flat-stock drag blade", level: 1 })).toBeVisible();
   await expect(page).toHaveTitle(/EDG-Z10.*Zünd Z10/);
   await expect(page.getByText("Zünd Z10 / 3910301")).toBeVisible();
+  await expect(page.getByRole("table", { name: "Verified references for EDG-Z10" })).toContainText("G3, S3, L3, D3, PN");
   await expect(page.getByText("In stock", { exact: true })).toBeVisible();
   const breaks = page.getByRole("table", { name: "Price breaks per blade for EDG-Z10" });
   await expect(breaks.getByRole("row", { name: /5–9 blades £19\.95 £23\.94/ })).toBeVisible();

@@ -47,7 +47,7 @@ test("Exact, ambiguous and unknown searches", async ({ page }) => {
   }
   await page.goto("/blades?q=spb%200030");
   const family = page.getByRole("link", { name: /EDG-MIM-45/ });
-  await expect(family).toContainText("45° or 60°");
+  await expect(family).toContainText("45° · 1.5 mm diameter or 60° · 1.5 mm diameter");
   await family.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Choose the configuration");
@@ -300,7 +300,7 @@ test("Isolation and trials", async ({ db, page, browser, request }) => {
   await expect(form.getByRole("textbox")).toHaveCount(4);
   await expect(form.getByRole("combobox")).toHaveCount(1);
   await form.getByLabel("Machine brand").selectOption({ label: "Zünd" });
-  await form.getByLabel("OEM code").fill("3910105");
+  await form.getByLabel("OEM code").fill("3910110");
   await form.getByLabel("Work email").fill(recipient);
   await form.getByLabel("Company").fill(company);
   await form.getByLabel("Postcode").fill("SW1A1AA");
