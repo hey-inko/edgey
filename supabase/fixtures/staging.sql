@@ -68,3 +68,32 @@ select v.id, 'PRIV-Z10-ALIAS', 'alias', 'STAGING FIXTURE - not supplier evidence
   'Private alias used to test that it never surfaces publicly.', 'approved', true, now(), 'staging-fixture'
 from public.variants v where v.sku = 'EDG-Z10'
 on conflict (variant_id, code_normalised) do nothing;
+
+-- The demo's existing delivery assumptions are not live carrier terms.
+with calendars as (
+  insert into public.delivery_calendars
+    (calendar, active_from, active_through, working_weekdays, bank_holidays, closures, cutoff_minutes)
+  select calendar, date '2026-01-01', date '2027-12-31', array[1,2,3,4,5]::smallint[],
+    '{2026-01-01,2026-04-03,2026-04-06,2026-05-04,2026-05-25,2026-08-31,2026-12-25,2026-12-28,2027-01-01,2027-03-26,2027-03-29,2027-05-03,2027-05-31,2027-08-30,2027-12-27,2027-12-28}'::date[],
+    '{}'::date[], cutoff_minutes
+  from (values ('warehouse', 930::smallint), ('carrier', null::smallint)) as defaults(calendar, cutoff_minutes)
+  where not exists (select 1 from public.delivery_calendars)
+    and not exists (select 1 from public.delivery_rules)
+  on conflict do nothing
+  returning calendar
+), rules as (
+  select 'area' as scope, unnest(string_to_array(
+    'AL B BA BB BD BH BL BN BR BS CA CB CF CH CM CO CR CT CV CW DA DD DE DG DH DL DN DT DY E EC EH EN ' ||
+    'EX FY G GL GU HA HD HG HP HR HU HX IG IP KA KT L LA LD LE LL LN LS LU M ME MK ML N NE NG NN NP NR ' ||
+    'NW OL OX PE PL PO PR RG RH RM S SA SE SG SK SL SM SN SO SP SR SS ST SW SY TA TD TF TN TQ TR TS TW ' ||
+    'UB W WA WC WD WF WN WR WS WV YO', ' '
+  )) as code, 'next-working-day' as kind, 'Next working day' as service_name, 695 as charge_ex_vat_pence, 1 as working_days
+  union all
+  select 'district', unnest(string_to_array(
+    'KA27 KA28 PO30 PO31 PO32 PO33 PO34 PO35 PO36 PO37 PO38 PO39 PO40 PO41 TR21 TR22 TR23 TR24 TR25', ' '
+  )), 'enquiry', null, null, null
+)
+insert into public.delivery_rules (scope, code, kind, service_name, charge_ex_vat_pence, working_days)
+select scope, code, kind, service_name, charge_ex_vat_pence, working_days
+from rules
+where (select count(*) from calendars) = 2;

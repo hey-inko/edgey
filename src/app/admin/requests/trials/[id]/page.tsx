@@ -4,7 +4,7 @@ import { displayTimestamp } from "@/lib/admin/format";
 import { requestsDb } from "@/lib/admin/request-schema";
 import { publishedRequestVariants, requireRequestsStaff, requestBrand, requestVariantLabels, trialStatus, variantLabel } from "@/lib/admin/requests";
 import { isWarehouseId, warehouseOrderLookup } from "@/lib/admin/warehouse-format";
-import { lookupDeliveryCoverage, PLACEHOLDER_DELIVERY_COVERAGE } from "@/lib/commerce";
+import { deliveryCoverageForPostcode } from "@/lib/delivery/server";
 import { handleTrial } from "../../actions";
 import { AddressInput } from "../../address-input";
 import { RequestTextarea } from "../../request-textarea";
@@ -42,7 +42,7 @@ export default async function TrialPage({ params, searchParams }: {
   if (duplicateError || allocationError || delivery?.error) throw new Error("Could not load the trial checks.");
   const fulfilment = delivery?.data;
   const labels = await requestVariantLabels([...new Set([...reviewedIds, ...allocations.map((row) => row.variant_id)])]);
-  const coverage = lookupDeliveryCoverage(trial.postcode, PLACEHOLDER_DELIVERY_COVERAGE);
+  const coverage = await deliveryCoverageForPostcode(trial.postcode);
   const linking = Boolean(fulfilment?.state === "dispatched" && fulfilment.dispatched_at && !fulfilment.subsequent_order_id);
   const candidates = linking ? await requestsDb().rpc("admin_trial_order_candidates", { p_trial_request_id: id, p_actor_id: userId }) : null;
   if (candidates?.error) throw new Error("Could not load matching order references.");
@@ -74,10 +74,10 @@ export default async function TrialPage({ params, searchParams }: {
           {trial.staff_notes && <div><dt>Decision reason</dt><dd className="admin-preserve-lines">{trial.staff_notes}</dd></div>}
           {trial.reviewed_at && <div><dt>Reviewed</dt><dd className="admin-mono">{displayTimestamp(trial.reviewed_at)}</dd></div>}
           <div><dt>Submitted postcode</dt><dd>{!coverage.ok ? "Coverage could not be checked." : coverage.value.kind === "covered"
-            ? `Within staging coverage · ${coverage.value.quote.serviceName}`
-            : "Outside staging coverage. An agreed service is needed."}</dd></div>
+            ? `Within configured coverage · ${coverage.value.quote.serviceName}`
+            : "Outside configured coverage. An agreed service is needed."}</dd></div>
         </dl>
-        <p className="admin-muted mt-3">Staging coverage is not a carrier guarantee. Warehouse must verify the full address and carrier service before approving.</p>
+        <p className="admin-muted mt-3">Warehouse must verify the full address and carrier service before approving.</p>
       </AdminSection>
     </div>
     <AdminSection title="Earlier requests">

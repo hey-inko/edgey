@@ -35,6 +35,8 @@ describe("buyer account", () => {
       { variantId: unavailable, quantity: 1 },
     ], undefined, {
       now: () => new Date("2026-11-20T12:00:00Z"),
+      resolveDelivery: async () => { throw new Error("A reorder has no postcode."); },
+      readWarehouseSchedule: async () => null,
       lookup: async () => [{
         id: stocked, sku: "EDG-A01", optionLabel: "45°", availableQuantity: 4,
         tierPrices: { oneToFour: 1000, fiveToNine: 900, tenPlus: 800 },

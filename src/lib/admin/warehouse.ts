@@ -9,14 +9,14 @@ type StaffDb = SupabaseClient<Database>;
 export type WarehouseView = "queue" | "history" | "blocked";
 
 const queueColumns = "id,order_reference,business_name,recipient_name,delivery_service,promised_dispatch_date,fulfilment_status,payment_status,dispatched_at";
-const orderColumns = "id,order_reference,business_name,recipient_name,address_line1,address_line2,address_town,address_region,address_postcode,address_country,delivery_service,promised_dispatch_date,fulfilment_status,payment_status,dispatched_at,carrier,tracking_number";
+const orderColumns = "id,order_reference,business_name,recipient_name,address_line1,address_line2,address_town,address_region,address_postcode,address_country,delivery_service,promised_dispatch_date,estimated_delivery_date,fulfilment_status,payment_status,dispatched_at,carrier,tracking_number";
 const itemColumns = "variant_id,sku,option_label,quantity";
 const stockColumns = "id,sku,option_label,tool,publication_status,stock_on_hand,stock_reserved";
 
 export type WarehouseOrder = Pick<Database["public"]["Tables"]["orders"]["Row"],
   "id" | "order_reference" | "business_name" | "recipient_name" | "address_line1" | "address_line2" |
   "address_town" | "address_region" | "address_postcode" | "address_country" |
-  "delivery_service" | "promised_dispatch_date" | "fulfilment_status" |
+  "delivery_service" | "promised_dispatch_date" | "estimated_delivery_date" | "fulfilment_status" |
   "payment_status" | "dispatched_at" | "carrier" | "tracking_number"
 >;
 

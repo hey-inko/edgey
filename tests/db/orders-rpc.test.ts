@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { expect, test, vi } from "vitest";
+import { resolveCheckoutDelivery } from "@/lib/delivery/server";
 import {
   createOrderWithReservations,
   markProviderEvent,
@@ -53,7 +54,11 @@ test("the server wrapper calls local PostgREST and returns a typed event row", a
     );
     const soldOut = rows[0]!;
     const net = soldOut.price_1_4_pence;
-    const tax = Math.round(net * 0.2);
+    const delivery = await resolveCheckoutDelivery("SW1A 1AA");
+    if (!delivery.ok || !delivery.value.terms) throw new Error("Load the local staging delivery fixture first.");
+    const deliveryTerms = delivery.value.terms;
+    const charge = net >= 15000 ? 0 : deliveryTerms.quote.chargeExVatPence;
+    const tax = Math.round(net * 0.2) + Math.round(charge * 0.2);
     await expect(
       createOrderWithReservations({
         attemptToken: randomUUID(),
@@ -72,13 +77,14 @@ test("the server wrapper calls local PostgREST and returns a typed event row", a
         },
         totals: {
           goodsNetPence: net,
-          deliveryNetPence: 0,
+          deliveryNetPence: charge,
           vatRateBps: 2000,
           vatPence: tax,
-          grossPence: net + tax,
+          grossPence: net + charge + tax,
         },
         holdExpiresAt: new Date(Date.now() + 31 * 60 * 1000).toISOString(),
-        deliveryService: "Standard",
+        deliveryService: deliveryTerms.quote.serviceName,
+        deliveryTerms,
         promise: { dispatchDate: "2099-01-06", deliveryDate: "2099-01-07" },
       }),
     ).rejects.toMatchObject({

@@ -9,6 +9,7 @@ import {
   buyerName, carrier, company, creditLimit, gross, partial, poReference, signInBuyer, tracking, withNet30Data, type Net30Data,
 } from "../browser/fixtures/net30-data";
 import { startStripeFixture } from "../browser/fixtures/net30-stripe";
+import { confirmation, drainEmails } from "./storefront-fixtures";
 
 const test = base.extend<{
   net30Data: Net30Data;
@@ -282,3 +283,126 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
       await Promise.all([buyerContext.close(), financeContext.close(), warehouseContext.close()]);
     }
   });
+
+test("an agreed Net 30 service survives invoice-send recovery and later payment", async ({ browser, net30Data, net30App }) => {
+  const { db, buyer, finance, warehouse, application, slug, eventIds } = net30Data;
+  const { origin, stripe } = net30App;
+  const service = "Tracked Net 30 fixture";
+  const deliveryPence = 1495;
+  const totalPence = 4614;
+  const buyerContext = await browser.newContext({ baseURL: origin });
+  const staffContext = await browser.newContext({ baseURL: origin });
+  const calendars = (await db.query("select * from public.delivery_calendars")).rows;
+  try {
+    await db.query(`insert into public.delivery_rules (scope, code, kind, service_name, charge_ex_vat_pence, working_days)
+      values ('district', 'SW4', 'agreed', $1, $2, 3)`, [service, deliveryPence]);
+    const { rows: [calendar] } = await db.query(`select (now() at time zone 'Europe/London')::date::text as today,
+      ((now() at time zone 'Europe/London')::date + 2)::text as closure`);
+    const closure: string = calendar.closure;
+    await db.query(`update public.delivery_calendars set active_from=$1::date, active_through=$1::date + 14,
+      working_weekdays='{0,1,2,3,4,5,6}', bank_holidays='{}',
+      closures=case when calendar='carrier' then array[$2::date] else '{}'::date[] end,
+      cutoff_minutes=case when calendar='warehouse' then 0 else null end`, [calendar.today, closure]);
+    const staffPage = await staffContext.newPage();
+    await signInStaff(staffPage, finance);
+    await staffPage.goto(`/admin/requests/trade/${application}`);
+    await staffPage.getByLabel("Initial credit limit (£)").fill("200");
+    await staffPage.getByRole("button", { name: "Approve trade account" }).click();
+    await expect(staffPage.getByRole("link", { name: "View trade account" })).toBeVisible();
+    await staffPage.getByRole("button", { name: "Sign out" }).click();
+    await signInStaff(staffPage, warehouse);
+
+    await signInBuyer(buyerContext, origin, buyer);
+    const buyerPage = await buyerContext.newPage();
+    await buyerPage.goto(`/blades/${slug}`);
+    await buyerPage.getByRole("button", { name: "Add to selection" }).click();
+    await buyerPage.getByRole("dialog", { name: "Your selection" }).getByRole("link", { name: "Go to checkout" }).click();
+    await buyerPage.getByLabel("Business name").fill(company);
+    await buyerPage.getByLabel("Contact email").fill(buyer.email);
+    await buyerPage.getByLabel("I’m buying for work").check();
+    await buyerPage.getByLabel("Recipient name").fill(buyerName);
+    await buyerPage.getByLabel("Address line 1").fill("18 Delivery Lane");
+    await buyerPage.getByLabel("Town or city").fill("London");
+    await buyerPage.getByLabel("Postcode").fill("SW4 1AA");
+    const summary = buyerPage.getByRole("region", { name: "Order summary" });
+    await expect(summary).toContainText(service);
+    await expect(summary).toContainText(pounds(totalPence));
+    await buyerPage.getByRole("radio", { name: "Pay on account (Net 30)" }).check();
+    await buyerPage.getByLabel("Purchase order reference (required)").fill(poReference);
+
+    stripe.dropNextSendResponse();
+    const submitted = buyerPage.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/checkout/net30" && response.request().method() === "POST");
+    await buyerPage.getByRole("button", { name: "Place order on account" }).click();
+    const response = await submitted;
+    expect(response.status(), await response.text()).toBe(202);
+    expect(await response.json()).toMatchObject({ status: "confirming" });
+    const { rows: [reserved] } = await db.query(`select id, delivery_terms, fulfilment_status, authorised_at,
+      stripe_net30_sent, stripe_net30_invoice_id from public.orders where buyer_id=$1`, [buyer.id]);
+    expect(reserved).toMatchObject({
+      fulfilment_status: "awaiting_authorisation", authorised_at: null, stripe_net30_sent: false, stripe_net30_invoice_id: stripe.invoiceId,
+      delivery_terms: { quote: { serviceName: service, workingDays: 3, chargeExVatPence: deliveryPence },
+        deliveryCalendar: { closures: [closure] }, cutoffMinutes: 0 },
+    });
+    const lines = stripe.calls.find(({ path }) => path.endsWith("/add_lines"))?.params;
+    expect(lines?.get("lines[1][amount]")).toBe(String(deliveryPence));
+    expect(lines?.get("lines[1][tax_amounts][0][amount]")).toBe("299");
+    expect(lines?.get("lines[1][description]")).toContain(service);
+
+    await db.query(`delete from public.delivery_rules where scope='district' and code='SW4';
+      update public.delivery_calendars set closures='{}', cutoff_minutes=case when calendar='warehouse' then 930 else null end`);
+    const sendWebhook = async (type: string) => {
+      const id = `evt_${randomUUID().replaceAll("-", "")}`;
+      eventIds.push(id);
+      const { body, signature } = stripe.webhook(type, id);
+      const response = await buyerContext.request.post("/api/webhooks/stripe", {
+        data: body, headers: { "Content-Type": "application/json", "Stripe-Signature": signature },
+      });
+      expect(response.status(), await response.text()).toBe(200);
+    };
+    await sendWebhook("invoice.sent");
+    const { rows: [confirmed] } = await db.query(`select fulfilment_status, payment_status, delivery_terms, delivery_service,
+      promised_dispatch_date::text, estimated_delivery_date::text,
+      ((authorised_at at time zone 'Europe/London')::date + 1)::text as expected_dispatch,
+      ((authorised_at at time zone 'Europe/London')::date + 4 + case when $2::date between
+        (authorised_at at time zone 'Europe/London')::date + 2 and (authorised_at at time zone 'Europe/London')::date + 4
+        then 1 else 0 end)::text as expected_delivery
+      from public.orders where id=$1`, [reserved.id, closure]);
+    expect(confirmed).toMatchObject({
+      fulfilment_status: "ready_to_pick", payment_status: "invoiced", delivery_terms: reserved.delivery_terms,
+      delivery_service: service, promised_dispatch_date: confirmed.expected_dispatch, estimated_delivery_date: confirmed.expected_delivery,
+    });
+    await buyerPage.goto(`/checkout/net30/${reserved.id}`);
+    await expect(buyerPage.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
+    await staffPage.goto(`/admin/warehouse/${reserved.id}`);
+    for (const page of [buyerPage, staffPage]) {
+      await expect(page.getByText(service, { exact: true })).toBeVisible();
+      await expect(page.locator(`time[datetime='${confirmed.expected_dispatch}']`)).toBeVisible();
+      await expect(page.locator(`time[datetime='${confirmed.expected_delivery}']`)).toBeVisible();
+    }
+    await drainEmails(buyerContext.request);
+    const words = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeZone: "Europe/London" });
+    expect((await confirmation(buyer.email)).text).toContain([
+      `Delivery service: ${service}`,
+      `Promised dispatch: ${words.format(new Date(confirmed.expected_dispatch))}`,
+      `Estimated delivery: ${words.format(new Date(confirmed.expected_delivery))}`,
+    ].join("\n"));
+
+    stripe.pay(totalPence);
+    await sendWebhook("invoice.paid");
+    expect((await db.query(`select payment_status, paid_pence, delivery_terms, promised_dispatch_date::text, estimated_delivery_date::text
+      from public.orders where id=$1`, [reserved.id])).rows).toEqual([{
+      payment_status: "paid", paid_pence: totalPence, delivery_terms: reserved.delivery_terms,
+      promised_dispatch_date: confirmed.expected_dispatch, estimated_delivery_date: confirmed.expected_delivery,
+    }]);
+  } finally {
+    await db.query("delete from public.delivery_rules where scope='district' and code='SW4'");
+    for (const calendar of calendars) {
+      await db.query(`update public.delivery_calendars set active_from=$2, active_through=$3,
+        working_weekdays=$4, bank_holidays=$5, closures=$6, cutoff_minutes=$7 where calendar=$1`,
+        [calendar.calendar, calendar.active_from, calendar.active_through, calendar.working_weekdays,
+          calendar.bank_holidays, calendar.closures, calendar.cutoff_minutes]);
+    }
+    await Promise.all([buyerContext.close(), staffContext.close()]);
+  }
+});

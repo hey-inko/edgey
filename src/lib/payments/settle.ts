@@ -1,6 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
-import { calculateDispatchPromise, STANDARD_DELIVERY_QUOTE } from "@/lib/commerce";
+import { promiseForReservedOrder } from "@/lib/delivery/terms";
 import { confirmPayment, releaseReservation } from "@/lib/orders";
 import { bindVerifiedSession } from "./recovery";
 import { assertSessionMatches, PaymentReviewError, sessionAmountMatches, stripeId } from "./session-identity";
@@ -39,12 +39,9 @@ export async function reconcileSession(
     if (invoiceId && attachedInvoice !== invoiceId) {
       throw new PaymentReviewError("Stripe Invoice is not linked to the verified Checkout Session.");
     }
-    const promise = moneyMismatch || order.authorised_at ? null : calculateDispatchPromise({
-      authorisedAt: paidAt,
-      deliveryQuote: STANDARD_DELIVERY_QUOTE,
-    });
-    if (promise && (!promise.ok || !promise.value.estimatedDeliveryDate ||
-      order.delivery_service !== STANDARD_DELIVERY_QUOTE.serviceName)) {
+    const needsPromise = !moneyMismatch && !order.authorised_at && order.fulfilment_status === "awaiting_authorisation";
+    const promise = needsPromise ? promiseForReservedOrder(order, paidAt) : null;
+    if (needsPromise && !promise) {
       throw new PaymentReviewError("Could not compute the delivery promise from the captured payment.");
     }
     const updated = await confirmPayment({
@@ -55,9 +52,9 @@ export async function reconcileSession(
       currency,
       invoiceId: attachedInvoice,
       paidAt,
-      promise: {
-        dispatchDate: promise?.value.dispatchDate ?? order.promised_dispatch_date,
-        deliveryDate: promise?.value.estimatedDeliveryDate ?? order.estimated_delivery_date,
+      promise: promise ?? {
+        dispatchDate: order.promised_dispatch_date,
+        deliveryDate: order.estimated_delivery_date,
       },
     });
     if (updated.payment_review_reason === "payment_amount_or_currency_mismatch" && !updated.payment_review_refund_id) {

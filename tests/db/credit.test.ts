@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { requireStaff } from "@/lib/admin/auth";
 import { approveTradeAccount, bindInvoice, createNet30OrderWithHolds, setCreditLimit, suspendTradeAccount, voidInvoice } from "@/lib/credit";
 import { getVerifiedBuyer } from "@/lib/auth/server";
+import { resolveCheckoutDelivery } from "@/lib/delivery/server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({ getVerifiedBuyer: vi.fn() }));
@@ -638,14 +639,21 @@ test("the server wrapper uses the verified identity and calls the real local Pos
   let account: Account | undefined;
   try {
     const item = await variant(productId);
+    const delivery = await resolveCheckoutDelivery("SW1A 1AA");
+    if (!delivery.ok || !delivery.value.terms) throw new Error("Load the local staging delivery fixture first.");
+    const deliveryTerms = delivery.value.terms;
+    const charge = deliveryTerms.quote.chargeExVatPence;
+    const tax = 2000 + Math.round(charge * 0.2);
+    const gross = 10000 + charge + tax;
     const input = {
       attemptToken: randomUUID(),
       lines: [{ variantId: item, quantity: 1, unitPricePence: 10000 }],
       contact: { email: buyer.email, businessName: "Fabrication Ltd", recipientName: "Named Buyer", buyingForWork: true },
       address: { line1: "1 Test Street", town: "London", postcode: "SW1A 1AA", country: "GB" },
-      totals: { goodsNetPence: 10000, deliveryNetPence: 0, vatRateBps: 2000, vatPence: 2000, grossPence: 12000 },
+      totals: { goodsNetPence: 10000, deliveryNetPence: charge, vatRateBps: 2000, vatPence: tax, grossPence: gross },
       holdExpiresAt: new Date(Date.now() + 35 * 60 * 1000).toISOString(),
-      deliveryService: "Standard",
+      deliveryService: deliveryTerms.quote.serviceName,
+      deliveryTerms,
       promise: { dispatchDate: "2099-01-05", deliveryDate: "2099-01-06" },
       poNumber: "PO-wrapper",
     } as const;
@@ -667,10 +675,10 @@ test("the server wrapper uses the verified identity and calls the real local Pos
     account = { id: approved.id, stripe_customer_id: customerId };
     vi.mocked(getVerifiedBuyer).mockResolvedValue(buyer);
     const order = await createNet30OrderWithHolds(input);
-    expect(order).toMatchObject({ buyer_id: buyer.id, po_number: input.poNumber, payment_method: "net30" });
+    expect(order).toMatchObject({ buyer_id: buyer.id, po_number: input.poNumber, payment_method: "net30", delivery_terms: deliveryTerms });
     const providerInvoiceId = stripeId("in");
     expect(await bindInvoice({
-      orderId: order.id, providerInvoiceId, stripeCustomerId: customerId, amountDuePence: 12000, currency: "GBP",
+      orderId: order.id, providerInvoiceId, stripeCustomerId: customerId, amountDuePence: gross, currency: "GBP",
       issuedAt: inPast.issued, dueAt: inPast.due, promise: input.promise,
     })).toMatchObject({ fulfilment_status: "ready_to_pick", payment_status: "invoiced" });
     expect(await voidInvoice(providerInvoiceId)).toMatchObject({ order_id: order.id, status: "voided", amount_remaining_pence: 0 });

@@ -5,6 +5,7 @@ import { AdminHeading, AdminLink } from "./ui";
 const areas: { role?: StaffRole; title: string; path: string; description: string }[] = [
   { role: "warehouse", title: "Pick and dispatch", path: "warehouse", description: "Pick the right order lines, record dispatch and handle returns." },
   { role: "warehouse", title: "Stock", path: "stock", description: "Check quantities, receive stock and view movements." },
+  { role: "warehouse", title: "Delivery settings", path: "delivery", description: "Manage postcode coverage, carrier services and working days." },
   { role: "catalogue", title: "Catalogue", path: "catalogue", description: "Edit selling data, review fit evidence and publish variants." },
   { role: "finance", title: "Finance", path: "finance", description: "Check payment status, exceptions and failed processing." },
   { title: "Requests", path: "requests", description: "See enquiries and applications available to your role." },

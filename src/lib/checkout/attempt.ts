@@ -1,5 +1,6 @@
+import { promiseUnderTerms, type DeliveryTerms } from "@/lib/delivery/terms";
 import type { CreateOrderInput } from "@/lib/orders";
-import { quoteSelectionWith, type QuoteDependencies } from "./quote";
+import { quoteSelectionAndTermsWith, type QuoteDependencies } from "./quote";
 import type { CheckoutReviewResult, QuoteResult } from "./types";
 import { isRecord, normaliseAttemptToken, validateCheckoutFields } from "./validation";
 
@@ -11,9 +12,10 @@ type PricedQuote = OpenQuote & {
   estimatedDeliveryDate: string;
 };
 
-function snapshot(attemptToken: string, fields: ValidFields, quote: PricedQuote, now: Date): CreateOrderInput {
+function snapshot(
+  attemptToken: string, fields: ValidFields, quote: PricedQuote, holdExpiresAt: string, deliveryTerms: DeliveryTerms,
+): CreateOrderInput {
   const { basket, dispatchDate, estimatedDeliveryDate } = quote;
-  const holdExpiresAt = new Date((Math.floor(now.getTime() / 1000) + 35 * 60) * 1000).toISOString();
   return {
     attemptToken,
     lines: basket.lines.map(({ variantId, quantity, unitNetPence }) => ({ variantId, quantity, unitPricePence: unitNetPence })),
@@ -40,6 +42,7 @@ function snapshot(attemptToken: string, fields: ValidFields, quote: PricedQuote,
     },
     holdExpiresAt,
     deliveryService: basket.delivery.quote.serviceName,
+    deliveryTerms,
     promise: { dispatchDate, deliveryDate: estimatedDeliveryDate },
   };
 }
@@ -59,13 +62,14 @@ export async function prepareCheckoutAttempt(input: unknown, deps: QuoteDependen
   }
 
   const { fields } = validation;
-  const quote = await quoteSelectionWith(input.lines, fields.postcode, deps);
-  if (quote.status === "error") return quote;
+  const result = await quoteSelectionAndTermsWith(input.lines, fields.postcode, deps);
+  if (!("quote" in result)) return result;
+  const { quote, terms } = result;
   if (quote.corrections.length > 0) {
     return { status: "review", quote, message: "Stock has changed. Review your updated selection before continuing." };
   }
   if (!quote.basket) return { status: "error", message: "Add an item to your selection before continuing." };
-  if (quote.coverage !== "covered") {
+  if (quote.coverage !== "covered" || !terms) {
     const message = "We can’t confirm delivery to this postcode. Ask us about delivery before ordering.";
     return { status: "invalid", errors: { postcode: message }, message };
   }
@@ -73,9 +77,15 @@ export async function prepareCheckoutAttempt(input: unknown, deps: QuoteDependen
     return { status: "review", quote, message: "Your quote has changed. Review the current prices and dates before continuing." };
   }
   const { basket, dispatchDate, estimatedDeliveryDate } = quote;
-  if (!dispatchDate || !estimatedDeliveryDate) {
+  const now = deps.now().getTime();
+  const holdExpiresAt = Number.isFinite(now) ? new Date((Math.floor(now / 1000) + 35 * 60) * 1000).toISOString() : null;
+  if (!dispatchDate || !estimatedDeliveryDate || !holdExpiresAt || !promiseUnderTerms(holdExpiresAt, terms).ok) {
     return { status: "error", message: "We can’t estimate dispatch and delivery right now. Ask us before ordering." };
   }
 
-  return { status: "ready", orderInput: snapshot(attemptToken, fields, { ...quote, basket, dispatchDate, estimatedDeliveryDate }, deps.now()), quote };
+  return {
+    status: "ready",
+    orderInput: snapshot(attemptToken, fields, { ...quote, basket, dispatchDate, estimatedDeliveryDate }, holdExpiresAt, terms),
+    quote,
+  };
 }

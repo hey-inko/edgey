@@ -20,6 +20,7 @@ export async function startStripeFixture() {
   const issuedAt = Math.floor(Date.now() / 1000);
   let customer: Record<string, unknown> | undefined;
   let invoiceCreated = false;
+  let loseSendResponse = false;
   const invoice = {
     id: invoiceId, object: "invoice", livemode: false, status: "draft",
     collection_method: "send_invoice", currency: "gbp", customer: customerId,
@@ -112,6 +113,13 @@ export async function startStripeFixture() {
     const params = method === "GET" ? url.searchParams : new URLSearchParams(Buffer.concat(chunks).toString());
     const idempotencyKey = req.headers["idempotency-key"];
     calls.push({ path: url.pathname, method, params, key: typeof idempotencyKey === "string" ? idempotencyKey : undefined });
+    if (loseSendResponse && req.headers.authorization === `Bearer ${key}` && invoice.status === "open" &&
+      method === "POST" && url.pathname === `/v1/invoices/${invoiceId}/send`) {
+      loseSendResponse = false;
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { type: "invalid_request_error", message: "Fixture did not return send evidence" } }));
+      return;
+    }
     const result = req.headers.authorization === `Bearer ${key}` && respond(url.pathname, method, params);
     if (!result) unexpected.push(`${method} ${url.pathname}`);
     res.writeHead(result ? 200 : 400, { "content-type": "application/json" });
@@ -123,6 +131,7 @@ export async function startStripeFixture() {
 
   return {
     port: (server.address() as AddressInfo).port, key, secret, invoiceId, invoiceUrl, calls, unexpected,
+    dropNextSendResponse: () => { loseSendResponse = true; },
     close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
     pay(amount: number) {
       if (invoice.status !== "open" || !Number.isInteger(amount) || amount <= 0 || amount > invoice.amount_remaining) {

@@ -59,7 +59,7 @@ test("catalogue and warehouse take a five-field trial through dispatch to a link
   await page.getByRole("table", { name: "Trial requests", exact: true }).getByRole("link", { name: company, exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Trial request" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Possible duplicate trial requests" })).toContainText("Email · Company · Postcode");
-  await expect(page.getByText("Within staging coverage", { exact: false })).toBeVisible();
+  await expect(page.getByText("Within configured coverage", { exact: false })).toBeVisible();
   const trialPath = new URL(page.url()).pathname;
   const trialId = trialPath.split("/").at(-1)!;
   const sku = "EDG-Z1";

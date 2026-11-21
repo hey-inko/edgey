@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Database, Json } from "@/lib/supabase/database.types";
+import type { DeliveryTerms } from "@/lib/delivery/terms";
 import { serviceClient } from "@/lib/supabase/service";
 import { orderReservationArgs, type ReservationRateKeys } from "./reservation-input";
 
@@ -36,6 +37,7 @@ export type CreateOrderInput = {
   };
   holdExpiresAt: string;
   deliveryService: string;
+  deliveryTerms: DeliveryTerms;
   promise: { dispatchDate: string; deliveryDate: string };
 };
 
@@ -69,9 +71,11 @@ async function call<Name extends keyof Functions>(
 }
 
 export function createOrderWithReservations(input: CreateOrderInput, rateKeys?: ReservationRateKeys) {
-  return call("create_order_with_reservations", {
+  return call("reserve_order_with_delivery", {
     ...orderReservationArgs(input, rateKeys),
     p_buyer_id: input.buyerId,
+    p_delivery_terms: input.deliveryTerms,
+    p_payment_method: "card",
   });
 }
 
