@@ -10,6 +10,8 @@
 
 The admin extension adds GBP tier editing with VAT, staff-only supplier and landed costs, and signed stock adjustments. The three newly priced SKUs remain draft. This does not import supplier data or real stock. Apply the additive database migrations on staging to enable the new cost, adjustment and archive controls.
 
+Staff desk → Sales adds period comparisons, booked product revenue, estimated margin for finance, refund and credit totals, and stock cover. Daily and product CSVs use the same staff permissions. Apply the additive Sales migrations before loading the reversible demo dataset; the dashboard shows an unavailable notice if the app deploys first. Sales reporting and the demo dataset have not been verified on hosted staging.
+
 ## Hosted staging evidence (21 November 2026)
 
 `edgey-staging` runs on Vercel Pro from [GitHub `main`](https://github.com/hey-winkin/edgey/tree/main), on Node `24.x` pinned by `engines.node`. It uses the committed `vercel.json` and native one-minute Vercel Cron. All Deployments protection is on. Automatic deploys from `main` are enabled, but the first automatic deploy has not yet been observed. Pull request previews are disabled. The apex `edgey.site` and `www.edgey.site` are reserved for the live shop.

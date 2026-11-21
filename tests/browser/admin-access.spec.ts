@@ -8,7 +8,7 @@ const privatePaths = [
   "/admin", "/admin/warehouse", "/admin/warehouse/8028e331-bde6-4d32-97c4-7fcf1bed9190",
   "/admin/warehouse/8028e331-bde6-4d32-97c4-7fcf1bed9190/print", "/admin/stock",
   "/admin/stock/8028e331-bde6-4d32-97c4-7fcf1bed9190", "/admin/catalogue",
-  "/admin/catalogue/8028e331-bde6-4d32-97c4-7fcf1bed9190", "/admin/finance", "/admin/requests",
+  "/admin/catalogue/8028e331-bde6-4d32-97c4-7fcf1bed9190", "/admin/finance", "/admin/requests", "/admin/sales",
 ];
 
 async function setBuyerSession(page: Page, credentials: { email: string; password: string }, baseURL: string) {
@@ -36,6 +36,12 @@ test("anonymous users and signed-in buyers cannot reach any staff page", async (
       await expect(page).toHaveURL(/\/admin\/sign-in$/);
       await expect(page.getByRole("heading", { name: "Staff sign-in" })).toBeVisible();
       await expect(page.getByRole("navigation", { name: "Staff areas" })).toHaveCount(0);
+    }
+    for (const kind of ["products", "daily"]) {
+      const response = await page.request.get(`/admin/sales/export?kind=${kind}`);
+      expect(response.status()).toBe(403);
+      expect(response.headers()["cache-control"]).toContain("no-store");
+      expect(await response.text()).toBe("Staff sign-in required.");
     }
   };
   await checkAll();
