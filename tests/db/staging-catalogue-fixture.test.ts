@@ -9,6 +9,13 @@ test("the public staging catalogue preserves the four design identities and Appe
   const db = new Client({ connectionString });
   await db.connect();
   try {
+    const { rows: published } = await db.query(`
+      select sku, stock_on_hand from public.variants where publication_status = 'published' order by sku
+    `);
+    expect(Object.fromEntries(published.map(({ sku, stock_on_hand }) => [sku, stock_on_hand]))).toEqual({
+      "EDG-Z10": 40, "EDG-Z16": 25, "EDG-SR6223": 18, "EDG-Z50": 12, "EDG-Z71": 6, "EDG-Z1": 30,
+      "EDG-SUM-DRG-36": 20, "EDG-SUM-DRG-60": 0, "EDG-SUM-TAN-36": 8, "EDG-MIM-A45": 15, "EDG-MIM-A60": 1,
+    });
     await db.query("set role anon");
     const products = [
       ["3910301", "EDG-Z10", "Flat-stock drag blade", "drag", "drag-line.svg", "coral", 2250, 1995, 1750],

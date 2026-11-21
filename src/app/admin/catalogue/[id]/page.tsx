@@ -59,6 +59,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
   const selectedSubstrates = new Set(variant.variant_substrates.map(({ substrate }) => substrate));
   const specs = Object.entries(variant.specs ?? {}).map(([label, value]) => `${label}: ${value}`).join("\n");
   const published = variant.publication_status === "published";
+  const draft = variant.publication_status === "draft";
 
   return (
     <>
@@ -121,11 +122,11 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
               ))}
             </div>
           </fieldset>
-          <p>Enter the price per blade in pence, excluding VAT.</p>
+          <p>Enter the price per blade in pence, excluding VAT.{draft && " You can leave all three prices blank on a draft."}</p>
           <div className="admin-grid">
-            <AdminField label="1–4 blades (pence)"><input type="number" name="price_1_4_pence" defaultValue={variant.price_1_4_pence ?? undefined} min={1} max={2147483647} required /></AdminField>
-            <AdminField label="5–9 blades (pence)"><input type="number" name="price_5_9_pence" defaultValue={variant.price_5_9_pence ?? undefined} min={1} max={2147483647} required /></AdminField>
-            <AdminField label="10+ blades (pence)"><input type="number" name="price_10_plus_pence" defaultValue={variant.price_10_plus_pence ?? undefined} min={1} max={2147483647} required /></AdminField>
+            <AdminField label="1–4 blades (pence)"><input type="number" name="price_1_4_pence" defaultValue={variant.price_1_4_pence ?? undefined} min={1} max={2147483647} required={!draft} /></AdminField>
+            <AdminField label="5–9 blades (pence)"><input type="number" name="price_5_9_pence" defaultValue={variant.price_5_9_pence ?? undefined} min={1} max={2147483647} required={!draft} /></AdminField>
+            <AdminField label="10+ blades (pence)"><input type="number" name="price_10_plus_pence" defaultValue={variant.price_10_plus_pence ?? undefined} min={1} max={2147483647} required={!draft} /></AdminField>
           </div>
         </AdminForm>
       </AdminSection>

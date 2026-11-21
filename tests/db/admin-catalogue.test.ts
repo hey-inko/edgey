@@ -131,6 +131,30 @@ async function visible(client: Client, query: string) {
     .some(({ variant_id }) => variant_id === variant.id);
 }
 
+test("staff can save an unpriced draft and cannot publish until all tiers are set", async () => {
+  const service = await connect("service_role");
+  try {
+    const blank = { price_1_4_pence: null, price_5_9_pence: null, price_10_plus_pence: null };
+    await expect(save(service, { ...blank, price_1_4_pence: 1200 }))
+      .rejects.toMatchObject({ message: "catalogue_invalid_selling_data" });
+    await save(service, { ...blank, supplier_part_number: "UNPRICED-DRAFT" });
+    const { rows: [draft] } = await db.query(`
+      select publication_status, supplier_part_number, price_1_4_pence, price_5_9_pence, price_10_plus_pence
+      from public.variants where id = $1
+    `, [variant.id]);
+    expect(draft).toEqual({ ...blank, publication_status: "draft", supplier_part_number: "UNPRICED-DRAFT" });
+    await review(service);
+    await review(service, { record: mapping });
+    await expect(publish(service)).rejects.toMatchObject({ constraint: "variants_prices_required_outside_draft" });
+    await save(service, { supplier_part_number: "UNPRICED-DRAFT" });
+    await publish(service);
+    await expect(save(service, { ...blank, supplier_part_number: "UNPRICED-DRAFT" }))
+      .rejects.toMatchObject({ message: "catalogue_invalid_selling_data" });
+  } finally {
+    await service.end();
+  }
+});
+
 test("only service_role can execute the RPCs, and each checks explicit catalogue membership", async () => {
   const { rows } = await db.query(`
     select p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') as anon,

@@ -461,8 +461,8 @@ a.p-card { color: inherit; }
 @media (max-width: 740px) { .materials.is-long .mat-copy { position: static; } }
 
 .tray-trigger:disabled { cursor: default; }
-.specs { grid-template-columns: minmax(0, auto) minmax(0, 1fr); }
-.specs dd { overflow-wrap: anywhere; }
+.specs { grid-template-columns: fit-content(45%) minmax(0, 1fr); }
+.specs dt, .specs dd { overflow-wrap: anywhere; }
 @container modal (max-width: 13em) {
   .dialog-wrap .specs { grid-template-columns: minmax(0,1fr); row-gap: 0; }
   .dialog-wrap .specs dd:not(:last-child) { margin-bottom: .5em; }

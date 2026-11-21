@@ -26,7 +26,7 @@ pnpm dev
 ```
 
 The app runs at http://localhost:3000. `pnpm db:reset` resets the **local**
-database and reloads the 23 draft families with zero stock. Run
+database and reloads 35 draft SKUs across 26 families, all with zero stock. Run
 `pnpm db:fixture` again after a reset if you want published test data. Those
 approvals, stock and fit are fabricated for development; never use the fixture
 as catalogue evidence or apply it to a live project. `pnpm db:stop` stops

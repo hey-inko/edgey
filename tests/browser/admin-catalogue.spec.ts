@@ -2,6 +2,30 @@ import { expect, test } from "@playwright/test";
 import { createLocalAdminUser, localAdminClient } from "../../scripts/seed-admin";
 import { signInStaff } from "./admin-fixtures";
 
+test("a catalogue operator can save specifications before setting a draft's prices", async ({ page }) => {
+  const db = localAdminClient();
+  const { data, error } = await db.from("variants").select("id").eq("sku", "EDG-DF113").single();
+  if (error) throw error;
+  await signInStaff(page, await createLocalAdminUser("catalogue"));
+  await page.goto(`/admin/catalogue/${data.id}`);
+  const firstTier = page.getByLabel("1–4 blades (pence)");
+  await expect(firstTier).toHaveValue("");
+  await firstTier.fill("2150");
+  await page.getByRole("button", { name: "Save selling data" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Enter all three price tiers" })).toBeVisible();
+  await firstTier.clear();
+  const part = page.getByLabel("Supplier part number");
+  await part.fill("TEST-UNPRICED-DRAFT");
+  await page.getByRole("button", { name: "Save selling data" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
+  await expect(firstTier).toHaveValue("");
+  await page.reload();
+  await expect(part).toHaveValue("TEST-UNPRICED-DRAFT");
+  await part.clear();
+  await page.getByRole("button", { name: "Save selling data" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
+});
+
 test("a catalogue operator approves and publishes a draft for public search", async ({ page }) => {
   const staff = await createLocalAdminUser("catalogue");
   await signInStaff(page, staff);

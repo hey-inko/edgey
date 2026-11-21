@@ -36,6 +36,7 @@ function version(data: FormData, name: string) {
 
 function pence(data: FormData, name: string) {
   const value = field(data, name, 10);
+  if (!value) return null;
   if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 2147483647) {
     throw new CatalogueInputError("Enter each price as a positive whole number of pence.");
   }
@@ -76,8 +77,14 @@ function sellingData(data: FormData) {
     price_5_9_pence: pence(data, "price_5_9_pence"),
     price_10_plus_pence: pence(data, "price_10_plus_pence"),
   };
-  if (prices.price_5_9_pence > prices.price_1_4_pence || prices.price_10_plus_pence > prices.price_5_9_pence) {
-    throw new CatalogueInputError("The unit price must stay the same or decrease in each higher quantity band.");
+  const { price_1_4_pence: first, price_5_9_pence: middle, price_10_plus_pence: last } = prices;
+  if (first !== null || middle !== null || last !== null) {
+    if (first === null || middle === null || last === null) {
+      throw new CatalogueInputError("Enter all three price tiers or leave all three blank on a draft.");
+    }
+    if (middle > first || last > middle) {
+      throw new CatalogueInputError("The unit price must stay the same or decrease in each higher quantity band.");
+    }
   }
 
   return {

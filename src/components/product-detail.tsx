@@ -48,6 +48,7 @@ export function ProductDetail({
   }
 
   const materials = (variant ? variant.substrates : familySubstrates(family)).map((substrate) => substrate.name);
+  const fit = variant ? variantFit(variant, mode === "dialog") : [];
   const quantity = Number(quantityInput);
   const maxQuantity = 2_147_483_647;
   const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= maxQuantity;
@@ -94,7 +95,7 @@ export function ProductDetail({
         <dt>Tool fit</dt>
         <dd>
           {family.toolType.name}
-          {variant && variantFit(variant).length > 0 ? " · " + variantFit(variant).join(" · ") : ""}
+          {fit.length > 0 ? " · " + fit.join(" · ") : ""}
         </dd>
         <dt>Materials</dt>
         <dd>{materials.join(", ") || "Ask us"}</dd>

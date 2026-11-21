@@ -47,7 +47,7 @@ test("Exact, ambiguous and unknown searches", async ({ page }) => {
   }
   await page.goto("/blades?q=spb%200030");
   const family = page.getByRole("link", { name: /EDG-MIM-45/ });
-  await expect(family).toContainText("45° or 60°");
+  await expect(family).toContainText("45° · 1.5 mm diameter or 60° · 1.5 mm diameter");
   await family.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Choose the configuration");

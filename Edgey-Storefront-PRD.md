@@ -281,6 +281,7 @@ Luke supplied the ordered specifications on 21 November 2026. Their original sou
 - Keep Zünd Z10/Z11 (50 mm) and Summa 500-9802/500-9803 (25 mm) on four different SKUs. DF113 is stated equivalent to Z11, but its stated depth is 6.5 mm rather than 6.9 mm. Keep separate stock and do not give DF113 a Z11 Finder mapping.
 - The owner-supplied Zünd item numbers replace the old working references. In particular, do not map packet code `5201345` (Z60) to Z71. Verify conflicting Z71, Z1 and Z2 references against the actual packets and current OEM documentation before approval.
 - Confirm whether Graphtec `CB09U` and the prior `CB09UB` reference denote the same blade or pack. Confirm the holder and angle for each of the four Graphtec SKUs. The code alone does not identify the angle.
+- `BLD-SF216` and `BLD-SF217` identify adapters, so those rows are staff-only and not exact public blade matches. The owner lists `SF427` for Z20 as a cross-reference; verify its identity before approving it.
 - Confirm the actual Mimaki and Roland OEM code and holder for each angle. The seed keeps the previous code candidates unverified; the owner supplied brand, angle and compatible machines, not a confirmed code for an individual option.
 - Use the existing neutral plate for products without artwork. Receive only physically counted saleable blades against the confirmed SKU; do not enter order or staging-demo quantities as opening stock.
 

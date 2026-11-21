@@ -44,7 +44,7 @@ test("labels substrate and typo-tolerant brand/tool suggestions", async () => {
   ]);
 });
 
-test.each(["", "00000000", "5201345", "5006045", "500-9802", "500-9807", "SF427", "BLD-DF113",
+test.each(["", "00000000", "5201345", "5006045", "500-9802", "500-9807", "SF427", "BLD-DF113", "BLD-SF216",
   "PRIV-Z10-ALIAS", "EDG-Z11", "EDG-MIM-A30", "CB09U", "CB09UB"])(
   "excludes unknown, corrected, private, unverified and draft codes (%j)",
   async (query) => {
@@ -82,18 +82,19 @@ test("the import has exactly one SKU per order line and the three retained draft
   try {
     const { rows } = await db.query(`
       select
-        (select count(*)::int from public.products) as families,
-        (select count(*)::int from public.products where name ~ '^[A-Z]'
+        (select count(*)::int from public.products where family_code like 'EDG-%') as families,
+        (select count(*)::int from public.products where family_code like 'EDG-%' and name ~ '^[A-Z]'
          and description ~ '^[A-Z].+[.]$' and name <> family_code) as families_with_plain_copy,
-        (select count(*)::int from public.variants where publication_status = 'draft') as drafts,
+        (select count(*)::int from public.variants where sku like 'EDG-%' and publication_status = 'draft') as drafts,
         (select bool_and(stock_on_hand = 0 and stock_reserved = 0) from public.variants
-         where publication_status = 'draft') as draft_stock_is_zero
+         where sku like 'EDG-%' and publication_status = 'draft') as draft_stock_is_zero
     `);
     expect(rows).toEqual([{ families: 26, families_with_plain_copy: 26, drafts: 24, draft_stock_is_zero: true }]);
     const { rows: variants } = await db.query(`
-      select sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence, media,
+      select sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence, media, specs,
         v.evidence_source, v.approved_at, v.publication_status, v.stock_on_hand
-      from public.variants v join public.products p on p.id = v.product_id order by sku
+      from public.variants v join public.products p on p.id = v.product_id
+      where sku like 'EDG-%' order by sku
     `);
     expect(variants.map(({ sku }) => sku)).toEqual([
       "EDG-DF113", "EDG-GRP-CB09-45", "EDG-GRP-CB09-60", "EDG-GRP-CB15-45", "EDG-GRP-CB15-60",
@@ -112,6 +113,13 @@ test("the import has exactly one SKU per order line and the three retained draft
     for (const row of variants.filter(({ sku }) => sku.startsWith("EDG-GRP-"))) {
       expect(row).toMatchObject({ price_1_4_pence: 1195, price_5_9_pence: 900, price_10_plus_pence: 750 });
     }
+    const unordered = variants.filter(({ sku }) => ["EDG-HTR040", "EDG-MIM-A30", "EDG-ROL-A30"].includes(sku));
+    for (const row of unordered) expect(row).toMatchObject({
+      specs: {}, publication_status: "draft", stock_on_hand: 0, approved_at: null, evidence_source: null,
+    });
+    expect(variants.filter(({ sku, publication_status }) =>
+      publication_status === "draft" && !unordered.some((row) => row.sku === sku),
+    ).every(({ evidence_source }) => evidence_source === "Owner-supplied specifications (2026-11-21; unverified)")).toBe(true);
     const { rows: mapped } = await db.query(`
       select v.sku, c.code from public.variants v
       join public.compatibility c on c.variant_id = v.id
@@ -180,6 +188,7 @@ test("approved cross-references find the right physical SKUs, and shared holder 
       expect(hits.map(({ sku }) => sku)).toEqual([`EDG-GRP-CB${holder}-45`, `EDG-GRP-CB${holder}-60`]);
       expect(hits.every(({ match_type, requires_choice }) => match_type === "exact" && requires_choice)).toBe(true);
     }
+    expect(await search("BLD-SF216")).toEqual([]);
   } finally {
     await db.query("rollback");
     await db.query("set role anon");
