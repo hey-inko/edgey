@@ -1,6 +1,6 @@
 # Edgey release status
 
-[Hosted staging](https://staging.edgey.site) is running and requires Vercel sign-in. The non-payment acceptance pass is recorded below; it is not a live-release sign-off. Request intake is enabled only on protected staging for approved testers using fictional details. Do not lift protection, open public intake, enable live sales or turn on ongoing Net 30 use before the applicable checks below.
+[Hosted staging](https://staging.edgey.site) is running and requires Vercel sign-in. The checklist is partly complete; it is not a live-release sign-off. Request intake is enabled only on protected staging for approved testers using fictional details. Do not lift protection, open public intake, enable live sales or turn on ongoing Net 30 use before the applicable checks below.
 
 | Release | Built | Evidence and remaining work |
 | --- | --- | --- |
@@ -10,13 +10,13 @@
 
 ## Hosted staging evidence (21 November 2026)
 
-`edgey-staging` runs on Vercel Pro from [GitHub `main`](https://github.com/hey-winkin/edgey/tree/main), on Node `24.x` pinned by `engines.node`. It uses the committed `vercel.json` and native one-minute Vercel Cron. All Deployments protection is on; pushes to `main` deploy automatically and pull request previews are disabled. The apex `edgey.site` and `www.edgey.site` are reserved for the live shop.
+`edgey-staging` runs on Vercel Pro from [GitHub `main`](https://github.com/hey-winkin/edgey/tree/main), on Node `24.x` pinned by `engines.node`. It uses the committed `vercel.json` and native one-minute Vercel Cron. All Deployments protection is on. Automatic deploys from `main` are enabled, but the first automatic deploy has not yet been observed. Pull request previews are disabled. The apex `edgey.site` and `www.edgey.site` are reserved for the live shop.
 
 The Supabase project `edgey` in Stockholm (`eu-north-1`) has all 36 migrations from the tested commit and 11 published fixture variants, loaded through SQL rather than the guarded importer. Supabase Auth uses custom SMTP through Resend with `orders@mail.edgey.site` on the verified `mail.edgey.site` domain (DMARC `p=none`). One staff account has an approved TOTP factor; the temporary test identity was removed.
 
-- **Not run or unproven:** Stripe payment, signed webhook and paid return, wallets, invoices, a paid order through picking and dispatch, and last-blade contention and expiry. The real emailed buyer magic-link callback, staff enquiry reply and the full authenticated staff mobile visual matrix also remain unproven. The Auth email request succeeded; Resend accepted six app notices, which does not prove inbox delivery.
+- **Not run or unproven:** Stripe payment, signed webhook and paid return, wallets, invoices, a paid order through picking and dispatch, and last-blade contention and expiry. The real emailed buyer magic-link callback, staff enquiry reply and the full authenticated staff mobile visual matrix also remain unproven. The Auth email request succeeded; Resend accepted six app notices, which does not prove inbox delivery. The full privacy notice, retention and purge schedule, and hosted abuse controls for public intake are not signed off.
 - **Finder timing:** Warm RPC p95 was 154 ms from a runner that was probably in the US, based on routing hints rather than confirmed geolocation. The database is in Stockholm. The network-inclusive sample exceeded 50 ms, but the target remains unproven; remeasure near the database before calling it a performance failure.
-- **Open defects:** The privacy notice links to itself; the enquiry form loses input entered before hydration; quick staff sign-in retries can produce a full-page HTTP 500; the product specification arrow drops onto a separate line; and compact dialog actions require scrolling. A fix is in progress in a separate pull request.
+- **Open defects:** The privacy notice links to itself and is not adequate for public intake; the enquiry form loses input entered before hydration; quick staff sign-in retries can produce a full-page HTTP 500 (cause not isolated); the product specification arrow drops onto a separate line; and compact dialog actions require scrolling. Fixes are in progress for a separate pull request.
 
 ## Owner decisions before opening up (PRD §8)
 
