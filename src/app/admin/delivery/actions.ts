@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireStaff } from "@/lib/admin/auth";
+import { parsePoundsToPence } from "@/lib/admin/pounds";
 import { parseUkPostcode, STANDARD_DELIVERY_CHARGE_PENCE } from "@/lib/commerce";
 import type { AdminResult } from "../form";
 
@@ -40,18 +41,17 @@ export async function saveDeliveryRule(_: AdminResult | null, form: FormData): P
   if (kind !== "next-working-day" && kind !== "agreed") return { ok: false, message: "Choose a service type." };
 
   const serviceName = field(form, "service");
-  const charge = field(form, "charge");
+  const charge = kind === "agreed" ? parsePoundsToPence(form.get("chargeGbp")) : STANDARD_DELIVERY_CHARGE_PENCE;
   const days = field(form, "days");
   if (!serviceName || serviceName.length > 100 || [...serviceName].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
     return { ok: false, message: "Enter a service name of up to 100 characters." };
   }
-  if (kind === "agreed" && (!/^\d{1,10}$/.test(charge) || Number(charge) > 2_147_483_647 ||
-    !/^\d{1,3}$/.test(days) || Number(days) < 2 || Number(days) > 366)) {
-    return { ok: false, message: "For an agreed service, enter the price in whole pence and a transit time of 2 to 366 working days." };
+  if (charge === null || (kind === "agreed" && (!/^\d{1,3}$/.test(days) || Number(days) < 2 || Number(days) > 366))) {
+    return { ok: false, message: "For an agreed service, enter a price in pounds from £0.00 to £21,474,836.47 with up to two decimal places, and a transit time of 2 to 366 working days." };
   }
   const { error } = await db.from("delivery_rules").upsert({
     scope, code, kind, service_name: serviceName,
-    charge_ex_vat_pence: kind === "agreed" ? Number(charge) : STANDARD_DELIVERY_CHARGE_PENCE,
+    charge_ex_vat_pence: charge,
     working_days: kind === "agreed" ? Number(days) : 1,
   });
   return error ? { ok: false, message: "Couldn’t save the delivery rule." } : saved("Delivery rule saved.");

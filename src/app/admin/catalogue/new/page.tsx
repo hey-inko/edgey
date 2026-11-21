@@ -1,6 +1,7 @@
 import { requireStaff } from "@/lib/admin/auth";
 import { serviceClient } from "@/lib/supabase/service";
 import { AdminField, AdminForm, AdminHeading, AdminLink, AdminSection } from "../../ui";
+import { PriceTierFields } from "../price-tier-fields";
 import { createDraftVariant } from "./actions";
 
 export const metadata = { title: "Add draft variant" };
@@ -24,11 +25,7 @@ export default async function NewVariantPage() {
         </AdminField>
         <AdminField label="Edgey SKU"><input name="sku" placeholder="EDG-MIM-A45" maxLength={80} required /></AdminField>
         <AdminField label="Variant label (optional)"><input name="optionLabel" maxLength={160} /></AdminField>
-        <div className="admin-grid">
-          <AdminField label="1–4 units (pence ex VAT)"><input name="price1" type="number" min={1} max={2_147_483_647} required /></AdminField>
-          <AdminField label="5–9 units (pence ex VAT)"><input name="price5" type="number" min={1} max={2_147_483_647} required /></AdminField>
-          <AdminField label="10+ units (pence ex VAT)"><input name="price10" type="number" min={1} max={2_147_483_647} required /></AdminField>
-        </div>
+        <PriceTierFields required />
       </AdminForm>
     </AdminSection>
   </>;

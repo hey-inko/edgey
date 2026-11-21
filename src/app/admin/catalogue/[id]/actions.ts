@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/admin/auth";
 import { catalogueId, mutateAdminCatalogue } from "@/lib/admin/catalogue";
+import { emptyTierPrices, parseTierPrices } from "@/lib/admin/price-tiers";
 
 type State = { message: string; ok: boolean };
 class CatalogueInputError extends Error {}
@@ -34,15 +35,6 @@ function version(data: FormData, name: string) {
   return value;
 }
 
-function pence(data: FormData, name: string) {
-  const value = field(data, name, 10);
-  if (!value) return null;
-  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 2147483647) {
-    throw new CatalogueInputError("Enter each price as a positive whole number of pence.");
-  }
-  return Number(value);
-}
-
 function dimension(data: FormData, name: string, angle = false) {
   const value = field(data, name, 6);
   if (!value) return null;
@@ -72,20 +64,8 @@ function sellingData(data: FormData) {
     return value;
   });
 
-  const prices = {
-    price_1_4_pence: pence(data, "price_1_4_pence"),
-    price_5_9_pence: pence(data, "price_5_9_pence"),
-    price_10_plus_pence: pence(data, "price_10_plus_pence"),
-  };
-  const { price_1_4_pence: first, price_5_9_pence: middle, price_10_plus_pence: last } = prices;
-  if (first !== null || middle !== null || last !== null) {
-    if (first === null || middle === null || last === null) {
-      throw new CatalogueInputError("Enter all three price tiers or leave all three blank on a draft.");
-    }
-    if (middle > first || last > middle) {
-      throw new CatalogueInputError("The unit price must stay the same or decrease in each higher quantity band.");
-    }
-  }
+  const prices = parseTierPrices(data);
+  if (!prices.ok) throw new CatalogueInputError(prices.message);
 
   return {
     name: field(data, "name", 160),
@@ -100,7 +80,7 @@ function sellingData(data: FormData) {
     cutting_depth_mm: dimension(data, "cutting_depth_mm"),
     blade_thickness_mm: dimension(data, "blade_thickness_mm"),
     diameter_mm: dimension(data, "diameter_mm"),
-    specs: Object.fromEntries(specs), substrates, ...prices,
+    specs: Object.fromEntries(specs), substrates, ...(prices.value ?? emptyTierPrices),
   };
 }
 

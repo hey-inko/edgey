@@ -19,9 +19,10 @@ test("a catalogue operator can save specifications before setting a draft's pric
     `, [familyId, fixtureCode, variantId]);
     await signInStaff(page, await createLocalAdminUser("catalogue"));
     await page.goto(`/admin/catalogue/${variantId}`);
-    const firstTier = page.getByLabel("1–4 blades (pence)");
+    const firstTier = page.getByLabel("1–4 blades (£ ex VAT)");
     await expect(firstTier).toHaveValue("");
-    await firstTier.fill("2150");
+    await firstTier.fill("21.50");
+    await expect(page.getByText("£25.80 inc VAT (20%)")).toBeVisible();
     await page.getByRole("button", { name: "Save selling data" }).click();
     await expect(page.getByRole("alert").filter({ hasText: "Enter all three price tiers" })).toBeVisible();
     await firstTier.clear();
@@ -33,6 +34,21 @@ test("a catalogue operator can save specifications before setting a draft's pric
     await page.reload();
     await expect(part).toHaveValue("TEST-UNPRICED-DRAFT");
     await expect(firstTier).toHaveValue("");
+
+    await firstTier.fill("21.51");
+    await page.getByLabel("5–9 blades (£ ex VAT)").fill("18.95");
+    await page.getByLabel("10+ blades (£ ex VAT)").fill("16.5");
+    for (const vatInclusive of ["£25.81", "£22.74", "£19.80"]) {
+      await expect(page.getByText(`${vatInclusive} inc VAT (20%)`)).toBeVisible();
+    }
+    await page.getByRole("button", { name: "Save selling data" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Selling data saved." })).toBeVisible();
+    expect((await db.query(`
+      select price_1_4_pence, price_5_9_pence, price_10_plus_pence, publication_status
+      from public.variants where id = $1
+    `, [variantId])).rows).toEqual([{
+      price_1_4_pence: 2151, price_5_9_pence: 1895, price_10_plus_pence: 1650, publication_status: "draft",
+    }]);
   } finally {
     try {
       await db.query("delete from public.variants where id = $1", [variantId]);
@@ -51,6 +67,8 @@ test("a catalogue operator approves and publishes a draft for public search", as
   await expect(page.getByRole("heading", { name: "Tight-corner drag blade" })).toBeVisible();
   const variantPath = new URL(page.url()).pathname;
   const db = localAdminClient();
+  await expect(page.getByLabel("1–4 blades (£ ex VAT)")).toHaveValue("22.50");
+  await expect(page.getByText("£27.00 inc VAT (20%)")).toBeVisible();
 
   await page.getByLabel("Supplier name").fill("Fixture Tooling");
   await page.getByLabel("Supplier part number").fill("FIXTURE-Z11");
