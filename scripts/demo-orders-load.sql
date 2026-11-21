@@ -27,6 +27,7 @@ declare
   customer_id constant text := 'cus_EdgeyDemo' || provider_suffix;
   provider_account_id constant text := 'acct_EdgeyDemo' || provider_suffix;
   postcode constant text := 'SW9 9ZZ';
+  vat_rate_bps constant integer := 2000;
   terms jsonb := public.checkout_delivery_terms(postcode);
   item record;
   variant public.variants;
@@ -110,7 +111,8 @@ begin
     goods_net := requested * unit_price;
     delivery_net := case when terms->'quote'->>'kind' = 'next-working-day' and goods_net >= 15000
       then 0 else (terms->'quote'->>'chargeExVatPence')::integer end;
-    vat := round(goods_net * 0.2) + round(delivery_net * 0.2);
+    vat := (goods_net::bigint * vat_rate_bps + 5000) / 10000
+      + (delivery_net::bigint * vat_rate_bps + 5000) / 10000;
 
     created := least(now(), (
       date_trunc('week', now() at time zone 'Europe/London') - item.weeks * interval '1 week'
@@ -154,7 +156,7 @@ begin
       jsonb_build_object('email', email, 'business_name', '[DEMO] ' || item.company,
         'recipient_name', '[DEMO] Test buyer', 'buying_for_work', true),
       jsonb_build_object('line1', '1 Demonstration Yard - DO NOT SHIP', 'town', 'London', 'postcode', postcode, 'country', 'GB'),
-      jsonb_build_object('goods_net_pence', goods_net, 'delivery_net_pence', delivery_net, 'vat_rate_bps', 2000,
+      jsonb_build_object('goods_net_pence', goods_net, 'delivery_net_pence', delivery_net, 'vat_rate_bps', vat_rate_bps,
         'vat_pence', vat, 'gross_pence', goods_net + delivery_net + vat),
       clock_timestamp() + interval '35 minutes', terms->'quote'->>'serviceName', dispatch_date, delivery_date, terms,
       item.method, case when item.method = 'net30' then buyer_id end,
