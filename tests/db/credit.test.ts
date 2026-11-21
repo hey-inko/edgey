@@ -64,7 +64,7 @@ async function fixture(financeId: string, limit = 20000) {
   return { buyer, applicationId, account };
 }
 
-async function variant(productId = randomUUID()) {
+async function variant(productId = randomUUID(), stockOnHand = 3) {
   const id = randomUUID();
   await db.query(`
     insert into public.products (id, family_code, slug, name, tool_category)
@@ -74,8 +74,8 @@ async function variant(productId = randomUUID()) {
     insert into public.variants (
       id, product_id, sku, option_label, supplier_part_number, evidence_source, approved_at, publication_status,
       price_1_4_pence, price_5_9_pence, price_10_plus_pence, stock_on_hand
-    ) values ($1, $2, $1::uuid::text, '45°', $1::uuid::text, 'Credit fixture', now(), 'published', 10000, 9900, 9800, 3)
-  `, [id, productId]);
+    ) values ($1, $2, $1::uuid::text, '45°', $1::uuid::text, 'Credit fixture', now(), 'published', 10000, 9900, 9800, $3)
+  `, [id, productId, stockOnHand]);
   return id;
 }
 
@@ -105,10 +105,10 @@ function hold(variantId: string, buyer: { id: string; email: string }, {
 const inPast = { issued: "2020-01-02T12:00:00Z", due: "2020-02-01T12:00:00Z" };
 function bind(order: Order, account: Account, providerId: string, {
   gross = 12000, currency = "GBP", dates = inPast,
-} = {}) {
+} = {}, client = db) {
   return rpc("bind_invoice", [
     order.id, providerId, account.stripe_customer_id, gross, currency, dates.issued, dates.due, "2099-01-06", "2099-01-07",
-  ]);
+  ], client);
 }
 
 const stock = (id: string) => one("select stock_on_hand, stock_reserved from public.variants where id = $1", [id]);
@@ -152,8 +152,9 @@ async function cleanup(account: Account | undefined, applicationId: string, prod
       for (const table of ["credit_ledger", "credit_holds", "invoices"]) {
         await db.query(`delete from public.${table} where trade_account_id = $1`, [account.id]);
       }
-      for (const table of ["order_outbox", "stock_movements", "stock_reservations", "order_items"]) {
-        await db.query(`delete from public.${table} where order_id in (
+      for (const table of ["private.order_operations", "public.order_outbox", "public.stock_movements",
+        "public.stock_reservations", "public.order_items"]) {
+        await db.query(`delete from ${table} where order_id in (
           select id from public.orders where trade_account_id = $1
         )`, [account.id]);
       }
@@ -221,6 +222,8 @@ describe("trade credit transactions", () => {
     expect(await suspend()).toMatchObject({ status: "suspended" });
     await reject(() => hold(item, buyer), "approved_trade_account_required", "42501");
     expect(await hold(item, buyer, { token })).toMatchObject({ id: order.id });
+    expect(await bind(order, account, stripeId("in"))).toMatchObject({ payment_status: "invoiced" });
+    await position(account, 0, 12000, 0);
   });
 
   test("reconciles a provider timeout and a lost bind response to one invoice, PO, exposure and confirmation", async () => {
@@ -308,6 +311,7 @@ describe("trade credit transactions", () => {
       payment_status: "paid", paid_pence: 11000 });
 
     await note("post-payment-note", 2000, 0);
+    await reject(() => note("more-than-original", 9001, 0), "credit_note_exceeds_invoice_amounts");
     const refund = () => rpc("apply_invoice_refund", [invoiceId, "refund-1", 2000, "GBP"]);
     await refund();
     await refund();
@@ -317,6 +321,35 @@ describe("trade credit transactions", () => {
     expect(await stock(item)).toEqual({ stock_on_hand: 2, stock_reserved: 0 });
     expect((await db.query("select kind from public.stock_movements where order_id = $1 order by id", [order.id])).rows)
       .toEqual([{ kind: "reserve" }, { kind: "dispatch" }]);
+  });
+
+  test("distinguishes full credit from cash settlement and requires refunds before a partially paid void", async () => {
+    const finance = await user({ role: "finance" });
+    const { buyer, account } = await fixture(finance.id);
+    const item = await variant();
+    const order = await hold(item, buyer);
+    const providerId = stripeId("in");
+    await bind(order, account, providerId);
+    await reject(() => rpc("apply_credit_note", [providerId, "invalid-split", 100, 101, "GBP"]), "invalid_credit_note_split");
+    await reject(() => rpc("apply_credit_note", [providerId, "premature-post-credit", 100, 0, "GBP"]),
+      "credit_note_exceeds_invoice_amounts");
+    const fullCredit = () => rpc("apply_credit_note", [providerId, "all-credit", 12000, 12000, "GBP"]);
+    expect(await fullCredit()).toMatchObject({ status: "credited", amount_remaining_pence: 0 });
+    expect(await fullCredit()).toMatchObject({ status: "credited", amount_remaining_pence: 0 });
+    expect(await one("select payment_status, fulfilment_status, paid_pence from public.orders where id = $1", [order.id]))
+      .toEqual({ payment_status: "voided", fulfilment_status: "cancelled", paid_pence: 0 });
+    await position(account, 0, 0, 20000);
+    expect(await stock(item)).toEqual({ stock_on_hand: 3, stock_reserved: 0 });
+
+    const second = await hold(item, buyer);
+    const partiallyPaid = stripeId("in");
+    await bind(second, account, partiallyPaid);
+    await rpc("apply_invoice_payment", [partiallyPaid, "partial-before-void", 5000, "GBP"]);
+    await reject(() => rpc("void_invoice", [partiallyPaid]), "invoice_has_unrefunded_payments");
+    await position(account, 0, 7000, 13000);
+    await rpc("apply_invoice_refund", [partiallyPaid, "refund-before-void", 5000, "GBP"]);
+    expect(await rpc("void_invoice", [partiallyPaid])).toMatchObject({ status: "voided", amount_remaining_pence: 0 });
+    await position(account, 0, 0, 20000);
   });
 
   test("releases an abandoned hold and cancels a bound order only on verified financial transitions", async () => {
@@ -447,11 +480,16 @@ describe("trade credit transactions", () => {
   });
 });
 
-test.each(["read committed", "repeatable read"])("two £120 orders on separate connections compete for £200 (%s)", async (isolation) => {
+test.each([
+  { isolation: "read committed", replay: false },
+  { isolation: "repeatable read", replay: false },
+  { isolation: "read committed", replay: true },
+])("serializes £120 checkouts against £200 ($isolation, same attempt: $replay)", async ({ isolation, replay }) => {
   const finance = await user({ role: "finance" });
   const { buyer, account, applicationId } = await fixture(finance.id);
   const productId = randomUUID();
-  const tokens = [randomUUID(), randomUUID()];
+  const token = randomUUID();
+  const tokens = [token, replay ? token : randomUUID()];
   const workers: Client[] = [];
   try {
     const items = [await variant(productId), await variant(productId)];
@@ -468,7 +506,7 @@ test.each(["read committed", "repeatable read"])("two £120 orders on separate c
       await db.query("select id from public.trade_accounts where id = $1 for update", [account.id]);
       results = Promise.allSettled(workers.map(async (client, i) => {
         try {
-          const order = await hold(items[i]!, buyer, { token: tokens[i]!, po: `PO-${i}` }, client);
+          const order = await hold(items[replay ? 0 : i]!, buyer, { token: tokens[i]!, po: replay ? "PO-replay" : `PO-${i}` }, client);
           await client.query("commit");
           return order;
         } catch (error) {
@@ -488,9 +526,13 @@ test.each(["read committed", "repeatable read"])("two £120 orders on separate c
       await results;
     }
     const outcomes = await results;
-    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
-    for (const outcome of outcomes) {
-      if (outcome.status === "rejected") expect(outcome.reason).toMatchObject(isolation === "read committed"
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", replay ? "fulfilled" : "rejected"]);
+    if (replay) {
+      const [initial, retry] = outcomes;
+      expect(retry).toEqual(initial);
+    } else {
+      const loser = outcomes.find((outcome) => outcome.status === "rejected")!;
+      expect(loser.reason).toMatchObject(isolation === "read committed"
         ? { code: "P0001", message: "insufficient_trade_credit" } : { code: "40001" });
     }
     expect((await db.query("select id from public.orders where trade_account_id = $1", [account.id])).rowCount).toBe(1);
@@ -502,6 +544,46 @@ test.each(["read committed", "repeatable read"])("two £120 orders on separate c
   } finally {
     await Promise.all(workers.map((client) => client.end()));
     await cleanup(account, applicationId, productId, [buyer.id, finance.id]);
+  }
+});
+
+test("concurrent voids and dispatches on one variant preserve the stock and credit ledgers", async () => {
+  const finance = await user({ role: "finance" });
+  const warehouse = await user({ role: "warehouse" });
+  const { buyer, account, applicationId } = await fixture(finance.id, 144000);
+  const productId = randomUUID();
+  const workers: Client[] = [];
+  try {
+    const count = 12;
+    const item = await variant(productId, count);
+    const orders = [];
+    for (let i = 0; i < count; i++) {
+      const order = await hold(item, buyer);
+      const invoiceId = stripeId("in");
+      await bind(order, account, invoiceId);
+      await rpc("start_picking", [order.id, "pick", warehouse.id]);
+      orders.push({ order, invoiceId });
+      workers.push(await connect());
+    }
+    await Promise.all(workers.map((client) => client.query("set role service_role")));
+    const outcomes = await Promise.allSettled(workers.map((client, i) => {
+      const { order, invoiceId } = orders[i]!;
+      return i % 2 === 0
+        ? rpc("void_invoice", [invoiceId], client)
+        : rpc("dispatch_order", [order.id, "dispatch", warehouse.id, "Test Carrier", "TRACK"], client);
+    }));
+    expect(outcomes.filter((result) => result.status === "rejected")).toEqual([]);
+    expect(await stock(item)).toEqual({ stock_on_hand: 6, stock_reserved: 0 });
+    expect(await one(`
+      select count(*) filter (where kind = 'release')::int as released,
+        count(*) filter (where kind = 'dispatch')::int as dispatched,
+        sum(reserved_delta)::int as reserved_delta
+      from public.stock_movements where variant_id = $1
+    `, [item])).toEqual({ released: 6, dispatched: 6, reserved_delta: 0 });
+    await position(account, 0, 72000, 72000);
+  } finally {
+    await Promise.all(workers.map((client) => client.end()));
+    await cleanup(account, applicationId, productId, [buyer.id, finance.id, warehouse.id]);
   }
 });
 

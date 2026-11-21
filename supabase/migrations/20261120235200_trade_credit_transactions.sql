@@ -378,6 +378,8 @@ declare
   target public.orders;
   debt_delta integer;
   remaining_pence integer;
+  note_total bigint;
+  note_post_payment bigint;
 begin
   select order_id into invoice.order_id from public.invoices where provider_invoice_id = p_provider_invoice_id;
   if not found then
@@ -404,14 +406,25 @@ begin
     return invoice;
   end if;
   if (invoice.status = 'voided' and (p_kind not in ('refund', 'credit_note') or debt_delta <> 0))
-    or (p_kind = 'void' and invoice.status = 'paid') then
+    or (p_kind = 'void' and invoice.status in ('paid', 'credited')) then
     raise exception using errcode = '22023', message = 'invoice_operation_not_allowed';
+  end if;
+  if p_kind = 'void' and target.paid_pence > target.refunded_pence then
+    raise exception using errcode = '22023', message = 'invoice_has_unrefunded_payments';
   end if;
   if -debt_delta > invoice.amount_remaining_pence then
     raise exception using errcode = '22023', message = 'invoice_adjustment_exceeds_amount_remaining';
   end if;
   if p_kind = 'refund' and p_amount_pence > target.paid_pence - target.refunded_pence then
     raise exception using errcode = '22023', message = 'refund_exceeds_invoice_payments';
+  end if;
+  if p_kind = 'credit_note' then
+    select sum((input->>0)::integer), sum((input->>0)::integer + outstanding_delta_pence)
+      into note_total, note_post_payment
+    from public.credit_ledger where order_id = invoice.order_id and kind = 'credit_note';
+    if note_total > invoice.amount_due_pence or note_post_payment > target.paid_pence then
+      raise exception using errcode = '22023', message = 'credit_note_exceeds_invoice_amounts';
+    end if;
   end if;
 
   remaining_pence := invoice.amount_remaining_pence + debt_delta;
@@ -424,13 +437,14 @@ begin
     update public.invoices set amount_remaining_pence = remaining_pence,
       status = (case
         when p_kind = 'void' then 'voided'
+        when remaining_pence = 0 and target.paid_pence = 0 then 'credited'
         when remaining_pence = 0 then 'paid'
         when target.paid_pence > 0 then 'partially_paid'
         else 'open'
       end)::public.trade_invoice_status
     where order_id = invoice.order_id returning * into invoice;
   end if;
-  if p_kind = 'void' and target.fulfilment_status in ('ready_to_pick', 'picking') then
+  if invoice.status in ('voided', 'credited') and target.fulfilment_status in ('ready_to_pick', 'picking') then
     perform private.finish_reservations(target.id, 'allocated', 'release');
     target.fulfilment_status := 'cancelled';
   end if;
@@ -438,7 +452,7 @@ begin
   update public.orders set paid_pence = target.paid_pence, refunded_pence = target.refunded_pence,
     fulfilment_status = target.fulfilment_status,
     payment_status = (case
-      when invoice.status = 'voided' then 'voided'
+      when invoice.status in ('voided', 'credited') then 'voided'
       when invoice.status = 'open' then 'invoiced'
       when invoice.status = 'partially_paid' then 'partially_paid'
       when target.refunded_pence > 0 and target.refunded_pence = target.paid_pence then 'refunded'

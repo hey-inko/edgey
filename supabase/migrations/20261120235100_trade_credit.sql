@@ -1,6 +1,6 @@
 create type public.trade_account_status as enum ('pending', 'approved', 'suspended');
 create type public.credit_hold_status as enum ('held', 'converted', 'released');
-create type public.trade_invoice_status as enum ('open', 'partially_paid', 'paid', 'voided');
+create type public.trade_invoice_status as enum ('open', 'partially_paid', 'paid', 'credited', 'voided');
 create type public.credit_ledger_kind as enum (
   'approve', 'set_limit', 'suspend', 'hold', 'release', 'issue', 'payment', 'credit_note', 'void', 'refund'
 );
@@ -55,7 +55,7 @@ create table public.invoices (
   status public.trade_invoice_status not null default 'open',
   updated_at timestamptz not null default now(),
   foreign key (order_id, trade_account_id) references public.orders (id, trade_account_id),
-  check ((status in ('paid', 'voided')) = (amount_remaining_pence = 0))
+  check ((status in ('paid', 'credited', 'voided')) = (amount_remaining_pence = 0))
 );
 create index invoices_account_idx on public.invoices (trade_account_id);
 create index invoices_overdue_idx on public.invoices (due_at) where amount_remaining_pence > 0;
