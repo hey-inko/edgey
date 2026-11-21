@@ -1,9 +1,13 @@
 import { notFound } from "next/navigation";
 import { AdminField, AdminForm, AdminHeading, AdminLink, AdminNotice, AdminSection } from "@/app/admin/ui";
 import { requireStaff } from "@/lib/admin/auth";
-import { catalogueId, getAdminCatalogueVariant, variantReviewStatus } from "@/lib/admin/catalogue";
+import { catalogueId, getAdminCataloguePricing, getAdminCatalogueVariant, variantReviewStatus } from "@/lib/admin/catalogue";
 import { displayState, displayTimestamp } from "@/lib/admin/format";
+import { getCurrentStaffCost } from "@/lib/admin/stock-cost-data";
 import { editCatalogueVariant } from "./actions";
+import { archiveVariant } from "./cost-actions";
+import { VariantCost } from "./variant-cost";
+import { PriceTierFields } from "../price-tier-fields";
 
 function ReviewFields() {
   return (
@@ -48,10 +52,24 @@ function ReviewRecord({
 }
 
 export default async function CatalogueVariantPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireStaff("catalogue");
+  const { db, roles } = await requireStaff("catalogue", "finance");
   const { id } = await params;
   if (!catalogueId.test(id)) notFound();
-  const record = await getAdminCatalogueVariant(id);
+  if (!roles.includes("catalogue")) {
+    const [variant, cost] = await Promise.all([getAdminCataloguePricing(id), getCurrentStaffCost(db, roles, id)]);
+    if (!variant?.products) notFound();
+    return (
+      <>
+        <AdminLink href="/admin/catalogue">Back to catalogue</AdminLink>
+        <AdminHeading eyebrow={variant.sku} title={variant.products.name} description={variant.option_label ?? undefined} />
+        <VariantCost id={id} result={cost} />
+        <AdminSection title="Selling prices">
+          <PriceTierFields prices={variant} landedUnitPence={cost.cost?.landed_unit_pence} readOnly />
+        </AdminSection>
+      </>
+    );
+  }
+  const [record, cost] = await Promise.all([getAdminCatalogueVariant(id), getCurrentStaffCost(db, roles, id)]);
   if (!record) notFound();
 
   const { variant, family, categories, substrates, brands } = record;
@@ -72,7 +90,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
           <dt>Publication</dt><dd>{displayState(variant.publication_status)}</dd>
           <dt>Stock status</dt><dd>{variant.availability === "in_stock" ? "In stock" : "Out of stock"}</dd>
         </dl>
-        {variant.publication_status !== "archived" && (
+        {variant.publication_status !== "archived" ? <>
           <AdminForm action={action} submit={published ? "Unpublish variant" : "Publish variant"}>
             <input type="hidden" name="version" value={variant.catalogue_updated_at} />
             <input type="hidden" name="operation" value={published ? "unpublish" : "publish"} />
@@ -80,14 +98,32 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
               ? "Unpublishing hides this SKU and its references without changing existing orders or stock."
               : "Publishing requires an approved variant, complete selling data and an approved public OEM reference."}</p>
           </AdminForm>
-        )}
+          {cost.available && <details className="admin-panel">
+            <summary>Retire this variant</summary>
+            <AdminForm action={archiveVariant.bind(null, id)} submit="Archive variant">
+              <input type="hidden" name="version" value={variant.catalogue_updated_at} />
+              <p>Archiving removes this SKU and its references from the storefront and Finder. It keeps order history and stock. You can’t publish an archived variant again.</p>
+              <label className="admin-check"><input type="checkbox" name="confirmArchive" value="yes" required /> Permanently retire this SKU</label>
+            </AdminForm>
+          </details>}
+        </> : <p className="admin-muted">This variant is retired. Its stock and previous orders are still available to staff.</p>}
       </AdminSection>
+      <VariantCost id={id} result={cost} />
+      {roles.includes("warehouse") && <AdminLink href={`/admin/stock/${id}`}>View stock and receipts</AdminLink>}
+      {variant.publication_status === "archived" ? <AdminSection title="Selling prices">
+        <PriceTierFields prices={variant} landedUnitPence={cost.cost?.landed_unit_pence} readOnly />
+      </AdminSection> : <>
       <AdminSection title="Selling data">
         <p>Family fields apply to every SKU in this family. Changing this variant’s supplier, configuration, specifications or materials sends it and its approved compatibility references back to review and takes it off the storefront if published.</p>
         <AdminForm action={action} submit="Save selling data">
           <input type="hidden" name="version" value={variant.catalogue_updated_at} />
           <input type="hidden" name="familyVersion" value={family.updated_at} />
           <input type="hidden" name="operation" value="save" />
+          <fieldset className="admin-panel min-w-0">
+            <legend>Selling prices</legend>
+            <p>Enter the price per blade in pounds, excluding VAT.{draft && " You can leave all three prices blank on a draft."}</p>
+            <PriceTierFields prices={variant} required={!draft} landedUnitPence={cost.cost?.landed_unit_pence} />
+          </fieldset>
           <div className="admin-grid">
             <AdminField label="Family name"><input name="name" defaultValue={family.name} maxLength={160} required /></AdminField>
             <AdminField label="Tool category">
@@ -122,12 +158,6 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
               ))}
             </div>
           </fieldset>
-          <p>Enter the price per blade in pence, excluding VAT.{draft && " You can leave all three prices blank on a draft."}</p>
-          <div className="admin-grid">
-            <AdminField label="1–4 blades (pence)"><input type="number" name="price_1_4_pence" defaultValue={variant.price_1_4_pence ?? undefined} min={1} max={2147483647} required={!draft} /></AdminField>
-            <AdminField label="5–9 blades (pence)"><input type="number" name="price_5_9_pence" defaultValue={variant.price_5_9_pence ?? undefined} min={1} max={2147483647} required={!draft} /></AdminField>
-            <AdminField label="10+ blades (pence)"><input type="number" name="price_10_plus_pence" defaultValue={variant.price_10_plus_pence ?? undefined} min={1} max={2147483647} required={!draft} /></AdminField>
-          </div>
         </AdminForm>
       </AdminSection>
       <AdminSection title="Variant approval">
@@ -168,6 +198,7 @@ export default async function CatalogueVariantPage({ params }: { params: Promise
           </details>
         ))}
       </AdminSection>
+      </>}
     </>
   );
 }

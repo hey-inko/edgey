@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireStaff } from "@/lib/admin/auth";
+import { formatPoundsInput } from "@/lib/admin/pounds";
 import { formatGbp } from "@/lib/commerce";
 import type { Database } from "@/lib/supabase/database.types";
 import { AdminField, AdminForm, AdminHeading, AdminLink, AdminNotice, AdminSection, AdminTable } from "../ui";
@@ -73,8 +74,8 @@ export default async function DeliverySettings({ searchParams }: {
             <option value="agreed">Agreed slower service</option>
           </select></AdminField>
           <AdminField label="Service name"><input name="service" maxLength={100} defaultValue={rule?.service_name ?? undefined} /></AdminField>
-          <AdminField label="Agreed price ex VAT (pence)"><input name="charge" inputMode="numeric" maxLength={10}
-            defaultValue={rule?.kind === "agreed" ? rule.charge_ex_vat_pence ?? undefined : undefined} /></AdminField>
+          <AdminField label="Agreed price ex VAT (£)"><input name="chargeGbp" inputMode="decimal"
+            defaultValue={rule?.kind === "agreed" ? formatPoundsInput(rule.charge_ex_vat_pence) : undefined} /></AdminField>
           <AdminField label="Agreed transit (working days)"><input name="days" inputMode="numeric" maxLength={3}
             defaultValue={rule?.kind === "agreed" ? rule.working_days ?? undefined : undefined} /></AdminField>
         </div>

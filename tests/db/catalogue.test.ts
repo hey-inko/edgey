@@ -91,7 +91,7 @@ test("the import has exactly one SKU per order line and the three retained draft
     `);
     expect(rows).toEqual([{ families: 26, families_with_plain_copy: 26, drafts: 24, draft_stock_is_zero: true }]);
     const { rows: variants } = await db.query(`
-      select sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence, media, specs,
+      select sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence, specs,
         v.evidence_source, v.approved_at, v.publication_status, v.stock_on_hand
       from public.variants v join public.products p on p.id = v.product_id
       where sku like 'EDG-%' order by sku
@@ -104,12 +104,6 @@ test("the import has exactly one SKU per order line and the three retained draft
       "EDG-Z1", "EDG-Z10", "EDG-Z11", "EDG-Z16", "EDG-Z17", "EDG-Z2", "EDG-Z20",
       "EDG-Z21", "EDG-Z28", "EDG-Z46", "EDG-Z50", "EDG-Z52", "EDG-Z71",
     ]);
-    const unpriced = variants.filter(({ price_1_4_pence }) => price_1_4_pence === null);
-    expect(unpriced.map(({ sku }) => sku)).toEqual(["EDG-DF113", "EDG-SUM-9802", "EDG-SUM-9803"]);
-    for (const row of unpriced) expect(row).toMatchObject({
-      price_5_9_pence: null, price_10_plus_pence: null, media: {}, publication_status: "draft",
-      stock_on_hand: 0, approved_at: null, evidence_source: "Owner-supplied specifications (2026-11-21; unverified)",
-    });
     for (const row of variants.filter(({ sku }) => sku.startsWith("EDG-GRP-"))) {
       expect(row).toMatchObject({ price_1_4_pence: 1195, price_5_9_pence: 900, price_10_plus_pence: 750 });
     }
@@ -135,6 +129,29 @@ test("the import has exactly one SKU per order line and the three retained draft
       { sku: "EDG-Z46", code: "3910328" },
       { sku: "EDG-Z71", code: "3910334" },
     ]);
+  } finally {
+    await db.query("set role anon");
+  }
+});
+
+test("the three accepted tier sets are seeded in pence without approving or publishing the variants", async () => {
+  await db.query("reset role");
+  try {
+    const { rows } = await db.query(`
+      select v.sku, v.price_1_4_pence, v.price_5_9_pence, v.price_10_plus_pence, p.media,
+        v.evidence_source, v.approved_at, v.publication_status, v.stock_on_hand
+      from public.variants v join public.products p on p.id = v.product_id
+      where v.sku in ('EDG-DF113', 'EDG-SUM-9802', 'EDG-SUM-9803') order by v.sku
+    `);
+    expect(rows).toEqual([
+      ["EDG-DF113", 2150, 1895, 1650],
+      ["EDG-SUM-9802", 2095, 1850, 1595],
+      ["EDG-SUM-9803", 2095, 1850, 1595],
+    ].map(([sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence]) => ({
+      sku, price_1_4_pence, price_5_9_pence, price_10_plus_pence, media: {},
+      publication_status: "draft", stock_on_hand: 0, approved_at: null,
+      evidence_source: "Owner-supplied specifications (2026-11-21; unverified)",
+    })));
   } finally {
     await db.query("set role anon");
   }
@@ -199,29 +216,37 @@ test("unpriced drafts can receive stock but cannot take a partial price set or p
   await db.query("reset role");
   await db.query("begin");
   try {
+    await db.query(`
+      with family as (
+        insert into public.products (family_code, slug, name, tool_category)
+        values ('TEST-UNPRICED', 'test-unpriced', 'Unpriced test blades', 'drag') returning id
+      )
+      insert into public.variants (product_id, sku)
+      select id, sku from family cross join (values ('TEST-UNPRICED-A'), ('TEST-UNPRICED-B')) as fixtures(sku)
+    `);
     const { rows: [actor] } = await db.query<{ user_id: string }>(`
       with actor as (insert into auth.users (id) values (gen_random_uuid()) returning id)
       insert into public.staff_members (user_id, role) select id, 'warehouse' from actor returning user_id
     `);
     await db.query(`
       select public.receive_stock(id, 'test:draft-stock', 2, $1)
-      from public.variants where sku = 'EDG-SUM-9802'
+      from public.variants where sku = 'TEST-UNPRICED-A'
     `, [actor!.user_id]);
     const { rows } = await db.query(`
       select sku, stock_on_hand, publication_status from public.variants
-      where sku like 'EDG-SUM-980%' order by sku
+      where sku in ('TEST-UNPRICED-A', 'TEST-UNPRICED-B') order by sku
     `);
     expect(rows).toEqual([
-      { sku: "EDG-SUM-9802", stock_on_hand: 2, publication_status: "draft" },
-      { sku: "EDG-SUM-9803", stock_on_hand: 0, publication_status: "draft" },
+      { sku: "TEST-UNPRICED-A", stock_on_hand: 2, publication_status: "draft" },
+      { sku: "TEST-UNPRICED-B", stock_on_hand: 0, publication_status: "draft" },
     ]);
     await db.query("savepoint before_partial_price");
-    await expect(db.query("update public.variants set price_1_4_pence = 1000 where sku = 'EDG-SUM-9802'"))
+    await expect(db.query("update public.variants set price_1_4_pence = 1000 where sku = 'TEST-UNPRICED-A'"))
       .rejects.toMatchObject({ constraint: "variants_prices_required_outside_draft" });
     await db.query("rollback to before_partial_price");
     await expect(db.query(`
       update public.variants set publication_status = 'published', approved_at = now(), supplier_part_number = 'TEST'
-      where sku = 'EDG-SUM-9802'
+      where sku = 'TEST-UNPRICED-A'
     `)).rejects.toMatchObject({ constraint: "variants_prices_required_outside_draft" });
   } finally {
     await db.query("rollback");

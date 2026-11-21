@@ -6,15 +6,18 @@ import { AdminPagination } from "@/app/admin/pagination";
 import { AdminHeading, AdminLink, AdminNotice, AdminTable } from "@/app/admin/ui";
 
 export default async function CataloguePage({ searchParams }: { searchParams: Promise<{ page?: string | string[] }> }) {
-  await requireStaff("catalogue");
+  const { roles } = await requireStaff("catalogue", "finance");
+  const canEdit = roles.includes("catalogue");
   const query = await searchParams;
   const page = adminPage(query.page);
   const variants = await listAdminCatalogue(page);
 
   return (
     <>
-      <AdminHeading title="Catalogue" description="Review blade variants, record verified fit and control what appears in the storefront." />
-      <AdminLink href="/admin/catalogue/new">Add draft variant</AdminLink>
+      <AdminHeading title="Catalogue" description={canEdit
+        ? "Manage blade variants, prices, costs and publication."
+        : "Review blade prices and manage supplier cost estimates."} />
+      {canEdit && <AdminLink href="/admin/catalogue/new">Add draft variant</AdminLink>}
       {variants.length === 0 ? <AdminNotice>No catalogue variants on this page.</AdminNotice> : (
         <AdminTable label="Catalogue variants" headers={["Edgey SKU", "Product family", "Variant", "Review", "Publication"]}>
           {variants.slice(0, adminPageSize).map((variant) => (

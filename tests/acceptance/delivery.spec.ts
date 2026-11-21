@@ -28,7 +28,7 @@ test("warehouse settings quote an agreed card service and capture uses the reser
     await page.getByLabel("Postcode area or district").fill("sw2");
     await page.getByLabel("Service type").selectOption("agreed");
     await page.getByLabel("Service name").fill(service);
-    await page.getByLabel("Agreed price ex VAT (pence)").fill(String(charge));
+    await page.getByLabel("Agreed price ex VAT (£)").fill("12.95");
     await page.getByLabel("Agreed transit (working days)").fill("3");
     await page.getByRole("button", { name: "Save postcode rule" }).click();
     await expect(page.getByRole("row").filter({ hasText: "SW2" })).toContainText(service);

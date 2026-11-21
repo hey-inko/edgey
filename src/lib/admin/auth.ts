@@ -33,9 +33,9 @@ export const staffSession = cache(async () => {
   return staff?.steppedUp ? staff : null;
 });
 
-export async function requireStaff(role?: StaffRole) {
+export async function requireStaff(...roles: StaffRole[]) {
   const staff = await staffSession();
   if (!staff) redirect("/admin/sign-in");
-  if (role && !staff.roles.includes(role)) redirect("/admin");
+  if (roles.length && !roles.some((role) => staff.roles.includes(role))) redirect("/admin");
   return staff;
 }

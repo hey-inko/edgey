@@ -6,6 +6,21 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+type StaffUnitCost = {
+  variant_id: string;
+  supplier_unit_minor: number;
+  currency: string;
+  landed_unit_pence: number;
+  exchange_rate: number | null;
+  freight_unit_pence: number | null;
+  duty_unit_pence: number | null;
+  note: string | null;
+  actor_id: string;
+  recorded_at: string;
+};
+
+type ReadOnlyTable<Row> = { Row: Row; Insert: never; Update: never; Relationships: [] };
+
 export type Database = {
   public: {
     Tables: {
@@ -894,15 +909,32 @@ export type Database = {
         };
         Relationships: [];
       };
+      staff_variant_costs: ReadOnlyTable<StaffUnitCost>;
+      staff_receipt_costs: ReadOnlyTable<StaffUnitCost & { stock_movement_id: number; received_quantity: number }>;
+      staff_variant_cost_audit: ReadOnlyTable<{
+        id: number;
+        variant_id: string;
+        stock_movement_id: number | null;
+        actor_id: string;
+        old_cost: Json | null;
+        new_cost: Json;
+        recorded_at: string;
+      }>;
       stock_movements: {
         Row: {
           actor_id: string | null;
+          adjustment_reason: string | null;
+          adjustment_note: string | null;
           created_at: string;
           id: number;
           kind: Database["public"]["Enums"]["stock_movement_kind"];
+          on_hand_before: number | null;
+          on_hand_after: number | null;
           on_hand_delta: number;
           operation_key: string;
           order_id: string | null;
+          reserved_before: number | null;
+          reserved_after: number | null;
           reserved_delta: number;
           return_id: string | null;
           trial_request_id: string | null;
@@ -1452,6 +1484,18 @@ export type Database = {
       };
     };
     Views: {
+      staff_effective_receipt_costs: {
+        Row: StaffUnitCost & { stock_movement_id: number; received_quantity: number };
+        Relationships: [];
+      };
+      staff_current_variant_costs: {
+        Row: StaffUnitCost & {
+          source: "receipt" | "estimate";
+          stock_movement_id: number | null;
+          received_quantity: number | null;
+        };
+        Relationships: [];
+      };
       finance_post_dispatch_adjustments: {
         Row: {
           order_id: string | null;
@@ -1525,6 +1569,26 @@ export type Database = {
       };
     };
     Functions: {
+      adjust_staff_stock: {
+        Args: { p_variant_id: string; p_operation_key: string; p_quantity: number; p_reason: string; p_note?: string };
+        Returns: number;
+      };
+      archive_staff_variant: {
+        Args: { p_variant_id: string; p_expected_updated_at: string };
+        Returns: string;
+      };
+      correct_staff_receipt_cost: {
+        Args: { p_variant_id: string; p_stock_movement_id: number; p_expected_recorded_at: string; p_cost: Json };
+        Returns: number;
+      };
+      receive_staff_stock_with_cost: {
+        Args: { p_variant_id: string; p_operation_key: string; p_quantity: number; p_cost: Json };
+        Returns: number;
+      };
+      set_staff_variant_cost: {
+        Args: { p_variant_id: string; p_cost: Json };
+        Returns: string;
+      };
       activate_staff_authenticator: {
         Args: { p_user_id: string; p_factor_id: string };
         Returns: undefined;
@@ -3070,7 +3134,7 @@ export type Database = {
       publication_status: "draft" | "published" | "archived";
       staff_role: "warehouse" | "catalogue" | "finance";
       stock_movement_kind:
-        "opening" | "reserve" | "release" | "dispatch" | "receive" | "restore";
+        "opening" | "reserve" | "release" | "dispatch" | "receive" | "restore" | "adjust";
       stock_reservation_state: "held" | "allocated" | "released" | "dispatched";
       trade_account_status: "pending" | "approved" | "suspended";
       trade_invoice_status:
@@ -3249,6 +3313,7 @@ export const Constants = {
         "dispatch",
         "receive",
         "restore",
+        "adjust",
       ],
       stock_reservation_state: ["held", "allocated", "released", "dispatched"],
       trade_account_status: ["pending", "approved", "suspended"],

@@ -127,16 +127,23 @@ test("catalogue staff can add a draft without creating stock or fit claims", asy
     await page.getByLabel("Product family").selectOption({ label: "EDG-HTR040 · Circular rotary blade" });
     await page.getByLabel("Edgey SKU").fill(sku);
     await page.getByLabel("Variant label (optional)").fill("Pilot test only");
-    await page.getByLabel("1–4 units (pence ex VAT)", { exact: true }).fill("1200");
-    await page.getByLabel("5–9 units (pence ex VAT)", { exact: true }).fill("1100");
-    await page.getByLabel("10+ units (pence ex VAT)", { exact: true }).fill("1000");
+    await page.getByLabel("1–4 blades (£ ex VAT)", { exact: true }).fill("12.05");
+    await page.getByLabel("5–9 blades (£ ex VAT)", { exact: true }).fill("11");
+    await page.getByLabel("10+ blades (£ ex VAT)", { exact: true }).fill("10.00");
+    for (const vatInclusive of ["£14.46", "£13.20", "£12.00"]) {
+      await expect(page.getByText(`${vatInclusive} inc VAT (20%)`)).toBeVisible();
+    }
     await page.screenshot({ path: test.info().outputPath("add-draft.png"), fullPage: true });
     await page.getByRole("button", { name: "Create draft" }).click();
     await expect(page).toHaveURL(/\/admin\/catalogue\/[a-f0-9-]{36}$/);
     expect((await db.query(`select publication_status, approved_at, stock_on_hand,
+      price_1_4_pence, price_5_9_pence, price_10_plus_pence,
       (select count(*)::int from public.compatibility where variant_id = v.id) as mappings
       from public.variants v where sku = $1`, [sku])).rows)
-      .toEqual([{ publication_status: "draft", approved_at: null, stock_on_hand: 0, mappings: 0 }]);
+      .toEqual([{
+        publication_status: "draft", approved_at: null, stock_on_hand: 0, mappings: 0,
+        price_1_4_pence: 1205, price_5_9_pence: 1100, price_10_plus_pence: 1000,
+      }]);
     expect((await request.get("/blades/edg-htr040")).status()).toBe(404);
   } finally {
     await db.end();
