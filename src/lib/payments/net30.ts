@@ -25,9 +25,10 @@ export async function reserveNet30Order(input: Parameters<typeof createNet30Orde
   return order;
 }
 
-async function closeUnstarted(order: Order) {
+async function closeIfNoInvoice(order: Order, proof: "not-started" | "absent") {
   const { data } = await retryCredit(async () => {
-    const result = await paymentStore().rpc("close_unstarted_net30_order", { p_order_id: order.id }).single();
+    const rpc = proof === "not-started" ? "close_unstarted_net30_order" : "close_absent_net30_order";
+    const result = await paymentStore().rpc(rpc, { p_order_id: order.id }).single();
     if (result.error) throw result.error;
     return result;
   });
@@ -39,7 +40,7 @@ export async function reconcileNet30Order(stripe: Stripe, order: Order, close = 
   let customer: string | undefined;
   if (!order.stripe_net30_started_at) {
     if (close || Date.now() >= Date.parse(order.hold_expires_at)) {
-      order = await closeUnstarted(order);
+      order = await closeIfNoInvoice(order, "not-started");
       if (!order.stripe_net30_started_at) return order;
     } else {
       const accountId = await stripeAccountId(stripe);
@@ -51,7 +52,7 @@ export async function reconcileNet30Order(stripe: Stripe, order: Order, close = 
         if (error) throw error;
         return data;
       });
-      if (!order.stripe_net30_started_at) return closeUnstarted(order);
+      if (!order.stripe_net30_started_at) return closeIfNoInvoice(order, "not-started");
     }
   }
   const accountId = await verifyStripeAccount(stripe, order);
@@ -62,6 +63,9 @@ export async function reconcileNet30Order(stripe: Stripe, order: Order, close = 
     return releaseTerminalInvoice(order, order.stripe_net30_invoice_id!, "deleted");
   }
   if (!invoice) {
+    if (Date.now() - Date.parse(order.stripe_net30_started_at) >= 24 * 60 * 60_000) {
+      return closeIfNoInvoice(order, "absent");
+    }
     invoice = await createTradeInvoice(stripe, order, customerId).catch(async (error: unknown) => {
       const recovered = await recoverTradeInvoice(stripe, order, customerId);
       if (!recovered) throw error;
@@ -92,7 +96,7 @@ export async function reconcileNet30Order(stripe: Stripe, order: Order, close = 
 
 export async function submitNet30Invoice(order: Order, close = false) {
   try {
-    const next = close && !order.stripe_net30_started_at ? await closeUnstarted(order) : order;
+    const next = close && !order.stripe_net30_started_at ? await closeIfNoInvoice(order, "not-started") : order;
     if (next.fulfilment_status === "cancelled" && !next.provider_invoice_id) return next;
     return await reconcileNet30Order(getStripe(), next, close);
   } catch {

@@ -120,7 +120,12 @@ async function applyFinancialEffect(stripe: Stripe, type: string, objectId: stri
     const order = await findTradeInvoiceOrder(invoice);
     if (!order) return;
     if (order.payment_method === "net30") {
-      await applyTradeInvoiceEvent(stripe, order, invoice, type === "invoice.sent");
+      if (invoice.status === "draft" || (type === "invoice.voided" && invoice.status !== "void")) {
+        throw new PaymentReviewError("Stripe has not returned the referenced invoice state.");
+      }
+      await applyTradeInvoiceEvent(stripe, order, invoice, type === "invoice.sent",
+        type === "invoice_payment.paid" ? { paymentId: objectId } :
+          type.startsWith("credit_note.") ? { creditNoteId: objectId } : undefined);
       return;
     }
     if (type !== "invoice.finalized") return;

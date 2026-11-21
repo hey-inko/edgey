@@ -43,15 +43,30 @@ export async function POST(request: Request) {
     const previous = normaliseAttemptToken(body.supersedesAttemptToken);
     if (body.supersedesAttemptToken !== undefined && (!previous || previous === token)) return invalidAttempt();
     const actor = await getCheckoutActor();
-    if (actor.status === "error") return reply(actor, 422);
-    const buyerId = actor.buyerId ?? null;
+    const recovering = body.action === "resume" || body.action === "close";
+    if (actor.status === "error" && !recovering) return reply(actor, 422);
+    const buyerId = actor.status === "ready" ? actor.buyerId ?? null : null;
     const close = (attemptToken: string) => closeCardPayment(
-      { attemptToken, buyerId }, () => limitCheckout(request, origin, "checkout_close", attemptToken),
+      { attemptToken, buyerId }, async () => {
+        if (actor.status === "error") throw new CheckoutOwnerMismatchError();
+        await limitCheckout(request, origin, "checkout_close", attemptToken);
+      },
     );
-    if (body.action === "resume" || body.action === "close") {
-      const recover = body.action === "resume" ? (attemptToken: string) => resumeCardPayment({ attemptToken, buyerId }) : close;
-      let payment = await recover(token);
-      if (!payment && previous) payment = await recover(previous);
+    if (recovering) {
+      let payment;
+      try {
+        const recover = body.action === "resume" ? (attemptToken: string) => resumeCardPayment({ attemptToken, buyerId }) : close;
+        payment = await recover(token);
+        if (!payment && previous) payment = await recover(previous);
+      } catch (error) {
+        if (actor.status === "error" && error instanceof CheckoutOwnerMismatchError) {
+          return reply({ ...actor, attemptPending: true }, 422);
+        }
+        throw error;
+      }
+      if (!payment && body.action === "resume" && actor.status === "error") {
+        return reply({ ...actor, attemptPending: true }, 422);
+      }
       if (!payment && body.action === "resume") return reply({
         status: "error", message: "We can’t find a payable session yet. Try again, or close this checkout to start over.", attemptPending: true,
       }, 409);

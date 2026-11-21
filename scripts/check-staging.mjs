@@ -59,6 +59,9 @@ function stagingIssues(env) {
     (value) => /^sk_test_[A-Za-z0-9]+$/.test(value), "use a Stripe sandbox secret key (sk_test_…), never a live or restricted key for acceptance.");
   required("STRIPE_WEBHOOK_SECRET", "Copy the signing secret from the staging sandbox webhook endpoint.",
     (value) => /^whsec_[A-Za-z0-9]+$/.test(value), "use the endpoint's signing secret (whsec_…).");
+  if (env.NET30_CHECKOUT_ENABLED && !["false", "true"].includes(env.NET30_CHECKOUT_ENABLED)) {
+    issues.push("NET30_CHECKOUT_ENABLED: use false until Finance is ready for the Net 30 sandbox lifecycle.");
+  }
   required("CRON_SECRET", "Generate a separate server-only bearer token for Vercel Cron.",
     (value) => /^[A-Za-z0-9._~-]{32,}$/.test(value), "use at least 32 URL-safe characters for the server-only bearer token.");
   if (env.EMAIL_PROVIDER && env.EMAIL_PROVIDER !== "resend") {

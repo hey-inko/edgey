@@ -288,21 +288,29 @@ it("cannot reopen, close, or supersede another buyer’s card attempt as a guest
   expect(await state(session.client_reference_id!)).toMatchObject({ reservation_state: "held" });
 });
 
-it("rejects submit, resume, and close when the buyer cookie cannot be verified", async () => {
+it("recovers only existing guest payments with an unverifiable cookie and never starts or retires a missing attempt", async () => {
   const { input, session } = await checkout(await makeVariant(1), 1);
+  const buyer = await makeBuyer();
+  vi.mocked(getBuyerSession).mockResolvedValue(buyer);
+  const signedIn = await checkout(await makeVariant(1), 1);
   vi.mocked(getBuyerSession).mockResolvedValue({ status: "unverified" });
   const newInput = await checkoutInput(await makeVariant(1), 1);
-  for (const request of [newInput, input, { ...input, action: "resume" }, { ...input, action: "close" }]) {
+  for (const request of [newInput, input, { ...signedIn.input, action: "resume" },
+    { ...signedIn.input, action: "close" }, { ...newInput, action: "close" }]) {
     const response = await submit(request);
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({ status: "error", message: expect.stringContaining("couldn’t verify your sign-in") });
   }
   expect(provider.session).not.toHaveBeenCalled();
-  expect(provider.create).toHaveBeenCalledTimes(1);
+  expect(provider.create).toHaveBeenCalledTimes(2);
   expect(provider.expire).not.toHaveBeenCalled();
-  expect(await state(session.client_reference_id!)).toMatchObject({ buyer_id: null, reservation_state: "held" });
+  expect((await (await submit({ ...input, action: "resume" })).json())).toMatchObject({ sessionId: session.id });
+  expect((await (await submit({ ...input, action: "close" })).json())).toEqual({ status: "closed" });
+  expect(await state(session.client_reference_id!)).toMatchObject({ buyer_id: null, reservation_state: "released" });
+  expect(await state(signedIn.session.client_reference_id!)).toMatchObject({ buyer_id: buyer.buyer.id, reservation_state: "held" });
   const order = await db.query("select id from public.orders where checkout_attempt_token = $1", [newInput.attemptToken]);
   expect(order.rowCount).toBe(0);
+  expect((await db.query("select 1 from private.closed_checkout_attempts where attempt_token=$1", [newInput.attemptToken])).rowCount).toBe(0);
 });
 
 it("recovers a timed-out create by discovering the same provider session before retrying", async () => {
@@ -452,6 +460,28 @@ it("applies refund, invoice and crossed checkout events once and keeps success r
   expect(snapshot).not.toHaveProperty("email");
   expect(await readCheckoutSuccess(session.id)).toEqual(snapshot);
   expect(await state(orderId)).toEqual(order);
+});
+
+it("acknowledges another refund event after finance resolved a fully refunded mismatch", async () => {
+  const { session } = await checkout(await makeVariant(1), 1);
+  const orderId = session.client_reference_id!;
+  const intentId = paid(session, session.amount_total! - 1);
+  const captured = event("checkout.session.completed", session.id);
+  await captured.deliver();
+  expect(await eventState(captured.eventId)).toMatchObject({ state: "failed" });
+  const finance = await makeBuyer();
+  await db.query("insert into public.staff_members(user_id,role) values ($1,'finance')", [finance.buyer.id]);
+  const resolvedRefundId = id("re_");
+  await db.query("select public.resolve_refunded_payment_review($1,$2,$3,$4)", [orderId, intentId, resolvedRefundId, finance.buyer.id]);
+  const otherRefundId = id("re_");
+  provider.refund.mockResolvedValue({ id: otherRefundId, status: "succeeded", payment_intent: intentId, amount: 300, currency: "gbp" });
+  const later = event("refund.created", otherRefundId);
+  await later.deliver();
+  expect(await eventState(later.eventId)).toMatchObject({ state: "processed" });
+  expect(await state(orderId)).toMatchObject({
+    payment_review_refund_id: resolvedRefundId, paid_pence: 0, refunded_pence: 0,
+    fulfilment_status: "cancelled", reservation_state: "released",
+  });
 });
 
 it("reconciles a durably received event after interruption without the original request", async () => {

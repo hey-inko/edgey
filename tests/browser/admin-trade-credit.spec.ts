@@ -1,7 +1,28 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
 import { signInStaff } from "./admin-fixtures";
 import { company, withNet30Data } from "./fixtures/net30-data";
+
+async function captureFinance(page: Page, name: string) {
+  const directory = process.env.EDGEY_NET30_RENDERS;
+  if (!directory) return;
+  await mkdir(directory, { recursive: true });
+  const original = page.viewportSize();
+  for (const theme of ["dark", "light"] as const) {
+    const toggle = page.getByRole("button", { name: `Switch to ${theme} mode`, exact: true });
+    if (await toggle.count()) await toggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    for (const width of [1440, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      await page.screenshot({ path: join(directory, `${name}-${theme}-${width}.png`), fullPage: true, animations: "disabled" });
+    }
+  }
+  await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
+  if (original) await page.setViewportSize(original);
+}
 
 test("finance changes Net 30 terms without changing invoice exposure and can follow up overdue balances", async ({ page }) => {
   await withNet30Data(async ({ db, application, buyer, finance, warehouse, variantId }) => {
@@ -10,8 +31,8 @@ test("finance changes Net 30 terms without changing invoice exposure and can fol
       application, finance.id, `cus_${randomUUID().replaceAll("-", "")}`,
     ]);
     const accountId = account.rows[0]!.id;
-    const order = await db.query<{ id: string }>(`
-      select id from public.create_net30_order_with_holds(
+    const order = await db.query<{ id: string; order_reference: string }>(`
+      select id, order_reference from public.create_net30_order_with_holds(
         $1,$2,$3,$4,$5,now() + interval '35 minutes','Next working day','2099-01-05','2099-01-06',$6,'PO-FOLLOW-UP')
     `, [
       randomUUID(), JSON.stringify([{ variant_id: variantId, quantity: 1, unit_price_pence: 2350 }]),
@@ -20,7 +41,7 @@ test("finance changes Net 30 terms without changing invoice exposure and can fol
       JSON.stringify({ goods_net_pence: 2350, delivery_net_pence: 0, vat_rate_bps: 2000, vat_pence: 470, gross_pence: 2820 }),
       buyer.id,
     ]);
-    const orderId = order.rows[0]!.id;
+    const { id: orderId, order_reference: reference } = order.rows[0]!;
     await db.query(`
       select public.bind_invoice($1,$2,stripe_customer_id,2820,'GBP',now() - interval '40 days',
         now() - interval '10 days','2099-01-05','2099-01-06') from public.trade_accounts where id=$3
@@ -34,13 +55,15 @@ test("finance changes Net 30 terms without changing invoice exposure and can fol
     await expect(overdue).toContainText("£28.20");
     const cancelled = page.getByRole("table", { name: "Cancelled Net 30 orders" }).getByRole("row", { name: /PO-FOLLOW-UP/ });
     const paymentReview = page.getByRole("table", { name: "Payment review" });
-    await expect(paymentReview.getByRole("row", { name: new RegExp(orderId) })).toBeVisible();
+    await expect(paymentReview.getByRole("row", { name: new RegExp(reference) })).toBeVisible();
     await expect(cancelled.getByLabel("Confirm void")).not.toBeChecked();
     await expect(cancelled.getByRole("button", { name: "Verify and void invoice" })).toBeVisible();
+    await captureFinance(page, "finance-overview");
     await overdue.getByRole("link", { name: company }).click();
     await expect(page).toHaveURL(`/admin/finance/accounts/${accountId}`);
     const balances = page.getByRole("heading", { name: "Credit position" }).locator("..");
     await expect(balances).toContainText("£171.80");
+    await captureFinance(page, "finance-account");
     const limit = page.getByLabel("Credit limit (£)");
     await limit.fill("20.00");
     await page.getByRole("button", { name: "Save credit limit" }).click();
@@ -56,7 +79,7 @@ test("finance changes Net 30 terms without changing invoice exposure and can fol
     await db.query("select public.void_invoice(provider_invoice_id) from public.invoices where order_id=$1", [orderId]);
     await page.goto("/admin/finance");
     await expect(cancelled).toHaveCount(0);
-    await expect(paymentReview.getByRole("row", { name: new RegExp(orderId) })).toHaveCount(0);
+    await expect(paymentReview.getByRole("row", { name: new RegExp(reference) })).toHaveCount(0);
   });
 });
 
@@ -66,6 +89,7 @@ test("only finance can see and submit a trade decision, and the rejection reason
     const reason = "Fixture: finance review was not satisfactory";
     await signInStaff(page, finance);
     await page.goto(path);
+    await captureFinance(page, "trade-application-pending");
     const warehouseContext = await browser.newContext({ baseURL });
     try {
       const otherPage = await warehouseContext.newPage();

@@ -59,11 +59,13 @@ test("renders the order snapshot in text and safe HTML, including VAT, dates and
 });
 
 test("tells trade buyers the order is on account rather than paid", () => {
-  const result = renderConfirmation({ ...order, payment_method: "net30", po_number: "PO <42>" }, items, "orders@example.test", null);
+  const result = renderConfirmation({ ...order, payment_method: "net30", po_number: "PO <42>" }, items, "orders@example.test",
+    "https://invoice.stripe.com/i/test");
   expect(result.text).toContain("Order total (inc VAT): £58.74");
   expect(result.text).toContain("Payment terms: Net 30");
   expect(result.html).toContain("PO &lt;42&gt;");
   expect(result.text).not.toContain("Total paid");
+  expect(result.text).not.toContain("invoice.stripe.com");
 });
 
 test("rejects unsafe recipients and omits missing or unsafe invoice links", () => {

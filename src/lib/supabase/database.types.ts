@@ -1551,6 +1551,11 @@ export type Database = {
         Returns: Database["public"]["Tables"]["orders"]["Row"][];
         SetofOptions: { from: "*"; to: "orders"; isOneToOne: false; isSetofReturn: true };
       };
+      close_absent_net30_order: {
+        Args: { p_order_id: string };
+        Returns: Database["public"]["Tables"]["orders"]["Row"][];
+        SetofOptions: { from: "*"; to: "orders"; isOneToOne: false; isSetofReturn: true };
+      };
       close_missing_checkout_attempt: {
         Args: { p_attempt_token: string };
         Returns: boolean;

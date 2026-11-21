@@ -84,7 +84,7 @@ begin
     perform public.approve_trade_account(p_application_id, p_actor_id, p_credit_limit_pence, p_stripe_customer_id);
     insert into public.order_outbox (trade_application_id, message_key, message_subject, message_body)
     values (p_application_id, 'trade_approved', 'Your Edgey trade account is approved',
-      'Your Edgey trade account is approved. Sign in to view your credit limit and use Net 30 at checkout.')
+      'Your Edgey trade account is approved. Sign in to view your account and credit limit.')
     on conflict (trade_application_id, message_key) do nothing;
   elsif p_decision = 'rejected' then
     if p_credit_limit_pence is not null or p_stripe_customer_id is not null then

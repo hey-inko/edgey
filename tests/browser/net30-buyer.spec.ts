@@ -194,13 +194,18 @@ test("Net 30 confirmation and the trade panel read only the verified buyer's ord
         await capture(ownPage, "net30-confirming", "dark", 320, 640);
         await capture(ownPage, "net30-confirming", "light", 390, 844);
       }
-      await fixture.db.query("update public.orders set fulfilment_status = 'cancelled', authorised_at = null where id = $1", [fixture.issued]);
+      await fixture.db.query("update public.orders set fulfilment_status = 'cancelled' where id = $1", [fixture.issued]);
       await ownPage.goto(confirmation(fixture.issued));
       await expect(ownPage.getByRole("heading", { name: "This account order was cancelled" })).toBeVisible();
       await expect(ownPage.getByText("Invoice status")).toBeVisible();
       await expect(ownPage.getByText("Partially paid", { exact: true })).toBeVisible();
       await expect(ownPage.getByText("Dispatch date")).toHaveCount(0);
       await expect(ownPage.getByRole("link", { name: "View invoice" })).toHaveAttribute("href", fixture.hostedInvoice);
+      await fixture.db.query("update public.orders set authorised_at = null where id = $1", [fixture.issued]);
+      await ownPage.reload();
+      await expect(ownPage.getByRole("heading", { name: "Your account order is under review" })).toBeVisible();
+      await expect(ownPage.getByText(/Please don’t pay the invoice or place the order again/)).toBeVisible();
+      await expect(ownPage.getByRole("link", { name: "View invoice" })).toHaveCount(0);
     } finally {
       await owner.close();
     }

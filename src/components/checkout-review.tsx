@@ -64,7 +64,7 @@ export function CheckoutReview({ trade }: { trade: CheckoutTrade | null }) {
   const [activeNet30, setActiveNet30] = useState<ActiveNet30 | null>();
   const [method, setMethod] = useState<"card" | "net30">("card");
   const [poReference, setPoReference] = useState("");
-  const [tradeFailure, setTradeFailure] = useState<TradeUnavailableReason>();
+  const [tradeFailure, setTradeFailure] = useState<{ reason: TradeUnavailableReason; revision: number; quoteKey?: string }>();
   const [result, setResult] = useState<{ lines: LineRequest[]; value: SubmitResult } | null>(null);
   const attempt = useRef<{ token: string; revision: number; quoteKey: string } | null>(null);
   const memoryCardAttempt = useRef<ActivePayment | null>(null);
@@ -85,7 +85,9 @@ export function CheckoutReview({ trade }: { trade: CheckoutTrade | null }) {
   const available = trade && "availableCreditPence" in trade ? trade.availableCreditPence : undefined;
   const gross = basket?.totalGrossPence;
   const estimated = priced?.coverage !== "covered" || pending;
-  const tradeStatus = tradeFailure ?? (trade?.status === "approved"
+  const accountFailure = tradeFailure?.revision === revision && tradeFailure.quoteKey === priced?.quoteKey
+    ? tradeFailure.reason : undefined;
+  const tradeStatus = accountFailure ?? (trade?.status === "approved"
     && !estimated && gross !== undefined && available !== undefined && gross > available
     ? "over-limit" : trade?.status);
   const net30Allowed = tradeStatus === "approved" && !active;
@@ -268,7 +270,7 @@ export function CheckoutReview({ trade }: { trade: CheckoutTrade | null }) {
     } else if (value.status === "trade-unavailable") {
       if (action === "submit") {
         setMethod("card");
-        setTradeFailure(value.reason);
+        setTradeFailure({ reason: value.reason, revision, quoteKey: priced?.quoteKey });
       }
       setResult({ lines, value: { status: "error", message: tradeUnavailableMessage(value.reason) } });
     } else if ("message" in value) {

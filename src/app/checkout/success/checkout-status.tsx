@@ -50,7 +50,7 @@ const accountCopy = {
   },
   review: {
     heading: "Your account order is under review",
-    details: "Please don’t place the order again while we review it.",
+    details: "An invoice was issued after the order was cancelled. Please don’t pay the invoice or place the order again while we review it.",
   },
   "not-found": {
     heading: "Checkout not found",
@@ -74,7 +74,7 @@ export function CheckoutStatus({ kind, method }: CheckoutStatusProps) {
   const [manualChecking, startManualCheck] = useTransition();
   const [checks, setChecks] = useState(0);
   const checking = automaticChecking || manualChecking;
-  const canRetry = kind === "pending" || kind === "unavailable";
+  const canRetry = kind === "pending" || kind === "unavailable" || (method === "net30" && kind === "review");
   const automaticChecksEnded = kind === "pending" && checks >= maxAutomaticChecks && !checking;
   const net30 = method === "net30";
   const status = method === "net30" ? accountCopy[kind] : copy[kind];

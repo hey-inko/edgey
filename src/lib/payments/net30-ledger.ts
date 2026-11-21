@@ -7,6 +7,8 @@ import { assertInvoiceAmounts, assertInvoiceIdentity, rememberTradeInvoice, trad
 import { orderId, PaymentReviewError, stripeId } from "./session-identity";
 import { getOrder, paymentStore, type Order } from "./store";
 
+type Evidence = { paymentId: string } | { creditNoteId: string };
+
 export async function retryCredit<T>(work: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -17,7 +19,9 @@ export async function retryCredit<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function recordTradeInvoiceState(stripe: Stripe, order: Order, customer: string, invoice: Stripe.Invoice) {
+export async function recordTradeInvoiceState(
+  stripe: Stripe, order: Order, customer: string, invoice: Stripe.Invoice, evidence?: Evidence,
+) {
   assertInvoiceIdentity(order, customer, invoice);
   if (invoice.status === "draft") return order;
   if (!order.provider_invoice_id && invoice.status === "void" && !invoice.amount_paid) {
@@ -62,7 +66,7 @@ export async function recordTradeInvoiceState(stripe: Stripe, order: Order, cust
     });
     if (error) throw error;
   }
-  await settleTradeInvoice(stripe, order, invoice);
+  await settleTradeInvoice(stripe, order, invoice, evidence);
   return await getOrder(order.id) ?? order;
 }
 
@@ -81,7 +85,9 @@ export async function releaseTerminalInvoice(order: Order, id: string, resolutio
   }
 }
 
-export async function applyTradeInvoiceEvent(stripe: Stripe, order: Order, invoice: Stripe.Invoice, sent: boolean) {
+export async function applyTradeInvoiceEvent(
+  stripe: Stripe, order: Order, invoice: Stripe.Invoice, sent: boolean, evidence?: Evidence,
+) {
   if (!order.stripe_net30_started_at) {
     throw new PaymentReviewError("Stripe references a Net 30 order for which no provider request was started.");
   }
@@ -89,11 +95,17 @@ export async function applyTradeInvoiceEvent(stripe: Stripe, order: Order, invoi
   const customer = await tradeCustomer(order, accountId);
   assertInvoiceIdentity(order, customer, invoice);
   order = await rememberTradeInvoice(order, invoice, sent);
-  await recordTradeInvoiceState(stripe, order, customer, invoice);
+  await recordTradeInvoiceState(stripe, order, customer, invoice, evidence);
 }
 
 export async function findTradeInvoiceOrder(invoice: Stripe.Invoice) {
   if (invoice.livemode !== false) return null;
+  if (invoice.collection_method === "send_invoice") {
+    const { data, error } = await paymentStore().from("orders").select("*")
+      .eq("stripe_net30_invoice_id", invoice.id).maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
   const reference = invoice.metadata?.edgey_order_id;
   if (!reference) return null;
   if (!orderId.test(reference)) throw new PaymentReviewError("Invalid Edgey order identity on Stripe invoice.");
@@ -102,7 +114,7 @@ export async function findTradeInvoiceOrder(invoice: Stripe.Invoice) {
   return order;
 }
 
-async function settleTradeInvoice(stripe: Stripe, order: Order, invoice: Stripe.Invoice) {
+async function settleTradeInvoice(stripe: Stripe, order: Order, invoice: Stripe.Invoice, evidence?: Evidence) {
   const payments = invoice.amount_paid > 0 || order.paid_pence > 0
     ? await stripe.invoicePayments.list({ invoice: invoice.id, status: "paid", limit: 100 }) : null;
   const notes = invoice.pre_payment_credit_notes_amount || invoice.post_payment_credit_notes_amount ||
@@ -111,6 +123,10 @@ async function settleTradeInvoice(stripe: Stripe, order: Order, invoice: Stripe.
   if (payments?.has_more || notes?.has_more) throw new PaymentReviewError("This invoice has too many payment or credit operations to reconcile automatically.");
   const allocations = payments?.data ?? [];
   const credits = notes?.data ?? [];
+  if ((evidence && "paymentId" in evidence && !allocations.some((payment) => payment.id === evidence.paymentId)) ||
+    (evidence && "creditNoteId" in evidence && !credits.some((note) => note.id === evidence.creditNoteId))) {
+    throw new PaymentReviewError("The referenced Stripe payment or credit note is not yet reflected in the invoice.");
+  }
   if (allocations.some((payment) => !/^inpay_[A-Za-z0-9]{1,194}$/.test(payment.id) ||
     stripeId(payment.invoice) !== invoice.id || payment.status !== "paid" ||
     payment.livemode !== false || payment.currency !== invoice.currency || !payment.amount_paid ||

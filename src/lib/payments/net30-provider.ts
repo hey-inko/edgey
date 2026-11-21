@@ -8,6 +8,7 @@ import { stripeAccountId } from "./recovery";
 const invoiceId = /^in_[A-Za-z0-9]{1,197}$/;
 const providerWriteWindow = 23 * 60 * 60_000;
 const key = (order: Order, stage: string) => ({ idempotencyKey: `edgey:net30:v1:${order.id}:${stage}` });
+const description = (order: Order) => `Edgey order ${order.order_reference}\nPurchase order: ${order.po_number}`;
 
 export async function tradeCustomer(order: Order, accountId: string) {
   if (order.payment_method !== "net30" || !order.trade_account_id) {
@@ -73,7 +74,7 @@ export async function recoverTradeInvoice(stripe: Stripe, order: Order, customer
       created: { gte: Math.floor(Date.parse(order.stripe_net30_started_at!) / 1_000) - 60 },
     });
     for (const invoice of invoices.data) {
-      if (invoice.metadata?.edgey_order_id !== order.id) continue;
+      if (invoice.metadata?.edgey_order_id !== order.id && invoice.description !== description(order)) continue;
       assertInvoiceIdentity(order, customer, invoice);
       if (match) throw new PaymentReviewError("Multiple Stripe invoices reference this Net 30 order.");
       match = invoice;
@@ -122,7 +123,7 @@ export async function createTradeInvoice(stripe: Stripe, order: Order, customer:
     pending_invoice_items_behavior: "exclude",
     discounts: "",
     metadata: { edgey_order_id: order.id, edgey_payment_method: "net30", po_number: order.po_number! },
-    description: `Edgey order ${order.order_reference}\nPurchase order: ${order.po_number}`,
+    description: description(order),
     shipping_details: {
       name: order.recipient_name,
       address: {

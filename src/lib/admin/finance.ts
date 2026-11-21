@@ -11,7 +11,7 @@ export async function financeOverview(db: SupabaseClient<Database>, pages: {
   accounts: number; overdue: number; voids: number;
 }) {
   const service = serviceClient();
-  const financeColumns = "id,business_name,payment_status,fulfilment_status,gross_pence,paid_pence,refunded_pence,created_at";
+  const financeColumns = "id,order_reference,business_name,payment_status,fulfilment_status,gross_pence,paid_pence,refunded_pence,created_at";
   const [orders, captures, reviews, events, outbox, accounts, overdue, voids] = await Promise.all([
     db.from("orders").select(`${financeColumns},payment_method`)
       .order("created_at", { ascending: false }).order("id").range(...adminRange(pages.orders)),
@@ -20,7 +20,7 @@ export async function financeOverview(db: SupabaseClient<Database>, pages: {
       .in("payment_status", ["paid", "partially_paid", "partially_refunded"])
       .gt("paid_pence", 0)
       .order("created_at", { ascending: false }).order("id").range(...adminRange(pages.captures)),
-    service.from("orders").select("id,business_name,payment_method,payment_intent_id,payment_review_reason,payment_status,stripe_reconciliation_error")
+    service.from("orders").select("id,order_reference,business_name,payment_method,payment_intent_id,payment_review_reason,payment_status,stripe_reconciliation_error")
       .or("stripe_reconciliation_error.not.is.null,and(payment_review_reason.not.is.null,or(payment_review_reason.neq.invoice_issued_after_hold_released,payment_status.neq.voided))")
       .is("payment_review_refund_id", null)
       .order("updated_at", { ascending: false }).order("id").range(...adminRange(pages.reviews)),
@@ -36,7 +36,7 @@ export async function financeOverview(db: SupabaseClient<Database>, pages: {
       .order("created_at", { ascending: false }).order("id").range(...adminRange(pages.accounts)),
     service.from("overdue_invoices").select("order_id,trade_account_id,po_number,amount_remaining_pence,due_at")
       .order("due_at").order("order_id").range(...adminRange(pages.overdue)),
-    service.from("orders").select("id,trade_account_id,business_name,po_number,gross_pence")
+    service.from("orders").select("id,order_reference,trade_account_id,business_name,po_number,gross_pence")
       .eq("payment_method", "net30").eq("payment_status", "invoiced").eq("fulfilment_status", "cancelled")
       .is("dispatched_at", null).eq("paid_pence", 0).not("provider_invoice_id", "is", null)
       .order("updated_at", { ascending: false }).order("id").range(...adminRange(pages.voids)),

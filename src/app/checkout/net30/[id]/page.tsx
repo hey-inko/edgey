@@ -21,8 +21,10 @@ export default async function Net30ConfirmationPage({ params }: { params: Promis
   const order = result === "unavailable" ? null : result;
   const invoice = order?.invoices[0];
   const cancelled = order?.fulfilment_status === "cancelled";
+  const lateInvoice = cancelled && invoice && !order?.authorised_at && !["voided", "credited"].includes(invoice.status);
   const kind = result === "unavailable" ? "unavailable" : !order ? "not-found"
-    : cancelled ? invoice ? "cancelled-issued" : "expired" : invoice && order.authorised_at ? "confirmed" : "pending";
+    : lateInvoice ? "review" : cancelled ? invoice ? "cancelled-issued" : "expired"
+      : invoice && order.authorised_at ? "confirmed" : "pending";
   const issued = kind === "confirmed" || kind === "cancelled-issued" ? order : null;
   const invoiceUrl = issued ? await getBuyerInvoiceUrl(issued.id) : null;
   const lines = issued?.order_items.map((item) => ({

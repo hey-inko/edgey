@@ -58,7 +58,13 @@ async function capture(page: Page, name: string) {
   if (!directory) return;
   await mkdir(directory, { recursive: true });
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  await page.screenshot({ path: join(directory, `net30-${name}.png`), fullPage: true, animations: "disabled" });
+  for (const theme of ["dark", "light"]) {
+    const toggle = page.getByRole("button", { name: `Switch to ${theme} mode`, exact: true });
+    if (await toggle.count()) await toggle.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.screenshot({ path: join(directory, `net30-${name}-${theme}.png`), fullPage: true, animations: "disabled" });
+  }
+  await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click();
 }
 
 test("approves trade terms, dispatches before payment, and shows partial and full settlement in buyer history",
@@ -79,6 +85,7 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
       const invoices = trade.getByRole("region", { name: "Invoices and PO references" });
       const delivery = buyerPage.getByRole("region", { name: "Delivery", exact: true });
       let orderId = "";
+      let orderReference = "";
       let financeAccountPath = "";
       let dispatchedAt: string | null = null;
 
@@ -139,6 +146,12 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         expect(createCustomer).toHaveLength(1);
         expect(createCustomer[0]?.params.get("metadata[edgey_trade_application_id]")).toBe(application);
         expect(createCustomer[0]?.params.get("address[line1]")).toBe("12 Foundry Lane");
+        const email = await financeContext.request.get("/api/cron/request-emails", {
+          headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+        });
+        expect(email.status()).toBe(200);
+        expect((await db.query("select state from public.order_outbox where trade_application_id=$1 and message_key='trade_approved'",
+          [application])).rows).toEqual([{ state: "sent" }]);
       });
 
       await test.step("Required PO, gross credit and VAT reach the Stripe invoice before stock can be picked", async () => {
@@ -170,7 +183,12 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         expect(response.status()).toBe(200);
         await expect(buyerPage).toHaveURL(/\/checkout\/net30\/[a-f0-9-]+$/);
         orderId = new URL(buyerPage.url()).pathname.split("/").at(-1)!;
+        orderReference = (await db.query<{ order_reference: string }>(
+          "select order_reference from public.orders where id=$1", [orderId],
+        )).rows[0]!.order_reference;
+        expect(orderReference).toMatch(/^EDG-[0-9]{8}$/);
         await expect(buyerPage.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
+        await expect(buyerPage.getByText(orderReference, { exact: true })).toBeVisible();
         await expect(buyerPage.getByText(poReference, { exact: true })).toBeVisible();
         await expect(buyerPage.getByText("Total invoiced inc VAT")).toBeVisible();
         await expect(buyerPage.getByRole("link", { name: "View invoice", exact: true })).toHaveAttribute("href", stripe.invoiceUrl);
@@ -183,6 +201,7 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         ]);
         expect(writes[0]?.params.get("metadata[edgey_order_id]")).toBe(orderId);
         expect(writes[0]?.params.get("metadata[po_number]")).toBe(poReference);
+        expect(writes[0]?.params.get("description")).toBe(`Edgey order ${orderReference}\nPurchase order: ${poReference}`);
         expect(writes[1]?.params.get("lines[0][tax_amounts][0][amount]")).toBe("470");
         expect(writes[1]?.params.get("lines[1][tax_amounts][0][amount]")).toBe("139");
         expect(new Set(writes.map(({ key }) => key)).size).toBe(4);
@@ -193,7 +212,7 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
       await test.step("Warehouse records real dispatch and tracking while the invoice stays unpaid", async () => {
         await signInStaff(warehousePage, warehouse);
         await warehousePage.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Pick and dispatch" }).click();
-        await warehousePage.getByRole("link", { name: orderId, exact: true }).click();
+        await warehousePage.getByRole("link", { name: orderReference, exact: true }).click();
         await expect(warehousePage.getByText("Invoiced", { exact: true })).toBeVisible();
         await warehousePage.getByRole("button", { name: "Start picking" }).click();
         await warehousePage.getByLabel("Carrier").fill(carrier);
@@ -248,7 +267,7 @@ test("approves trade terms, dispatches before payment, and shows partial and ful
         await expect(invoices.getByRole("listitem")).toContainText(pounds(0));
         await expect(invoices.getByRole("link", { name: `View invoice for PO ${poReference}` })).toHaveAttribute("href", stripe.invoiceUrl);
         await capture(buyerPage, "07-settled-buyer-history");
-        await orders.getByRole("link", { name: `View order ${orderId}` }).click();
+        await orders.getByRole("link", { name: `View order ${orderReference}` }).click();
         await expect(buyerPage).toHaveURL(`/account/orders/${orderId}`);
         await expect(buyerPage.getByRole("region", { name: "Order items" })).toContainText(sku);
         await expect(delivery.getByText(carrier, { exact: true })).toBeVisible();

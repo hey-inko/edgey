@@ -336,6 +336,26 @@ it("releases an expired attempt only after closing its verified Stripe draft", a
     .toEqual([{ stock_reserved: 0 }]);
 });
 
+it("keeps an unknown creation held until writes are fenced and Stripe confirms a complete empty listing", async () => {
+  const { buyer, accountId } = await openAccount();
+  const attempt = await input(await variant(1), buyer.email);
+  stripe.invoices.create.mockRejectedValueOnce(new Error("Transport disconnected before any invoice was returned"));
+  const { orderId, status } = await (await submit(attempt)).json();
+  expect(status).toBe("confirming");
+  await db.query(`update public.orders set created_at=now()-interval '24 hours',
+    stripe_net30_started_at=now()-interval '23 hours 1 minute', hold_expires_at=now()-interval '1 minute' where id=$1`, [orderId]);
+  const resume = () => submit({ action: "resume", attemptToken: attempt.attemptToken });
+  expect(await (await resume()).json()).toEqual({ status: "confirming", orderId });
+  expect(await position(accountId)).toMatchObject({ held_pence: 12_000 });
+  await db.query("update public.orders set stripe_net30_started_at=now()-interval '24 hours 1 minute' where id=$1", [orderId]);
+  stripe.invoices.list.mockResolvedValueOnce({ data: [], has_more: true });
+  expect(await (await resume()).json()).toEqual({ status: "confirming", orderId });
+  expect(await position(accountId)).toMatchObject({ held_pence: 12_000 });
+  expect(await (await resume()).json()).toMatchObject({ attemptClosed: true });
+  expect(await position(accountId)).toMatchObject({ held_pence: 0, available_credit_pence: 20_000 });
+  expect(stripe.invoices.create).toHaveBeenCalledOnce();
+});
+
 it("does not reserve for guests, unapproved, suspended or over-limit buyers and tombstones a closed missing attempt", async () => {
   const { buyer, accountId } = await openAccount(11_999);
   const variantId = await variant();

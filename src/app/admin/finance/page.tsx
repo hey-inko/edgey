@@ -74,7 +74,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
             <p className="admin-muted">Void the invoice only after the order is cancelled and before it has been paid or dispatched. Edgey checks Stripe before releasing the outstanding balance.</p>
             <AdminTable label="Cancelled Net 30 orders" headers={["Order", "Business", "PO", "Gross", "Action"]}>
               {overview.voids.slice(0, adminPageSize).map((order) => <tr key={order.id}>
-                <td className="admin-mono">{order.id}</td>
+                <td className="admin-mono">{order.order_reference}</td>
                 <td>{order.trade_account_id ? <AdminLink href={`/admin/finance/accounts/${order.trade_account_id}`}>{order.business_name}</AdminLink> : order.business_name}</td>
                 <td className="admin-mono">{order.po_number}</td>
                 <td className="admin-mono">{formatGbp(order.gross_pence)}</td>
@@ -95,7 +95,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         {overview.reviews.length ? (
           <AdminTable label="Payment review" headers={["Order", "Business", "Payment", "Reason", "Action"]}>
             {overview.reviews.slice(0, adminPageSize).map((order) => <tr key={order.id}>
-              <td className="admin-mono">{order.id}</td><td>{order.business_name}</td>
+              <td className="admin-mono">{order.order_reference}</td><td>{order.business_name}</td>
               <td>{displayState(order.payment_status)}</td>
               <td>{order.stripe_reconciliation_error ?? (order.payment_review_reason && displayState(order.payment_review_reason))}</td>
               <td>{order.payment_method === "card" && order.payment_review_reason === amountMismatch
@@ -111,7 +111,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         {overview.captures.length ? (
           <AdminTable label="Outstanding captures" headers={["Order", "Business", "Payment", "Outstanding"]}>
             {overview.captures.slice(0, adminPageSize).map((order) => <tr key={order.id}>
-              <td className="admin-mono">{order.id}</td><td>{order.business_name}</td>
+              <td className="admin-mono">{order.order_reference}</td><td>{order.business_name}</td>
               <td>{displayState(order.payment_status)}</td>
               <td className="admin-mono">{formatGbp(order.paid_pence - order.refunded_pence)}</td>
             </tr>)}
@@ -154,7 +154,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         {overview.orders.length ? (
           <AdminTable label="Orders and payment status" headers={["Order", "Business", "Method", "Payment", "Fulfilment", "Total", "Created"]}>
             {overview.orders.slice(0, adminPageSize).map((order) => <tr key={order.id}>
-              <td className="admin-mono">{order.id}</td><td>{order.business_name}</td>
+              <td className="admin-mono">{order.order_reference}</td><td>{order.business_name}</td>
               <td>{order.payment_method === "net30" ? "Net 30" : "Card"}</td>
               <td>{displayState(order.payment_status)}</td><td>{displayState(order.fulfilment_status)}</td>
               <td className="admin-mono">{formatGbp(order.gross_pence)}</td>

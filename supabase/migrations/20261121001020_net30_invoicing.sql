@@ -14,7 +14,8 @@ grant update (stripe_net30_invoice_id, stripe_net30_sent) on public.orders to se
 
 create index orders_stripe_net30_reconcile_idx on public.orders (stripe_replay_after, id)
 where payment_method = 'net30' and
-  (fulfilment_status = 'awaiting_authorisation' or provider_invoice_id is not null);
+  (fulfilment_status = 'awaiting_authorisation' or
+    (provider_invoice_id is not null and (payment_status <> 'voided' or stripe_reconciliation_error is not null)));
 
 create function public.start_net30_invoice(p_order_id uuid, p_account_id text)
 returns setof public.orders
@@ -29,6 +30,22 @@ begin
     and target.hold_expires_at > clock_timestamp() then
     update public.orders set stripe_net30_started_at = clock_timestamp(), stripe_net30_account_id = p_account_id
     where id = target.id returning * into target;
+  end if;
+  return next target;
+end;
+$$;
+
+create function public.close_absent_net30_order(p_order_id uuid)
+returns setof public.orders
+language plpgsql security definer set search_path = ''
+as $$
+declare target public.orders := private.lock_net30_order(p_order_id);
+begin
+  if target.fulfilment_status = 'awaiting_authorisation'
+    and target.stripe_net30_started_at <= clock_timestamp() - interval '24 hours'
+    and target.hold_expires_at <= clock_timestamp()
+    and target.stripe_net30_invoice_id is null and target.provider_invoice_id is null then
+    target := public.release_credit_hold(target.id, 'net30-absent:' || target.id, 'not_created');
   end if;
   return next target;
 end;
@@ -74,9 +91,10 @@ begin
 end;
 $$;
 
-revoke all on function public.start_net30_invoice(uuid, text), public.close_unstarted_net30_order(uuid)
+revoke all on function public.start_net30_invoice(uuid, text), public.close_unstarted_net30_order(uuid), public.close_absent_net30_order(uuid)
 from public, anon, authenticated;
-grant execute on function public.start_net30_invoice(uuid, text), public.close_unstarted_net30_order(uuid) to service_role;
+grant execute on function public.start_net30_invoice(uuid, text), public.close_unstarted_net30_order(uuid), public.close_absent_net30_order(uuid)
+to service_role;
 revoke all on function public.bind_issued_net30_invoice(uuid, text, text, integer, text, timestamptz, timestamptz,
   timestamptz, date, date) from public, anon, authenticated;
 grant execute on function public.bind_issued_net30_invoice(uuid, text, text, integer, text, timestamptz, timestamptz,

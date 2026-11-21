@@ -61,7 +61,7 @@ export async function adminTradeAccount(id: string, invoicesPage: number) {
     db.from("trade_credit_position").select("credit_limit_pence,held_pence,outstanding_pence,available_credit_pence")
       .eq("trade_account_id", id).maybeSingle(),
     db.from("invoices").select(
-      "order_id,provider_invoice_id,po_number,amount_due_pence,amount_remaining_pence,issued_at,due_at,status",
+      "order_id,provider_invoice_id,po_number,amount_due_pence,amount_remaining_pence,issued_at,due_at,status,orders(order_reference)",
     ).eq("trade_account_id", id).order("due_at", { ascending: false }).order("order_id").range(...adminRange(invoicesPage)),
   ]);
   if (account.error || position.error || invoices.error) throw new Error("Could not load this trade account.");

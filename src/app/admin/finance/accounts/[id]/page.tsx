@@ -73,7 +73,7 @@ export default async function TradeAccountPage({ params, searchParams }: {
         {invoices.length ? (
           <AdminTable label="Net 30 invoices" headers={["PO", "Order", "Status", "Issued", "Due", "Original gross", "Outstanding", "Provider"]}>
             {invoices.slice(0, adminPageSize).map((invoice) => <tr key={invoice.order_id}>
-              <td className="admin-mono">{invoice.po_number}</td><td className="admin-mono">{invoice.order_id}</td>
+              <td className="admin-mono">{invoice.po_number}</td><td className="admin-mono">{invoice.orders?.order_reference ?? invoice.order_id}</td>
               <td>{displayState(invoice.status)}</td><td className="admin-mono">{displayTimestamp(invoice.issued_at)}</td>
               <td className="admin-mono">{displayTimestamp(invoice.due_at)}</td>
               <td className="admin-mono">{formatGbp(invoice.amount_due_pence)}</td>

@@ -30,7 +30,7 @@ export async function reconcileStripePayments() {
       .lte("created_at", mature).lte("stripe_replay_after", now.toISOString())
       .order("stripe_replay_after").limit(10),
     db.from("orders").select("*").eq("payment_method", "net30")
-      .or("fulfilment_status.eq.awaiting_authorisation,provider_invoice_id.not.is.null")
+      .or("fulfilment_status.eq.awaiting_authorisation,and(provider_invoice_id.not.is.null,or(payment_status.neq.voided,stripe_reconciliation_error.not.is.null))")
       .lte("created_at", mature).lte("stripe_replay_after", now.toISOString())
       .order("stripe_replay_after").limit(4),
   ]);
@@ -62,7 +62,8 @@ async function reconcileTradeOrder(stripe: Stripe, order: Order, now: Date) {
     issue = safePaymentFailure(error);
     updated = await getOrder(order.id) ?? order;
   }
-  const interval = issue || updated.fulfilment_status === "awaiting_authorisation" ? 5 : 60 * 6;
+  const interval = issue || updated.fulfilment_status === "awaiting_authorisation" ? 5
+    : ["paid", "partially_refunded", "refunded"].includes(updated.payment_status) ? 60 * 24 : 60 * 6;
   const { error } = await paymentStore().from("orders").update({
     stripe_reconciliation_error: issue,
     stripe_replay_after: new Date(now.getTime() + interval * 60_000).toISOString(),

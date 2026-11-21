@@ -70,7 +70,7 @@ pnpm bench:search                  # 100 warm calls to the anonymous HTTP RPC
 pnpm build
 pnpm exec playwright install chromium
 pnpm test:e2e                       # Uses the fixture and starts the production build on port 3100
-pnpm test:acceptance                # PRD §7 card and trial journeys; also runs in CI
+pnpm test:acceptance                # PRD §7 card, trial and Net 30 journeys; also runs in CI
 ```
 
 The acceptance command starts and removes a disposable Supabase stack on free
