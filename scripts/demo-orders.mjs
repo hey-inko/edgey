@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import pg from "pg";
 import { runDemoOrders } from "./demo-orders-fixture.mjs";
+import { stagingDbConnection } from "./staging-db-connection.mjs";
 
 const usage = "Pass --local or --staging --project-ref <staging-project-ref>.";
 
@@ -20,27 +20,15 @@ export function demoConnection(args, env) {
       (flags.staging && !/^[a-z0-9]{20}$/.test(ref ?? ""))) {
     throw new Error(usage);
   }
-  const url = URL.parse((flags.local ? env.SUPABASE_DB_URL : env.EDGEY_STAGING_DB_URL) ?? "");
+  if (flags.staging) return stagingDbConnection(ref, env);
+
+  const url = URL.parse(env.SUPABASE_DB_URL ?? "");
   const postgres = url && ["postgres:", "postgresql:"].includes(url.protocol) &&
     !url.href.includes("?") && !url.href.includes("#");
-  if (flags.local) {
-    if (!postgres || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
-      throw new Error("SUPABASE_DB_URL must be a loopback Postgres URL without query parameters or a fragment.");
-    }
-    return { connectionString: url.href, ssl: false, connectionTimeoutMillis: 10_000 };
+  if (!postgres || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+    throw new Error("SUPABASE_DB_URL must be a loopback Postgres URL without query parameters or a fragment.");
   }
-  if (!postgres || url.hostname !== `db.${ref}.supabase.co` || !["", "5432"].includes(url.port) ||
-      url.pathname !== "/postgres" || url.username !== "postgres" || !url.password) {
-    throw new Error("EDGEY_STAGING_DB_URL must be the direct Postgres URL for the confirmed staging project, with a password and no query string.");
-  }
-  let ca;
-  try {
-    ca = readFileSync(env.EDGEY_STAGING_DB_CA_FILE ?? "", "utf8");
-    if (!ca.includes("-----BEGIN CERTIFICATE-----")) throw new Error();
-  } catch {
-    throw new Error("Set EDGEY_STAGING_DB_CA_FILE to the server root certificate from that staging Supabase project.");
-  }
-  return { connectionString: url.href, ssl: { ca, rejectUnauthorized: true }, connectionTimeoutMillis: 10_000 };
+  return { connectionString: url.href, ssl: false, connectionTimeoutMillis: 10_000 };
 }
 
 async function main() {

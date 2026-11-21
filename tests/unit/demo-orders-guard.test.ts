@@ -12,9 +12,9 @@ test.each([
   { args: ["--staging"], env: {}, message: "Pass --local or --staging" },
   { args: ["--local"], env: { SUPABASE_DB_URL: hosted }, message: "must be a loopback Postgres URL" },
   { args: ["--local"], env: { SUPABASE_DB_URL: "postgres://localhost/db?host=other" }, message: "must be a loopback Postgres URL" },
-  { args: remote, env: { EDGEY_STAGING_DB_URL: hosted.replace(ref, "zzzzzzzzzzzzzzzzzzzz") }, message: "must be the direct Postgres URL" },
-  { args: remote, env: { EDGEY_STAGING_DB_URL: hosted + "?sslmode=disable" }, message: "must be the direct Postgres URL" },
-  { args: remote, env: { EDGEY_STAGING_DB_URL: hosted.replace(".supabase.co", ".supabase.co.example") }, message: "must be the direct Postgres URL" },
+  { args: remote, env: { EDGEY_STAGING_DB_URL: hosted.replace(ref, "zzzzzzzzzzzzzzzzzzzz") }, message: "must use the direct host or the session pooler" },
+  { args: remote, env: { EDGEY_STAGING_DB_URL: hosted + "?sslmode=disable" }, message: "no query string or fragment" },
+  { args: remote, env: { EDGEY_STAGING_DB_URL: hosted.replace(".supabase.co", ".supabase.co.example") }, message: "must use the direct host or the session pooler" },
   { args: remote, env: { EDGEY_STAGING_DB_URL: hosted, EDGEY_STAGING_DB_CA_FILE: "" }, message: "Set EDGEY_STAGING_DB_CA_FILE" },
 ])("rejects unsafe arguments before connecting for load and cleanup ($message)", ({ args, env, message }) => {
   for (const mode of ["load", "clean"]) {

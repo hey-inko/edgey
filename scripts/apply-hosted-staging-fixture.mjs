@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import pg from "pg";
+import { stagingDbConnection } from "./staging-db-connection.mjs";
 
 async function applyHostedFixture() {
   let projectRef;
@@ -15,30 +16,17 @@ async function applyHostedFixture() {
     return false;
   }
 
-  const url = URL.parse(process.env.EDGEY_STAGING_DB_URL ?? "");
-  if (!url || !["postgres:", "postgresql:"].includes(url.protocol) ||
-      url.hostname !== `db.${projectRef}.supabase.co` || !["", "5432"].includes(url.port) ||
-      url.pathname !== "/postgres" || url.username !== "postgres" || !url.password || url.search || url.hash) {
-    console.error("EDGEY_STAGING_DB_URL must be the direct Postgres connection URL for the confirmed Supabase project, with a password and no query string.");
-    return false;
-  }
-
-  let ca;
+  let connection;
   try {
-    ca = readFileSync(process.env.EDGEY_STAGING_DB_CA_FILE ?? "", "utf8");
-    if (!ca.includes("-----BEGIN CERTIFICATE-----")) throw new Error();
-  } catch {
-    console.error("Set EDGEY_STAGING_DB_CA_FILE to the server root certificate downloaded from the staging Supabase dashboard.");
+    connection = stagingDbConnection(projectRef, process.env);
+  } catch (error) {
+    console.error(error.message);
     return false;
   }
 
   let client;
   try {
-    client = new pg.Client({
-      connectionString: url.href,
-      ssl: { ca, rejectUnauthorized: true },
-      connectionTimeoutMillis: 10_000,
-    });
+    client = new pg.Client(connection);
     await client.connect();
     await client.query("begin");
     await client.query("set local lock_timeout = '10s'");
