@@ -202,3 +202,7 @@ export function queryValue(value: string | string[] | undefined): string {
 export function productHref(slug: string, sku?: string | null): string {
   return "/blades/" + slug + (sku ? "?variant=" + encodeURIComponent(sku) : "");
 }
+
+export function brandHref(slug: string): string {
+  return "/brands/" + encodeURIComponent(slug);
+}

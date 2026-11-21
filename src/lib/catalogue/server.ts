@@ -138,6 +138,16 @@ export const getFamily = cache(async (slug: string): Promise<Family | null> => {
   return row && row.variants.length > 0 ? toFamily(row) : null;
 });
 
+export const getBrandLanding = cache(async (slug: string) => {
+  if (!/^[a-z0-9-]{1,80}$/.test(slug)) return null;
+  const blades = (await listFamilies()).flatMap((family) => family.variants.flatMap((variant) => {
+    const references = variant.compatibility.filter((record) => record.brand?.slug === slug);
+    return references.length ? [{ family, variant, references }] : [];
+  }));
+  const brand = blades[0]?.references[0]?.brand;
+  return brand ? { brand, blades } : null;
+});
+
 const searchBlades = cache(async (query: string): Promise<SearchHit[]> => {
   const { data, error } = await publicClient().rpc("search_blades", { query_text: query });
   if (error) throw new Error("Search failed: " + error.message);
