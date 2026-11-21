@@ -146,6 +146,9 @@ export async function editCatalogueVariant(id: string, _previous: State | null, 
 function finish(id: string, result: { data: string | null; error: { code: string; message: string } | null }, message: string): State {
   if (result.error || !result.data) {
     const error = result.error;
+    if (error?.code === "23514" && error.message.includes("variants_prices_required_outside_draft")) {
+      return { ok: false, message: "Set all three price tiers before publishing." };
+    }
     const validationError = error?.code === "23503" || error?.code === "22P02" || error?.code === "22003";
     return {
       ok: false,

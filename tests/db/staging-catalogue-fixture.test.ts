@@ -13,7 +13,7 @@ test("the public staging catalogue preserves the four design identities and Appe
     const products = [
       ["3910301", "EDG-Z10", "Flat-stock drag blade", "drag", "drag-line.svg", "coral", 2250, 1995, 1750],
       ["3910306", "EDG-Z16", "Oscillating blade", "oscillating", "oscillating-line.svg", "cyan", 2150, 1850, 1595],
-      ["42437293", "EDG-SR6223", "Round-shank blade", "oscillating", "cylinder-line.svg", "lime", 2550, 2250, 1995],
+      ["G42437293", "EDG-SR6223", "Round-shank blade", "oscillating", "cylinder-line.svg", "lime", 2550, 2250, 1995],
       ["3910335", "EDG-Z50", "Decagonal rotary blade", "rotary", "rotary-line.svg", "violet", 3800, 3400, 3000],
     ];
     for (const [code, sku, name, tool_category, drawing, proof, price_1_4_pence, price_5_9_pence, price_10_plus_pence] of products) {

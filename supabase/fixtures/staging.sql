@@ -10,12 +10,12 @@
 -- sku, stock on hand, codes to approve
 create temporary table fixture_variants (sku text primary key, stock integer not null, codes text[] not null) on commit drop;
 insert into fixture_variants values
-  ('EDG-Z10', 40, array['Z10', '3910301']),       -- 500-9802 stays an unverified candidate
+  ('EDG-Z10', 40, array['Z10', '3910301']),
   ('EDG-Z16', 25, array['Z16', '3910306']),
-  ('EDG-SR6223', 18, array['BLD-SR6223', '42437293']),
+  ('EDG-SR6223', 18, array['BLD-SR6223', 'G42437293']),
   ('EDG-Z50', 12, array['Z50', '3910335']),
-  ('EDG-Z71', 6, array['Z71', '5006045']),
-  ('EDG-Z1', 30, array['Z1', '3910105']),
+  ('EDG-Z71', 6, array['Z71', '3910334']),
+  ('EDG-Z1', 30, array['Z1', '3910110']),
   ('EDG-SUM-DRG-36', 20, array['391-360']),
   ('EDG-SUM-DRG-60', 0, array['391-231']),       -- published and out of stock
   ('EDG-SUM-TAN-36', 8, array['390-534']),        -- EDG-SUM-TAN-45 stays draft

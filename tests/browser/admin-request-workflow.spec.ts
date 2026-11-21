@@ -36,7 +36,7 @@ test("catalogue and warehouse take a five-field trial through dispatch to a link
   ]);
   const company = `The Proof Room ${randomUUID().slice(0, 6)}`;
   const { error: earlierError } = await db.rpc("submit_trial_request", {
-    p_id: randomUUID(), p_machine_brand: "Zünd", p_oem_code: "3910105",
+    p_id: randomUUID(), p_machine_brand: "Zünd", p_oem_code: "3910110",
     p_email: buyer.email, p_company: company, p_postcode: "SW1A 1AA",
   });
   if (earlierError) throw earlierError;
@@ -46,7 +46,7 @@ test("catalogue and warehouse take a five-field trial through dispatch to a link
   await expect(submission.getByRole("textbox")).toHaveCount(4);
   await expect(submission.getByRole("combobox")).toHaveCount(1);
   await submission.getByLabel("Machine brand").selectOption({ label: "Zünd" });
-  await submission.getByLabel("OEM code").fill("3910105");
+  await submission.getByLabel("OEM code").fill("3910110");
   await submission.getByLabel("Work email").fill(buyer.email);
   await submission.getByLabel("Company").fill(company);
   await submission.getByLabel("Postcode").fill("SW1A1AA");
