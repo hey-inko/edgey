@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/admin/auth";
 import {
-  cancelOrder, dispatchOrder, receiveStock, recordReturn, restoreStock, startPicking,
+  cancelOrder, dispatchOrder, receiveStock, restoreStock, startPicking,
 } from "@/lib/orders";
+import { commercialDb } from "@/lib/commercial/database";
+import { isReportedLookupCode, isReturnCategory } from "@/lib/commercial/returns";
 import { isWarehouseId } from "./warehouse-format";
 
 type State = { message: string; ok: boolean } | null;
@@ -16,6 +18,7 @@ type WarehouseAction =
 const errors: Readonly<Record<string, string>> = {
   carrier_and_tracking_required: "Enter both the carrier and tracking number.",
   invalid_stock_receipt: "Enter a positive whole number of units.",
+  order_return_reported_lookup_shape: "Enter only the blade part number or SKU for a wrong-fit return.",
   operation_key_conflict: "This form was already used with different values. Reload the page before starting a new operation.",
   order_cannot_be_cancelled: "This order can no longer be cancelled. Reload to check its current status.",
   order_not_dispatched: "Record a return only after the order has been dispatched.",
@@ -39,7 +42,7 @@ function refused(message: string) {
 }
 
 export async function runWarehouseAction(action: WarehouseAction, _previous: State, form: FormData) {
-  const { userId: actorId } = await requireStaff("warehouse");
+  const { userId: actorId, db } = await requireStaff("warehouse");
   if (!action || !(form instanceof FormData) || !isWarehouseId(action.key) || (
     action.kind === "receive" ? !isWarehouseId(action.variantId) : !isWarehouseId(action.orderId)
   )) {
@@ -83,14 +86,20 @@ export async function runWarehouseAction(action: WarehouseAction, _previous: Sta
       case "return": {
         const variantId = text(form, "variantId");
         const reason = text(form, "reason");
-        const lookupCode = text(form, "lookupCode");
+        const category = text(form, "returnCategory");
+        const reportedLookupCode = text(form, "reportedLookupCode");
         if (!isWarehouseId(variantId)) return refused("Select a dispatched line.");
+        if (!isReturnCategory(category)) return refused("Choose a return category.");
         if (!reason || reason.length > 500) return refused("Enter a return reason of up to 500 characters.");
-        if (lookupCode.length > 100) return refused("Enter a lookup code of up to 100 characters.");
-        await recordReturn({
-          orderId: action.orderId, actorId, returnId: operationKey, variantId, quantity, reason,
-          lookupCode: lookupCode || undefined,
+        if (reportedLookupCode && (category !== "wrong_fit" || !isReportedLookupCode(reportedLookupCode))) {
+          return refused("Enter only the blade part number or SKU for a wrong-fit return. Do not enter personal details.");
+        }
+        const { error } = await commercialDb(db).rpc("record_structured_return", {
+          p_order_id: action.orderId, p_return_id: operationKey, p_variant_id: variantId,
+          p_quantity: quantity, p_reason: reason, p_reason_category: category,
+          p_reported_lookup_code: reportedLookupCode || undefined,
         });
+        if (error) throw error;
         message = "Return recorded. No units have been added to saleable stock.";
         break;
       }

@@ -7,6 +7,7 @@ import { SelectionProvider } from "@/components/selection-provider";
 import { SiteFooter } from "@/components/site-footer";
 import { SkipLink } from "@/components/skip-link";
 import { WordmarkSprite } from "@/components/wordmark";
+import { indexableSiteOrigin } from "@/lib/catalogue/indexable-site";
 import tokens from "../../design-tokens.json";
 import "./globals.css";
 
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
   title: { default: "Edgey — The cutting room", template: "%s | Edgey" },
   description:
     "Edgey’s digital cutting room. Explore replacement blades for print, packaging and display by tool type, material or part number.",
+  robots: indexableSiteOrigin() ? undefined : { index: false, follow: false },
 };
 
 const themeScript = `{

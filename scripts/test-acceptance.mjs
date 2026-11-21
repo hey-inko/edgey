@@ -68,6 +68,8 @@ try {
     SUPABASE_SERVICE_ROLE_KEY: status.SECRET_KEY,
     SUPABASE_DB_URL: status.DB_URL,
     EDGEY_REQUEST_HASH_KEY: secret(),
+    EDGEY_INDEXING_ENABLED: "true",
+    EDGEY_FINDER_ATTRIBUTION_ENABLED: "true",
     STRIPE_SECRET_KEY: `sk_test_${secret()}`,
     STRIPE_WEBHOOK_SECRET: `whsec_${secret()}`,
     CRON_SECRET: secret(),

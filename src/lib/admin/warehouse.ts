@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/service";
+import { commercialDb } from "@/lib/commercial/database";
 import type { Database } from "@/lib/supabase/database.types";
 import { type WarehouseOrderLookup, warehousePageSize } from "./warehouse-format";
 
@@ -70,8 +71,8 @@ export async function getWarehouseOrder(db: StaffDb, orderId: string) {
 }
 
 export async function getWarehouseReturns(db: StaffDb, orderId: string) {
-  const { data, error } = await db.from("order_returns")
-    .select("id,variant_id,quantity,restored_quantity,reason,lookup_code,created_at")
+  const { data, error } = await commercialDb(db).from("order_returns")
+    .select("id,variant_id,quantity,restored_quantity,reason,reason_category,lookup_code,reported_lookup_code,created_at")
     .eq("order_id", orderId).order("created_at", { ascending: false }).order("id");
   if (error) throw error;
   return data;

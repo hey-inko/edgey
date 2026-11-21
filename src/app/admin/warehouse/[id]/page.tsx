@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/admin/auth";
 import { getWarehouseOrder, getWarehouseReturns } from "@/lib/admin/warehouse";
 import { runWarehouseAction } from "@/lib/admin/warehouse-actions";
 import { isWarehouseId, movementTime, warehouseLabel } from "@/lib/admin/warehouse-format";
+import { returnCategories } from "@/lib/commercial/returns";
 import { PickDetails } from "./pick-details";
 
 export default async function WarehouseOrderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +37,7 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
       <AdminHeading title="Warehouse order" eyebrow="Warehouse" />
       <nav className="flex flex-wrap gap-4" aria-label="Order navigation">
         <AdminLink href="/admin/warehouse">Picking queue</AdminLink>
+        {undispatched && blocked && <AdminLink href="/admin/warehouse?view=blocked">Payment blocks</AdminLink>}
         <AdminLink href="/admin/warehouse?view=history">Dispatch and cancellation history</AdminLink>
         {undispatched && !blocked && <AdminLink href={`/admin/warehouse/${order.id}/print`}>Printable pick list</AdminLink>}
       </nav>
@@ -53,8 +55,10 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
             </>
           )}
         </dl>
-        {undispatched && blocked && <AdminNotice>A voided or fully refunded order cannot be picked or dispatched. Cancel the order to release its allocation.</AdminNotice>}
-        {status === "cancelled" && <AdminNotice>Cancellation releases the allocation. Finance handles any refund separately.</AdminNotice>}
+        {undispatched && blocked && <AdminNotice>Payment is voided or fully refunded. Do not dispatch. Confirm the parcel is still in the warehouse before releasing its allocation.</AdminNotice>}
+        {status === "cancelled" && <AdminNotice>{blocked
+          ? "Fulfilment cancelled and the allocation released. The recorded payment outcome is unchanged."
+          : "Cancellation releases the allocation. Finance handles any refund separately."}</AdminNotice>}
       </AdminSection>
       <PickDetails order={order} items={items} />
       {status === "ready_to_pick" && !blocked && (
@@ -75,12 +79,14 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
         </AdminSection>
       )}
       {undispatched && (
-        <AdminSection title="Cancel before dispatch">
-          <AdminForm action={runWarehouseAction.bind(null, { kind: "cancel", orderId: order.id, key: randomUUID() })} submit="Cancel order">
-            <p>Cancellation releases the allocation. It does not issue a refund.</p>
+        <AdminSection title={blocked ? "Release blocked allocation" : "Cancel before dispatch"}>
+          <AdminForm action={runWarehouseAction.bind(null, { kind: "cancel", orderId: order.id, key: randomUUID() })}
+            submit={blocked ? "Cancel and release allocation" : "Cancel order"}>
+            <p>{blocked ? "Cancelling fulfilment releases the reserved units. It does not change the recorded payment outcome."
+              : "Cancellation releases the allocation. It does not issue a refund."}</p>
             <label className="flex items-center gap-2">
               <input type="checkbox" name="confirmCancel" value="yes" required />
-              Confirm cancellation
+              {blocked ? "I confirm the order has not left the warehouse" : "Confirm cancellation"}
             </label>
           </AdminForm>
         </AdminSection>
@@ -90,7 +96,7 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
           <AdminSection title="Record a return">
             {returnableLines.length ? (
               <AdminForm action={runWarehouseAction.bind(null, { kind: "return", orderId: order.id, key: randomUUID() })} submit="Record return">
-                <p>Record the units received. Inspect them before restoring any to saleable stock.</p>
+                <p>Record the units received. Inspect them before restoring any to saleable stock. For a wrong-fit return, enter the reported blade code if you know it. Do not enter personal details in the code field.</p>
                 <div className="admin-grid">
                   <AdminField label="Dispatched line">
                     <select name="variantId" defaultValue="" required>
@@ -105,8 +111,16 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
                   <AdminField label="Returned quantity">
                     <input name="quantity" type="number" min={1} max={2_147_483_647} step={1} required />
                   </AdminField>
+                  <AdminField label="Return category">
+                    <select name="returnCategory" defaultValue="" required>
+                      <option value="" disabled>Select a category</option>
+                      {Object.entries(returnCategories).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </AdminField>
                   <AdminField label="Return reason"><input name="reason" maxLength={500} required /></AdminField>
-                  <AdminField label="Lookup code (optional)"><input name="lookupCode" maxLength={100} /></AdminField>
+                  <AdminField label="Reported blade lookup code (optional, wrong fit only)">
+                    <input name="reportedLookupCode" maxLength={40} autoComplete="off" />
+                  </AdminField>
                 </div>
               </AdminForm>
             ) : <AdminNotice>All dispatched units have been recorded as returned.</AdminNotice>}
@@ -120,8 +134,15 @@ export default async function WarehouseOrderPage({ params }: { params: Promise<{
                   <dl className="admin-spec">
                     <dt>Variant</dt><dd className="admin-mono">{item?.sku ?? entry.variant_id}</dd>
                     <dt>Received</dt><dd><time dateTime={entry.created_at}>{movementTime(entry.created_at)}</time></dd>
+                    <dt>Category</dt><dd>{entry.reason_category ? returnCategories[entry.reason_category] : "Uncategorised (legacy)"}</dd>
                     <dt>Reason</dt><dd>{entry.reason}</dd>
-                    {entry.lookup_code && <><dt>Lookup code</dt><dd className="admin-mono">{entry.lookup_code}</dd></>}
+                    {entry.reported_lookup_code && <>
+                      <dt>Reported lookup code</dt><dd className="admin-mono">{entry.reported_lookup_code}</dd>
+                    </>}
+                    {(entry.lookup_code || entry.reason_category === "wrong_fit") && <>
+                      <dt>{entry.reason_category ? "Finder lookup code" : "Legacy lookup code"}</dt>
+                      <dd className="admin-mono">{entry.lookup_code ?? "No attributable code"}</dd>
+                    </>}
                     <dt>Returned units</dt><dd className="admin-mono">{entry.quantity}</dd>
                     <dt>Restored units</dt><dd className="admin-mono">{entry.restored_quantity}</dd>
                   </dl>

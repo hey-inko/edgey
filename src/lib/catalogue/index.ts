@@ -119,6 +119,7 @@ export type CatalogueView = {
   materials: (Substrate & { count: number })[];
   activeMaterial: Substrate | null;
   filtered: boolean;
+  finderEventId?: string;
 };
 
 export function buildCatalogueView(families: Family[], hits: SearchHit[] | null, filters: CatalogueFilters): CatalogueView {

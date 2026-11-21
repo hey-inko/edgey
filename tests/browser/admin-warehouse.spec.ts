@@ -67,9 +67,13 @@ test("staff sign in, print the paid order, then submit dispatch twice without mo
   await page.unrouteAll({ behavior: "wait" });
   await page.getByLabel("Dispatched line").selectOption(order.variant.id);
   await page.getByLabel("Returned quantity").fill("1");
+  await page.getByLabel("Return category").selectOption("wrong_fit");
+  await page.getByLabel("Reported blade lookup code", { exact: false }).fill("Other-329");
   await page.getByLabel("Return reason").fill("Unopened return");
   await page.getByRole("button", { name: "Record return", exact: true }).click();
   await expect(page.getByText("Unopened return")).toBeVisible();
+  await expect(page.getByText("No attributable code")).toBeVisible();
+  await expect(page.getByText("Other-329", { exact: true })).toBeVisible();
   expect((await stock()).data).toEqual(after.data);
   await page.getByLabel("Saleable quantity to restore").fill("1");
   await page.getByRole("button", { name: "Restore inspected units" }).click();

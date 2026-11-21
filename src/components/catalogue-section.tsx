@@ -2,6 +2,7 @@ import Link from "next/link";
 import { bladeCount, type CatalogueFilters, type CatalogueView } from "@/lib/catalogue";
 import { CatalogueControls } from "./catalogue-controls";
 import { ClearFiltersLink } from "./catalogue-links";
+import { FinderAttribution } from "./finder-attribution";
 import { ProductCard } from "./product-card";
 
 export function CatalogueSection({
@@ -19,6 +20,7 @@ export function CatalogueSection({
 
   return (
     <section className={"catalogue" + (asPage ? " is-page" : "")} id="catalogue" tabIndex={-1} aria-labelledby="catalogue-title">
+      {view.finderEventId && <FinderAttribution eventId={view.finderEventId} />}
       <div className="frame">
         <div className="section-head">
           <Heading id="catalogue-title" className={asPage ? "page-title" : undefined}>

@@ -9,6 +9,7 @@ const areas: { role?: StaffRole; title: string; path: string; description: strin
   { role: "catalogue", title: "Catalogue", path: "catalogue", description: "Edit selling data, review fit evidence and publish variants." },
   { role: "finance", title: "Finance", path: "finance", description: "Check payment status, exceptions and failed processing." },
   { title: "Requests", path: "requests", description: "See enquiries and applications available to your role." },
+  { role: "warehouse", title: "Commercial measures", path: "commercial", description: "Review exact Finder matches, trial purchases, dispatch promises and wrong-fit returns." },
 ];
 
 export default async function AdminPage() {

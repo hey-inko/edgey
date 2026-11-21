@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getBuyerTradePosition } from "@/lib/account/trade";
 import { RequestForm } from "@/components/requests/request-form";
 import { RequestPage } from "@/components/requests/request-page";
 import styles from "@/components/requests/request.module.css";
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 
 const applicationStatus = {
   pending: { title: "Application pending", detail: "We’ll email you after we’ve reviewed your application." },
-  approved: { title: "Application approved", detail: "Trade credit and Net 30 aren’t available yet." },
+  approved: { title: "Application approved" },
   rejected: { title: "Application not approved", detail: "We’ll contact you by email about the decision." },
 } satisfies Record<string, { title: string; detail?: string }>;
 
@@ -49,6 +50,12 @@ export default async function TradePage({ searchParams }: {
   }
 
   const status = await getOwnTradeApplicationStatus();
+  const trade = status === "approved" ? await getBuyerTradePosition().catch(() => null) : null;
+  const approvedDetail = process.env.NET30_CHECKOUT_ENABLED !== "true" || !trade
+    ? "Net 30 checkout is currently unavailable."
+    : trade.status === "suspended"
+      ? "Your trade credit is currently suspended. You can still pay by card."
+      : "Select Pay on account (Net 30) at checkout for an order within your available credit. You’ll need a purchase order number.";
   const application: { title: string; detail?: string } =
     status === "pending" || status === "approved" || status === "rejected"
       ? applicationStatus[status]
@@ -63,7 +70,7 @@ export default async function TradePage({ searchParams }: {
       {status ? (
         <div className={styles.notice} role="status">
           <h2>{application.title}</h2>
-          {application.detail && <p>{application.detail}</p>}
+          {status === "approved" ? <p>{approvedDetail}</p> : application.detail && <p>{application.detail}</p>}
         </div>
       ) : (
         <RequestForm

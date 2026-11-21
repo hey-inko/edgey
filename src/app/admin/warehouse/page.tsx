@@ -32,7 +32,9 @@ export default async function WarehousePage({
       <AdminHeading
         eyebrow="Warehouse"
         title={view === "queue" ? "Pick and dispatch" : views[view].title}
-        description="Pick against the order snapshot and record carrier and tracking when the parcel leaves."
+        description={view === "blocked"
+          ? "Do not dispatch these orders. Open an order to release its allocation once you confirm it has not left the warehouse."
+          : "Pick against the order snapshot and record carrier and tracking when the parcel leaves."}
       />
       <nav aria-label="Warehouse views" className="flex flex-wrap gap-4">
         {view !== "queue" && <AdminLink href={views.queue.href}>Picking queue</AdminLink>}

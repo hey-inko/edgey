@@ -155,6 +155,6 @@ export async function loadCatalogue(filters: CatalogueFilters) {
   const query = filters.q.trim();
   const [families, hits] = await Promise.all([listFamilies(), query ? searchBlades(query) : null]);
   const view = buildCatalogueView(families, hits, filters);
-  if (hits) await recordFinderSearch(query, hits, view);
+  if (hits) view.finderEventId = await recordFinderSearch(filters, hits, view);
   return view;
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { attributeFinderCheckout } from "@/lib/commercial/checkout";
 import type Stripe from "stripe";
 import { createNet30OrderWithHolds } from "@/lib/credit";
 import { stripeAccountId } from "./recovery";
@@ -22,6 +23,7 @@ export async function reserveNet30Order(...args: Parameters<typeof createNet30Or
   const reserved = await retryCredit(() => createNet30OrderWithHolds(...args));
   const order = await getOrder(reserved.id);
   if (!order || order.payment_method !== "net30") throw new PaymentReviewError("Could not read the reserved Net 30 order.");
+  await attributeFinderCheckout(order.id, input.attemptToken, order.buyer_id);
   return order;
 }
 
