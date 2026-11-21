@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { createLocalAdminUser } from "../../scripts/seed-admin";
 import { setVerifiedStaffSession } from "../browser/admin-fixtures";
 import { salesMoney } from "../../src/lib/sales/report";
-import { database } from "./storefront-fixtures";
+import { database, dispatchAt } from "./storefront-fixtures";
 
 test("staging demo orders feed the finance dashboard and cleanup restores stock", async ({ page, baseURL }) => {
   const db = await database();
@@ -23,6 +24,7 @@ test("staging demo orders feed the finance dashboard and cleanup restores stock"
       and (authorised_at at time zone 'Europe/London')::date between $1 and $2
   `, [range!.from, range!.to])).rows[0]!;
   const beforeSales = await booked();
+  const previousClock = await readFile(process.env.ACCEPTANCE_CLOCK_FILE!, "utf8");
   try {
     execFileSync("pnpm", ["demo:orders", "--local"], { stdio: ["ignore", "pipe", "pipe"] });
     expect(await balances()).not.toEqual(beforeStock);
@@ -30,11 +32,13 @@ test("staging demo orders feed the finance dashboard and cleanup restores stock"
     await setVerifiedStaffSession(page, finance, baseURL);
     const sales = await booked();
     expect(sales.count - beforeSales.count).toBe(12);
+    await dispatchAt(new Date().toISOString());
     const query = new URLSearchParams({ period: "custom", ...range!, grain: "week" });
     await page.goto(`/admin/sales?${query}`);
     await expect(page.getByRole("heading", { name: "Sales", exact: true })).toBeVisible();
-    await expect(page.locator("dt").filter({ hasText: /^Revenue ex VAT$/ }).locator("+ dd")).toHaveText(salesMoney(sales.net));
-    await expect(page.locator("dt").filter({ hasText: /^Orders$/ }).locator("+ dd")).toHaveText(String(sales.count));
+    const currentFigure = (label: RegExp) => page.locator("dt").filter({ hasText: label }).locator("..").locator("dd").first();
+    await expect(currentFigure(/^Revenue ex VAT$/)).toHaveText(salesMoney(sales.net));
+    await expect(currentFigure(/^Orders$/)).toHaveText(String(sales.count));
     await expect(page.getByRole("img", { name: /bar chart of booked product revenue/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Payment methods" }).locator("..")).toContainText("Net 30");
     await expect(page.getByRole("table", { name: "Product sales" })).toContainText("Cost missing");
@@ -53,6 +57,7 @@ test("staging demo orders feed the finance dashboard and cleanup restores stock"
       expect(await balances()).toEqual(beforeStock);
       expect((await db.query("select id from public.orders order by id")).rows).toEqual(beforeOrders);
     } finally {
+      await dispatchAt(previousClock);
       await db.end();
     }
   }
