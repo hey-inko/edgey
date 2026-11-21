@@ -115,14 +115,17 @@ test("catalogue and warehouse take a five-field trial through dispatch to a link
   expect(messages.map((row) => row.message_key).sort()).toEqual(["confirmation", "staff_notification", "trial_approved", "trial_dispatched"]);
 
   const order = await seedPaidAdminOrder({ sku, buyerId: buyer.id, email: "other-contact@example.test" });
+  const { data: orderRow, error: orderError } = await db.from("orders").select("order_reference").eq("id", order.id).single();
+  if (orderError) throw orderError;
+  const reference = orderRow.order_reference;
   await page.reload();
-  const candidate = page.getByRole("table", { name: "Possible subsequent orders" }).getByRole("row").filter({ hasText: order.id });
+  const candidate = page.getByRole("table", { name: "Possible subsequent orders" }).getByRole("row").filter({ hasText: reference });
   await expect(candidate).toContainText("Verified account email");
   await candidate.getByRole("link", { name: "Use this order" }).click();
-  await expect(page.getByRole("textbox", { name: "Order reference" })).toHaveValue(order.id);
+  await expect(page.getByRole("textbox", { name: "Order reference" })).toHaveValue(reference);
   await page.getByLabel("I confirmed this order followed the trial").check();
   await page.getByRole("button", { name: "Link order" }).click();
-  const linked = page.getByRole("link", { name: order.id });
+  const linked = page.getByRole("link", { name: reference });
   await expect(linked).toHaveAttribute("href", `/admin/warehouse/${order.id}`);
   await inspectAtWidths(page, "trial-linked");
   await linked.click();

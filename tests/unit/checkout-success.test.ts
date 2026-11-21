@@ -19,6 +19,7 @@ describe("checkout success page", () => {
   it.each([
     { scope: undefined },
     { scope: "cs_test_short" },
+    { scope: "EDG-00000042" },
     { scope: ["cs_test_session1", "cs_test_session2"] },
   ])(
     "never reads order data for an invalid session scope ($scope)",
@@ -54,7 +55,8 @@ describe("checkout success page", () => {
   it("renders only the scoped confirmation and immutable order amounts", async () => {
     const paidOrder = {
       kind: "confirmed" as const,
-      reference: "TEST-ORDER-001",
+      reference: "EDG-00000042",
+      deliveryService: "Next working day",
       dispatchDate: "2026-11-23",
       deliveryDate: "2026-11-24",
       vatRateBps: 2000,
@@ -68,7 +70,7 @@ describe("checkout success page", () => {
     read.mockResolvedValueOnce(paidOrder);
     const markup = await render("cs_test_session1");
     for (const text of [
-      "Order confirmed", "TEST-ORDER-001", "Monday, 23 November 2026", "Tuesday, 24 November 2026",
+      "Order confirmed", paidOrder.reference, "Monday, 23 November 2026", "Tuesday, 24 November 2026", "Next working day",
       "EDG-Z10", "Flat-stock blade", "5 × £19.95 ex VAT", "£99.75", "£6.95", "VAT (20%)", "£21.34", "£128.04",
     ]) {
       expect(markup).toContain(text);

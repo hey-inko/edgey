@@ -39,6 +39,8 @@ test("finance queues failed Stripe events and confirmations for the scheduled wo
   const db = localAdminClient();
   const id = `evt_${randomUUID().replaceAll("-", "")}`;
   const order = await seedPaidAdminOrder({ sku: "EDG-SR6223" });
+  const { data, error } = await db.from("orders").select("order_reference").eq("id", order.id).single();
+  if (error) throw error;
   const recorded = await db.rpc("record_provider_event", {
     p_provider: "stripe", p_event_id: id, p_event_type: "checkout.session.completed", p_payload: { fixture: true },
   });
@@ -53,6 +55,7 @@ test("finance queues failed Stripe events and confirmations for the scheduled wo
     await page.goto("/admin/finance");
     const event = page.getByRole("table", { name: "Failed provider events" }).getByRole("row").filter({ hasText: id });
     const message = page.getByRole("table", { name: "Confirmation outbox" }).getByRole("row").filter({ hasText: order.id });
+    await expect(message).toContainText(data.order_reference);
     await event.getByRole("button", { name: "Reprocess event" }).click();
     await expect(event).toContainText("Retry queued.");
     await message.getByRole("button", { name: "Resend confirmation" }).click();

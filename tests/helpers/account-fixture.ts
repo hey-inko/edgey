@@ -76,7 +76,7 @@ export async function createAccountOrder(db: Client, input: {
   const invoiceUrl = input.invoice ? accountInvoiceUrl(id) : null;
   const providerInvoiceId = input.invoice ? `in_test_${id}` : null;
   const dispatched = state === "dispatched";
-  await db.query(`
+  const { rows: [order] } = await db.query<{ order_reference: string }>(`
     insert into public.orders (
       id, checkout_attempt_token, buyer_id, email, business_name, recipient_name, buying_for_work,
       address_line1, address_town, address_postcode, address_country,
@@ -89,7 +89,7 @@ export async function createAccountOrder(db: Client, input: {
       '12 Test Lane', 'London', 'SW1A 1AA', 'GB',
       $5, $6, $7, $8, 2000, $9, $10, $11, $12, $13::timestamptz + interval '30 minutes',
       'Next working day', '2026-11-18', '2026-11-19', $14, $15, $16, $17, $18, $19, $13
-    )
+    ) returning order_reference
   `, [
     id, randomUUID(), input.buyerId, input.email,
     dispatched ? "paid" : state,
@@ -108,5 +108,5 @@ export async function createAccountOrder(db: Client, input: {
       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [id, line.id, line.sku, line.label, line.quantity, line.price, net, net / 5, net + net / 5]);
   }
-  return { id, invoiceUrl, providerInvoiceId };
+  return { id, reference: order!.order_reference, invoiceUrl, providerInvoiceId };
 }

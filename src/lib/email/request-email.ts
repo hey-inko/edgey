@@ -59,6 +59,12 @@ export function requestStaffNotice(from: string, to: string, source: NonNullable
   return JSON.stringify({ from, to: [to], subject, text, html });
 }
 
+export function requestFollowUp(from: string, email: string, subject: string | null, text: string | null) {
+  const recipient = email.trim();
+  if (!isSingleMailbox(recipient) || !subject?.trim() || /[\r\n]/.test(subject) || !text?.trim()) return null;
+  return JSON.stringify({ from, to: [recipient], subject, text });
+}
+
 export function hasStaffDestination(payload: string, to: string) {
   try {
     const message: unknown = JSON.parse(payload);

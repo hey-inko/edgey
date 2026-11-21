@@ -55,9 +55,9 @@ client address to enforce password-attempt limits per IP and per IP/email pair. 
 those inputs are missing. Configure Supabase Auth rate limits as well, because
 the application limiter cannot cover requests sent directly to Supabase.
 
-Finance replay controls record retry requests but cannot process them until the
-provider worker is connected. A request is keyed by target and its latest
-failure timestamp, without resetting the provider event or email state.
+Finance replay controls queue retries for the scheduled Stripe and email
+workers. A request is keyed by target and its latest failure timestamp,
+without resetting the provider event or email state.
 
 ### Checks
 
@@ -70,7 +70,19 @@ pnpm bench:search                  # 100 warm calls to the anonymous HTTP RPC
 pnpm build
 pnpm exec playwright install chromium
 pnpm test:e2e                       # Uses the fixture and starts the production build on port 3100
+pnpm test:acceptance                # PRD §7 card and trial journeys; also runs in CI
 ```
+
+The acceptance command starts and removes a disposable Supabase stack (ports
+55321, 55322 and 55324), loads the staging fixture, builds Next.js for production
+and runs Chromium on port 3110. It doesn't reset your development database.
+It replaces `.next`; run `pnpm build` again before starting a regular production preview.
+Stripe's API and hosted payment screen are simulated locally, webhook bodies
+are signed and verified by the Stripe SDK, and confirmation email goes to a
+local file outbox. Delivery tests control the test server's calendar clock
+while payment expiry and webhook signature freshness use real time. This
+doesn't verify actual payment, wallet availability, invoice PDFs or email
+delivery; see [the staging checklist](docs/staging.md) for those.
 
 Run `pnpm tokens` to regenerate `src/app/tokens.css` from the design pack.
 Public catalogue reads use the publishable key. Supplier data, stock counts
@@ -93,8 +105,8 @@ limits. Open the link in the browser that requested it. Set the server-only
 bytes). Rate limits trust Vercel’s client IP header and do not accept hosted
 submissions when it’s missing; the local stack uses a shared IP bucket.
 Finder telemetry ignores prefetch and recognised crawlers and caps writes
-per IP and globally. The request-email worker sends queued confirmations and
-staff notifications. Trial requests make no delivery
+per IP and globally. The request-email worker sends queued receipts, intake
+notifications, enquiry replies and trial updates. Trial requests make no delivery
 promise, and an approved application does not grant credit.
 
 Before accepting public submissions, supply the HTTPS privacy notice URL as
@@ -145,26 +157,14 @@ are counted by outcome without keeping the query.
    curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/cron/order-confirmations
    ```
 
-### Connect staging and operate the queues
+### Staging and queue operations
 
-- Apply the Supabase migrations to the isolated staging database. Set the
-  Supabase variables, Stripe sandbox key and staging HTTPS origin on the
-  deployment. In the same Stripe sandbox, add a **snapshot** webhook for
-  `https://<staging-host>/api/webhooks/stripe` at API version
-  `2026-11-18.endive`, selecting the event types from the CLI command above.
-  Set its signing secret as `STRIPE_WEBHOOK_SECRET` and redeploy. If staging
-  uses deployment protection, allow Stripe to reach this endpoint. Validate
-  card and eligible Apple Pay/Google Pay on supported devices; do not use live
-  keys or real buyer details in this build. Check the sandbox’s successful
-  payment email setting if you want Stripe to email its own invoice links.
-- `vercel.json` schedules the three workers every minute. Deploy staging as
-  its own production deployment on a Vercel plan that supports one-minute
-  cron, and set `CRON_SECRET` in that project's production environment so
-  Vercel sends `Authorization: Bearer $CRON_SECRET`. Hosted checkout also
-  needs `EDGEY_REQUEST_HASH_KEY` and Vercel's trusted client address header.
-  New reservations are limited to ten attempts per IP and three per email
+Follow [docs/staging.md](docs/staging.md) to provision, configure and verify
+the isolated hosted projects. See [the release status](docs/release-status.md)
+for the checks that still need real providers and owner sign-off.
+
+- New reservations are limited to ten attempts per IP and three per email
   each hour. Retrying a saved attempt does not consume a new hold.
-
 - Use `EMAIL_PROVIDER=resend` (the default), `RESEND_API_KEY` from the staging
   Resend account and a verified `EMAIL_FROM`. Use only controlled test
   recipients. Keep the account and sender configuration stable while sends

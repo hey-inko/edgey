@@ -3,7 +3,7 @@ import { AdminField, AdminForm, AdminHeading, AdminLink, AdminNotice, AdminSecti
 import { displayTimestamp } from "@/lib/admin/format";
 import { requestsDb } from "@/lib/admin/request-schema";
 import { publishedRequestVariants, requireRequestsStaff, requestBrand, requestVariantLabels, trialStatus, variantLabel } from "@/lib/admin/requests";
-import { isWarehouseId } from "@/lib/admin/warehouse-format";
+import { isWarehouseId, warehouseOrderLookup } from "@/lib/admin/warehouse-format";
 import { lookupDeliveryCoverage, PLACEHOLDER_DELIVERY_COVERAGE } from "@/lib/commerce";
 import { handleTrial } from "../../actions";
 import { AddressInput } from "../../address-input";
@@ -46,8 +46,12 @@ export default async function TrialPage({ params, searchParams }: {
   const linking = Boolean(fulfilment?.state === "dispatched" && fulfilment.dispatched_at && !fulfilment.subsequent_order_id);
   const candidates = linking ? await requestsDb().rpc("admin_trial_order_candidates", { p_trial_request_id: id, p_actor_id: userId }) : null;
   if (candidates?.error) throw new Error("Could not load matching order references.");
+  const orderIds = fulfilment?.subsequent_order_id ? [fulfilment.subsequent_order_id] : candidates?.data.map(({ id }) => id) ?? [];
+  const orders = orderIds.length ? await db.from("orders").select("id,order_reference").in("id", orderIds) : null;
+  if (orders?.error) throw new Error("Could not load order references.");
+  const references = new Map(orders?.data.map(({ id, order_reference }) => [id, order_reference]));
   const { order: selectedOrder } = await searchParams;
-  const orderToLink = isWarehouseId(selectedOrder) ? selectedOrder : "";
+  const orderToLink = typeof selectedOrder === "string" ? warehouseOrderLookup(selectedOrder)?.value ?? "" : "";
   const path = `/admin/requests/trials/${id}`;
 
   return <>
@@ -161,7 +165,7 @@ export default async function TrialPage({ params, searchParams }: {
       </AdminSection>
     </div>}
     {fulfilment?.subsequent_order_id && <AdminSection title="Linked order">
-      <AdminLink href={`/admin/warehouse/${fulfilment.subsequent_order_id}`}>{fulfilment.subsequent_order_id}</AdminLink>
+      <AdminLink href={`/admin/warehouse/${fulfilment.subsequent_order_id}`}>{references.get(fulfilment.subsequent_order_id) ?? "View linked order"}</AdminLink>
       <details className="admin-panel admin-narrow mt-3">
         <summary>Correct an order link</summary>
         <div className="mt-3">
@@ -175,10 +179,10 @@ export default async function TrialPage({ params, searchParams }: {
     {linking && <AdminSection title="Link a subsequent order">
       <p className="admin-muted mb-3">Confirm the buyer and that the order followed this trial. A matching email is only a lead, even on an order placed by a signed-in buyer.</p>
       {candidates?.data.length ? <AdminTable label="Possible subsequent orders" headers={["Order", "Matching evidence", "Placed", "Link"]}>
-        {candidates.data.map((order) => <tr key={order.id}>
-          <td><AdminLink href={`/admin/warehouse/${order.id}`}>{order.id}</AdminLink></td>
+        {candidates.data.filter(({ id }) => references.has(id)).map((order) => <tr key={order.id}>
+          <td><AdminLink href={`/admin/warehouse/${order.id}`}>{references.get(order.id)}</AdminLink></td>
           <td>{order.match_kind === "verified_account_email" ? "Verified account email" : "Order contact email"}</td><td>{displayTimestamp(order.created_at)}</td>
-          <td><AdminLink href={`${path}?order=${order.id}#link-order`}>Use this order</AdminLink></td>
+          <td><AdminLink href={`${path}?order=${references.get(order.id)}#link-order`}>Use this order</AdminLink></td>
         </tr>)}
       </AdminTable> : <p className="admin-muted mb-3">No later authorised orders match the submitted email. If you’ve confirmed another order, enter its reference below.</p>}
       <div className="mt-3 admin-narrow" id="link-order" key={orderToLink}>

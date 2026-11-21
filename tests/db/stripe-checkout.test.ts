@@ -327,6 +327,7 @@ it("uses raw signature bytes and never persists unverified event data", async ()
 it("applies refund, invoice and crossed checkout events once and keeps success reads side-effect free", async () => {
   const { session } = await checkout(await makeVariant(5), 5);
   const orderId = session.client_reference_id!;
+  expect(session.metadata?.edgey_order_id).toBe(orderId);
   expect(await readCheckoutSuccess(session.id)).toEqual({ kind: "pending" });
   const intentId = paid(session);
   const refundId = id("re_");
@@ -351,9 +352,12 @@ it("applies refund, invoice and crossed checkout events once and keeps success r
     authorised_at: new Date(paymentDate), promised_dispatch_date: new Date("2026-11-20"), estimated_delivery_date: new Date("2026-11-23"),
   });
   expect(await readCheckoutSuccess(orderId)).toBeNull();
+  expect(await readCheckoutSuccess(order.order_reference)).toBeNull();
   expect(await readCheckoutSuccess(id("cs_test_"))).toBeNull();
   const snapshot = await readCheckoutSuccess(session.id);
-  expect(snapshot).toMatchObject({ kind: "confirmed", grossPence: 12804, lines: [{ quantity: 5 }] });
+  expect(snapshot).toMatchObject({ kind: "confirmed", reference: order.order_reference, grossPence: 12804, lines: [{ quantity: 5 }] });
+  expect(order.order_reference).toMatch(/^EDG-[0-9]{8}$/);
+  expect(JSON.stringify(snapshot)).not.toContain(orderId);
   expect(snapshot).not.toHaveProperty("email");
   expect(await readCheckoutSuccess(session.id)).toEqual(snapshot);
   expect(await state(orderId)).toEqual(order);

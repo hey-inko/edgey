@@ -6,14 +6,29 @@ test("staff sign in, print the paid order, then submit dispatch twice without mo
   const staff = await createLocalAdminUser("warehouse");
   const order = await seedPaidAdminOrder({ sku: "EDG-SUM-DRG-36" });
   const db = localAdminClient();
+  const { data, error } = await db.from("orders").select("order_reference").eq("id", order.id).single();
+  if (error) throw error;
+  const reference = data.order_reference;
+  expect(reference).toMatch(/^EDG-[0-9]{8}$/);
   const stock = () => db.from("variants").select("stock_on_hand,stock_reserved").eq("id", order.variant.id).single();
   const before = await stock();
   expect(before.error).toBeNull();
 
   await signInStaff(page, staff);
   await page.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Pick and dispatch" }).click();
-  await page.getByRole("link", { name: order.id, exact: true }).click();
+  const orderLink = page.getByRole("link", { name: reference, exact: true });
+  await expect(orderLink).toHaveAttribute("href", `/admin/warehouse/${order.id}`);
+  for (const lookup of [order.id, ` ${reference.toLowerCase()} `]) {
+    await page.getByRole("textbox", { name: "Order reference" }).fill(lookup);
+    await page.getByRole("button", { name: "Find order" }).click();
+    const result = page.getByRole("table", { name: "Order lookup" });
+    await expect(result.getByRole("row")).toHaveCount(2);
+    await expect(result.getByRole("link", { name: reference, exact: true })).toBeVisible();
+  }
+  await orderLink.click();
+  await expect(page.getByText(reference, { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Printable pick list" }).click();
+  await expect(page.getByText(reference, { exact: true })).toBeVisible();
   const lines = page.getByRole("table", { name: "Pick lines" });
   await expect(lines.getByRole("cell", { name: order.variant.sku, exact: true })).toHaveCount(2);
   await expect(lines.getByRole("cell", { name: "36°", exact: true })).toBeVisible();

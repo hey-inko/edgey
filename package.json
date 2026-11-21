@@ -22,7 +22,10 @@
     "test": "vitest run tests/unit src/lib/commerce",
     "bench:search": "node scripts/bench-search.mjs",
     "test:db": "vitest run tests/db",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:acceptance": "node scripts/test-acceptance.mjs",
+    "staging:check": "node scripts/check-staging.mjs",
+    "db:fixture:staging": "node scripts/apply-hosted-staging-fixture.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

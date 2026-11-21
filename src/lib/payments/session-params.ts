@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { calculateVat, formatGbp } from "@/lib/commerce";
 import type { Order, OrderItem } from "./store";
 
-type SessionOrder = Pick<Order, "id" | "email" | "recipient_name" | "phone" | "address_line1" |
+type SessionOrder = Pick<Order, "id" | "order_reference" | "email" | "recipient_name" | "phone" | "address_line1" |
   "address_line2" | "address_town" | "address_region" | "address_postcode" | "address_country" |
   "hold_expires_at" | "delivery_service" | "goods_net_pence" | "delivery_net_pence" |
   "gross_pence" | "vat_pence" | "vat_rate_bps">;
@@ -75,7 +75,7 @@ export function stripeSessionParams(
       enabled: true,
       invoice_data: {
         metadata,
-        footer: `Edgey order ${order.id}\nSubtotal ex VAT: ${formatGbp(order.goods_net_pence + order.delivery_net_pence)}\nVAT (${order.vat_rate_bps / 100}%): ${formatGbp(order.vat_pence)}\nTotal including VAT: ${formatGbp(order.gross_pence)}`,
+        footer: `Edgey order ${order.order_reference}\nSubtotal ex VAT: ${formatGbp(order.goods_net_pence + order.delivery_net_pence)}\nVAT (${order.vat_rate_bps / 100}%): ${formatGbp(order.vat_pence)}\nTotal including VAT: ${formatGbp(order.gross_pence)}`,
       },
     },
     line_items,

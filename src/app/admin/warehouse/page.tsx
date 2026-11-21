@@ -1,7 +1,7 @@
 import { AdminField, AdminHeading, AdminLink, AdminNotice, AdminSection, AdminTable } from "@/app/admin/ui";
 import { requireStaff } from "@/lib/admin/auth";
 import { getWarehouseQueue, type WarehouseView } from "@/lib/admin/warehouse";
-import { dispatchDate, isWarehouseId, movementTime, warehouseLabel, warehousePage } from "@/lib/admin/warehouse-format";
+import { dispatchDate, movementTime, warehouseLabel, warehouseOrderLookup, warehousePage } from "@/lib/admin/warehouse-format";
 import { WarehousePagination } from "./pagination";
 
 const views: Record<WarehouseView, { title: string; empty: string; href: string }> = {
@@ -19,11 +19,12 @@ export default async function WarehousePage({
   const { view: selected, reference, page: requestedPage } = await searchParams;
   const view = selected === "history" || selected === "blocked" ? selected : "queue";
   const lookup = typeof reference === "string" ? reference.trim().slice(0, 100) : "";
-  const invalid = Boolean(lookup) && !isWarehouseId(lookup);
+  const parsedLookup = warehouseOrderLookup(lookup);
+  const invalid = Boolean(lookup) && !parsedLookup;
   const page = lookup ? 1 : warehousePage(requestedPage);
   const { rows, hasMore } = invalid
     ? { rows: [], hasMore: false }
-    : await getWarehouseQueue(db, { view, page, orderId: lookup || undefined });
+    : await getWarehouseQueue(db, { view, page, lookup: parsedLookup });
 
   return (
     <>
@@ -56,7 +57,7 @@ export default async function WarehousePage({
           >
             {rows.map((order) => (
               <tr key={order.id}>
-                <td className="admin-mono break-all"><AdminLink href={`/admin/warehouse/${order.id}`}>{order.id}</AdminLink></td>
+                <td className="admin-mono break-all"><AdminLink href={`/admin/warehouse/${order.id}`}>{order.order_reference}</AdminLink></td>
                 <td>{order.recipient_name}<br />{order.business_name}</td>
                 <td>{order.delivery_service}</td>
                 <td className="admin-mono"><time dateTime={order.promised_dispatch_date}>{dispatchDate(order.promised_dispatch_date)}</time></td>

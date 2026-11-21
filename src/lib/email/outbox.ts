@@ -5,10 +5,12 @@ import { getStripe } from "@/lib/payments/stripe";
 import type { Database } from "@/lib/supabase/database.types";
 import { hostedStripeInvoice, renderConfirmation } from "./confirmation";
 import { getEmailProvider, type SendResult } from "./provider";
-import { hasStaffDestination, requestEmailSource, requestReceipt, requestStaffEmail, requestStaffNotice } from "./request-email";
+import {
+  hasStaffDestination, requestEmailSource, requestFollowUp, requestReceipt, requestStaffEmail, requestStaffNotice,
+} from "./request-email";
 
 type Claim = Database["public"]["Tables"]["order_outbox"]["Row"];
-type MessageKey = "order_confirmation" | "confirmation" | "staff_notification";
+type EmailQueue = "order_confirmation" | "confirmation" | "staff_notification" | "request_follow_up";
 type Outcome = SendResult["status"] | "defer_invoice" | "preparation_failed" | "configuration_error";
 
 type DeliveryStatus = "sent" | "failed" | "pending";
@@ -72,9 +74,16 @@ async function deliver(claim: Claim): Promise<DeliveryStatus> {
       } else {
         const { data, error } = await db.from(source.table).select("email").eq("id", source.id).maybeSingle();
         if (error) throw error;
-        const receipt = data && requestReceipt(from, data.email);
-        if (!receipt) return finish("preparation_failed");
-        ({ payload, recipientFingerprint } = receipt);
+        if (!data) return finish("preparation_failed");
+        if (claim.message_key === "confirmation") {
+          const receipt = requestReceipt(from, data.email);
+          if (!receipt) return finish("preparation_failed");
+          ({ payload, recipientFingerprint } = receipt);
+        } else {
+          const followUp = requestFollowUp(from, data.email, claim.message_subject, claim.message_body);
+          if (!followUp) return finish("preparation_failed");
+          payload = followUp;
+        }
       }
     }
   }
@@ -86,22 +95,22 @@ async function deliver(claim: Claim): Promise<DeliveryStatus> {
   });
   if (error) throw error;
   const attempt = data?.[0];
-  if (!attempt?.send_payload) return attempt?.state ?? "pending";
+  if (!attempt?.send_in_flight || !attempt.send_payload) return attempt?.state ?? "pending";
   if (performance.now() - beforeBegin > 15_000) return finish("provider_uncertain");
 
   const result = await provider.send(`outbox-email/${claim.id}`, attempt.send_payload);
   return result.status === "sent" ? finish("sent", result.id) : finish(result.status);
 }
 
-async function claimEmail(messageKey: MessageKey, orderId?: string, expectedVersion?: string) {
+async function claimEmail(queue: EmailQueue, orderId?: string, expectedVersion?: string) {
   const { data, error } = await paymentStore().rpc("claim_outbox_email", {
-    p_message_key: messageKey, p_replay_order_id: orderId, p_expected_updated_at: expectedVersion,
+    p_message_key: queue, p_replay_order_id: orderId, p_expected_updated_at: expectedVersion,
   });
   if (error) throw error;
   return data?.[0];
 }
 
-async function processEmails(queues: MessageKey[]) {
+async function processEmails(queues: EmailQueue[]) {
   const started = performance.now();
   const result = { sent: 0, failed: 0, pending: 0 };
   for (let i = 0; i < 10 && queues.length && performance.now() - started < 40_000; i++) {
@@ -119,7 +128,7 @@ export function processOrderConfirmations() {
 }
 
 export function processRequestEmails() {
-  return processEmails(["confirmation", "staff_notification"]);
+  return processEmails(["confirmation", "staff_notification", "request_follow_up"]);
 }
 
 export async function replayOrderConfirmation(orderId: string, expectedVersion?: string): Promise<DeliveryStatus | "not_replayable"> {

@@ -49,6 +49,8 @@ export default async function CheckoutSuccessPage({ searchParams }: Props) {
             <dd><time dateTime={confirmation.dispatchDate}>{dateFormat.format(new Date(confirmation.dispatchDate))}</time></dd>
             <dt>Estimated delivery</dt>
             <dd><time dateTime={confirmation.deliveryDate}>{dateFormat.format(new Date(confirmation.deliveryDate))}</time></dd>
+            <dt>Delivery service</dt>
+            <dd>{confirmation.deliveryService}</dd>
           </dl>
           <section aria-labelledby="order-summary" className={styles.summary}>
             <h2 id="order-summary" className={styles.summaryHeading}>Order summary</h2>

@@ -7,7 +7,7 @@ import { GET as getRequestEmails } from "@/app/api/cron/request-emails/route";
 import { hostedStripeInvoice, renderConfirmation } from "@/lib/email/confirmation";
 import { processOrderConfirmations, processRequestEmails } from "@/lib/email/outbox";
 import { fileProvider, resendProvider } from "@/lib/email/provider";
-import { requestReceipt } from "@/lib/email/request-email";
+import { requestFollowUp, requestReceipt } from "@/lib/email/request-email";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/email/outbox", () => ({ processOrderConfirmations: vi.fn(), processRequestEmails: vi.fn(), replayOrderConfirmation: vi.fn() }));
@@ -21,6 +21,7 @@ afterEach(() => {
 
 const order = {
   id: "8fbd7d5d-17d3-45ec-b005-eba7dd5da0bd",
+  order_reference: "EDG-00000042",
   email: "buyer@example.test",
   recipient_name: 'A <script> & "B"',
   goods_net_pence: 4_200,
@@ -37,7 +38,10 @@ const items = [{ sku: "EDGE-1", option_label: "Tool < 40 mm", quantity: 2, unit_
 test("renders the order snapshot in text and safe HTML, including VAT, dates and Stripe invoice", () => {
   const result = renderConfirmation(order, items, "orders@example.test", "https://invoice.stripe.com/i/test?a=1&b=2");
   expect(result.to).toEqual(["buyer@example.test"]);
-  expect(result.subject).toContain(order.id);
+  expect(result.subject).toBe(`Edgey order confirmation: ${order.order_reference}`);
+  expect(result.text).toContain(`Your order reference is ${order.order_reference}.`);
+  expect(result.html).toContain(`Your order reference is ${order.order_reference}.`);
+  expect(JSON.stringify(result)).not.toContain(order.id);
   expect(result.text).toContain("EDGE-1 — Tool < 40 mm: 2 × £21.00 = £42.00 ex VAT");
   expect(result.text).toContain("Goods subtotal (ex VAT): £42.00");
   expect(result.text).toContain("Delivery (ex VAT): £6.95");
@@ -184,4 +188,16 @@ test("receipt fingerprints are insensitive to mailbox casing and neutral copy co
   });
   expect(first.payload).not.toContain(first.recipientFingerprint);
   expect(requestReceipt("from@example.test", "buyer@example.test,other@example.test")).toBeNull();
+});
+
+test("request follow-ups preserve plain text and reject invalid recipient or header values", () => {
+  const text = '<a href="javascript:alert(1)">Example</a>\nNew line & quotation.';
+  const from = "from@example.test";
+  const to = "buyer@example.test";
+  const subject = "Your Edgey enquiry";
+  expect(JSON.parse(requestFollowUp(from, ` ${to} `, subject, text)!)).toEqual({ from, to: [to], subject, text });
+  expect(requestFollowUp(from, `${to},other@example.test`, subject, text)).toBeNull();
+  expect(requestFollowUp(from, to, "subject\r\nBcc: other@example.test", text)).toBeNull();
+  expect(requestFollowUp(from, to, null, text)).toBeNull();
+  expect(requestFollowUp(from, to, subject, " \n ")).toBeNull();
 });

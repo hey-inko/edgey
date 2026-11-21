@@ -79,7 +79,7 @@ export default async function AccountPage({ searchParams }: {
                   <div className={styles.orderHeader}>
                     <div>
                       <p className="eyebrow">Order reference</p>
-                      <Link href={`/account/orders/${order.id}`} prefetch={false} className={`textlink ${styles.reference}`} aria-label={`View order ${order.id}`}>{order.id}</Link>
+                      <Link href={`/account/orders/${order.id}`} prefetch={false} className={`textlink ${styles.reference}`} aria-label={`View order ${order.order_reference}`}>{order.order_reference}</Link>
                     </div>
                     <time dateTime={order.created_at} className={styles.figure}>{accountDate(order.created_at)}</time>
                   </div>

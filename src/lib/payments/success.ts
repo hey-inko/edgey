@@ -6,6 +6,7 @@ import { getStripe } from "./stripe";
 export type CheckoutSuccess = { kind: "pending" | "expired" | "review" } | {
   kind: "confirmed";
   reference: string;
+  deliveryService: string;
   dispatchDate: string;
   deliveryDate: string;
   vatRateBps: number;
@@ -41,7 +42,8 @@ export async function readCheckoutSuccess(sessionId: string): Promise<CheckoutSu
   const items = await getOrderItems(order.id);
   return {
     kind: "confirmed",
-    reference: order.id,
+    reference: order.order_reference,
+    deliveryService: order.delivery_service,
     dispatchDate: order.promised_dispatch_date,
     deliveryDate: order.estimated_delivery_date,
     vatRateBps: order.vat_rate_bps,

@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { getVerifiedBuyer, sessionClient } from "@/lib/auth/server";
 
-const orderSummary = "id,created_at,payment_status,fulfilment_status,gross_pence";
+const orderSummary = "id,order_reference,created_at,payment_status,fulfilment_status,gross_pence";
 const ordersPerPage = 20;
 
 export const listBuyerOrders = cache(async (page: number) => {

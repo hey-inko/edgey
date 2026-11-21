@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 
 type Order = {
   id: string;
+  order_reference: string;
   gross_pence: number;
   hold_expires_at: Date;
   dispatched_at: Date | null;
@@ -171,6 +172,24 @@ async function asRole<T>(role: "anon" | "authenticated" | "service_role", id: st
 describe("order transactions", () => {
   beforeEach(() => db.query("begin"));
   afterEach(() => db.query("rollback"));
+
+  test("allocates a unique order reference that survives checkout retries and payment", async () => {
+    const item = await variant(await product(), 2);
+    const token = randomUUID();
+    const lines = [line(item)];
+    const first = await asRole("service_role", null, () => createOrder(lines, { token }));
+    const second = await createOrder(lines);
+    expect(first.order_reference).toMatch(/^EDG-[0-9]{8}$/);
+    expect(second.order_reference).toMatch(/^EDG-[0-9]{8}$/);
+    expect(first.order_reference).not.toBe(second.order_reference);
+    expect(await createOrder(lines, { token })).toMatchObject({ id: first.id, order_reference: first.order_reference });
+    expect(await pay(first, key("cs"), key("pi"))).toMatchObject({
+      id: first.id, order_reference: first.order_reference, payment_status: "paid",
+    });
+    await rejects(() => db.query("update public.orders set order_reference = $2 where id = $1", [
+      first.id, second.order_reference,
+    ]), "order_reference_is_immutable", "23514");
+  });
 
   test("snapshots the exact variant and exhausts its public availability without affecting its sibling", async () => {
     const family = await product();
@@ -554,13 +573,16 @@ describe("order transactions", () => {
     const eventId = key("evt");
     await rpc("record_provider_event", ["stripe", eventId, "checkout.session.completed", "{}"]);
     const ids = [own.id, otherOrder.id, guest.id];
+    const references = [own, otherOrder, guest].map((order) => order.order_reference);
     const checkRead = async (identity: string, readable: string[], staffRole?: "warehouse" | "finance" | "catalogue") => {
       await asRole("authenticated", identity, async () => {
         const orders = await db.query("select id from public.orders where id = any($1::uuid[]) order by id", [ids]);
+        const lookup = await db.query("select id from public.orders where order_reference = any($1::text[]) order by id", [references]);
         const items = await db.query(`
           select order_id from public.order_items where order_id = any($1::uuid[]) order by order_id
         `, [ids]);
         expect(orders.rows.map(({ id }) => id)).toEqual([...readable].sort());
+        expect(lookup.rows).toEqual(orders.rows);
         expect(items.rows.map(({ order_id }) => order_id)).toEqual([...readable].sort());
         expect((await db.query("select user_id, role from public.staff_members")).rows)
           .toEqual(staffRole ? [{ user_id: identity, role: staffRole }] : []);
@@ -582,6 +604,8 @@ describe("order transactions", () => {
 
     await asRole("anon", null, async () => {
       await rejects(() => db.query("select id from public.orders where id = $1", [guest.id]),
+        "permission denied for table orders", "42501");
+      await rejects(() => db.query("select order_reference from public.orders where order_reference = $1", [guest.order_reference]),
         "permission denied for table orders", "42501");
       await rejects(() => db.query("select order_id from public.order_items where order_id = $1", [guest.id]),
         "permission denied for table order_items", "42501");

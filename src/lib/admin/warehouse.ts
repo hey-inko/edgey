@@ -3,18 +3,18 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/service";
 import type { Database } from "@/lib/supabase/database.types";
-import { warehousePageSize } from "./warehouse-format";
+import { type WarehouseOrderLookup, warehousePageSize } from "./warehouse-format";
 
 type StaffDb = SupabaseClient<Database>;
 export type WarehouseView = "queue" | "history" | "blocked";
 
-const queueColumns = "id,business_name,recipient_name,delivery_service,promised_dispatch_date,fulfilment_status,payment_status,dispatched_at";
-const orderColumns = "id,business_name,recipient_name,address_line1,address_line2,address_town,address_region,address_postcode,address_country,delivery_service,promised_dispatch_date,fulfilment_status,payment_status,dispatched_at,carrier,tracking_number";
+const queueColumns = "id,order_reference,business_name,recipient_name,delivery_service,promised_dispatch_date,fulfilment_status,payment_status,dispatched_at";
+const orderColumns = "id,order_reference,business_name,recipient_name,address_line1,address_line2,address_town,address_region,address_postcode,address_country,delivery_service,promised_dispatch_date,fulfilment_status,payment_status,dispatched_at,carrier,tracking_number";
 const itemColumns = "variant_id,sku,option_label,quantity";
 const stockColumns = "id,sku,option_label,tool,publication_status,stock_on_hand,stock_reserved";
 
 export type WarehouseOrder = Pick<Database["public"]["Tables"]["orders"]["Row"],
-  "id" | "business_name" | "recipient_name" | "address_line1" | "address_line2" |
+  "id" | "order_reference" | "business_name" | "recipient_name" | "address_line1" | "address_line2" |
   "address_town" | "address_region" | "address_postcode" | "address_country" |
   "delivery_service" | "promised_dispatch_date" | "fulfilment_status" |
   "payment_status" | "dispatched_at" | "carrier" | "tracking_number"
@@ -26,13 +26,13 @@ export type WarehouseItem = Pick<Database["public"]["Tables"]["order_items"]["Ro
 
 export async function getWarehouseQueue(
   db: StaffDb,
-  { view, page, orderId }: { view: WarehouseView; page: number; orderId?: string },
+  { view, page, lookup }: { view: WarehouseView; page: number; lookup: WarehouseOrderLookup | null },
 ) {
   const first = (page - 1) * warehousePageSize;
   let query = db.from("orders").select(queueColumns).not("authorised_at", "is", null);
 
-  if (orderId) {
-    query = query.eq("id", orderId);
+  if (lookup) {
+    query = query.eq(lookup.field, lookup.value);
   } else if (view === "history") {
     query = query.in("fulfilment_status", ["dispatched", "cancelled"])
       .order("updated_at", { ascending: false });
