@@ -10,7 +10,6 @@ test("costs stay out of buyer surfaces and retiring a SKU preserves its paid ord
   const staffPage = await browser.newPage({ baseURL });
   try {
     const { available } = await createAccountCatalogue(db);
-    const slug = available.sku.slice(0, -3).toLowerCase();
     const stockCostNote = `Staff cost fixture ${randomUUID()}`;
     const variantPath = `/admin/catalogue/${available.id}`;
     await signInStaff(staffPage, await createLocalAdminUser("catalogue"));
@@ -24,8 +23,8 @@ test("costs stay out of buyer surfaces and retiring a SKU preserves its paid ord
 
     const privateContent = /supplier_unit_minor|landed_unit_pence|staff_current_variant_costs|24\.13|29\.41|Staff cost fixture/;
     await page.goto(`/blades?q=${available.sku}`);
-    const result = page.locator(`.cards a[href="/blades/${slug}"]`);
-    await expect(result).toContainText("Exact match");
+    const result = page.getByRole("link", { name: new RegExp(`^Exact match · ${available.sku} `) });
+    await expect(result).toBeVisible();
     expect(await page.content()).not.toMatch(privateContent);
     await result.click();
     expect(await page.content()).not.toMatch(privateContent);
@@ -50,6 +49,7 @@ test("costs stay out of buyer surfaces and retiring a SKU preserves its paid ord
     await staffPage.getByRole("button", { name: "Archive variant" }).click();
     await expect(staffPage.getByText("Archived", { exact: true })).toBeVisible();
     await page.goto(`/blades?q=${available.sku}`);
+    await expect(result).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Ask us to match this blade" })).toBeVisible();
     await visitSuccess(page, session);
     expect(await page.content()).not.toMatch(privateContent);
