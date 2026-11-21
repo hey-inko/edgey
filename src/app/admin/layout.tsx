@@ -22,6 +22,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <div className="admin-bar">
           <nav aria-label="Staff areas">
             <AdminLink href="/admin">Staff desk</AdminLink>
+            <AdminLink href="/admin/sales">Sales</AdminLink>
             {roles.includes("warehouse") && <><AdminLink href="/admin/warehouse">Pick and dispatch</AdminLink><AdminLink href="/admin/stock">Stock</AdminLink></>}
             {(roles.includes("catalogue") || roles.includes("finance")) && <AdminLink href="/admin/catalogue">Catalogue</AdminLink>}
             {roles.includes("finance") && <AdminLink href="/admin/finance">Finance</AdminLink>}
