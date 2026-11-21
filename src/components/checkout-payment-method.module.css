@@ -1,0 +1,54 @@
+.option {
+  padding: .8rem 0;
+  border-block-end: 1px solid var(--line);
+  min-width: 0;
+}
+
+.option:first-of-type {
+  padding-block-start: 0;
+}
+
+.option label {
+  min-height: 1.5rem;
+}
+
+.option :global(.textlink), .recovery :global(.textlink) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.credit {
+  display: grid;
+  gap: .35rem;
+  font-size: .875rem;
+  margin: .8rem 0 0;
+}
+
+.credit > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .2rem .65rem;
+}
+
+.credit dd {
+  margin: 0;
+  font-family: var(--mono);
+}
+
+.po {
+  margin-block-start: .9rem;
+}
+
+.recovery {
+  display: grid;
+  gap: .6rem;
+  max-width: 38rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+}

@@ -3,9 +3,10 @@ import { requireStaff } from "@/lib/admin/auth";
 import { financeOverview } from "@/lib/admin/finance";
 import { displayState, displayTimestamp } from "@/lib/admin/format";
 import { adminPage, adminPageSize } from "@/lib/admin/pagination";
+import { amountMismatch } from "@/lib/admin/payment-review";
 import { AdminPagination } from "../pagination";
-import { AdminForm, AdminHeading, AdminNotice, AdminSection, AdminTable } from "../ui";
-import { retryFinanceFailure } from "./actions";
+import { AdminForm, AdminHeading, AdminLink, AdminNotice, AdminSection, AdminTable } from "../ui";
+import { resolveFinancePaymentReview, retryFinanceFailure, voidFinanceInvoice } from "./actions";
 
 type Search = Record<string, string | string[] | undefined>;
 
@@ -17,6 +18,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const pages = {
     orders: adminPage(query.orders), captures: adminPage(query.captures), reviews: adminPage(query.reviews),
     events: adminPage(query.events), outbox: adminPage(query.outbox),
+    accounts: adminPage(query.accounts), overdue: adminPage(query.overdue), voids: adminPage(query.voids),
   };
   const overview = await financeOverview(db, pages);
   const requested = new Map(overview.queued.map(({ kind, target_id, target_updated_at, result }) =>
@@ -35,14 +37,71 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <AdminHeading title="Finance" description="Review payment exceptions and request retries. Refunds are handled separately with the payment provider." />
+      <AdminHeading title="Finance" description="Manage Net 30 accounts, follow up overdue invoices and review payment exceptions." />
+      <AdminLink href="/admin/requests">Review trade applications</AdminLink>
+      <AdminSection title="Trade accounts">
+        {overview.accounts.length ? (
+          <AdminTable label="Trade accounts" headers={["Business", "Named buyer", "Net 30 status", "Credit limit"]}>
+            {overview.accounts.slice(0, adminPageSize).map((account) => <tr key={account.id}>
+              <td><AdminLink href={`/admin/finance/accounts/${account.id}`}>{account.trade_applications?.company ?? account.buyer_name}</AdminLink></td>
+              <td>{account.buyer_name}</td><td>{displayState(account.status)}</td>
+              <td className="admin-mono">{formatGbp(account.credit_limit_pence)}</td>
+            </tr>)}
+          </AdminTable>
+        ) : <AdminNotice>No trade accounts on this page.</AdminNotice>}
+        {nav("accounts")}
+      </AdminSection>
+      <AdminSection title="Overdue follow-up">
+        {overview.overdue.length ? (
+          <AdminTable label="Overdue invoices" headers={["Account", "Billing contact", "PO", "Due", "Outstanding"]}>
+            {overview.overdue.slice(0, adminPageSize).map((invoice) => {
+              const contact = overview.overdueContacts.get(invoice.trade_account_id);
+              return <tr key={invoice.order_id}>
+                <td><AdminLink href={`/admin/finance/accounts/${invoice.trade_account_id}`}>{contact?.company ?? "View account"}</AdminLink></td>
+                <td className="admin-mono">{contact?.email ?? "—"}</td>
+                <td className="admin-mono">{invoice.po_number}</td>
+                <td className="admin-mono">{displayTimestamp(invoice.due_at)}</td>
+                <td className="admin-mono">{formatGbp(invoice.amount_remaining_pence)}</td>
+              </tr>;
+            })}
+          </AdminTable>
+        ) : <AdminNotice>No overdue invoices on this page.</AdminNotice>}
+        {nav("overdue")}
+      </AdminSection>
+      <AdminSection title="Cancelled orders with unpaid invoices">
+        {overview.voids.length ? (
+          <>
+            <p className="admin-muted">Void the invoice only after the order is cancelled and before it has been paid or dispatched. Edgey checks Stripe before releasing the outstanding balance.</p>
+            <AdminTable label="Cancelled Net 30 orders" headers={["Order", "Business", "PO", "Gross", "Action"]}>
+              {overview.voids.slice(0, adminPageSize).map((order) => <tr key={order.id}>
+                <td className="admin-mono">{order.id}</td>
+                <td>{order.trade_account_id ? <AdminLink href={`/admin/finance/accounts/${order.trade_account_id}`}>{order.business_name}</AdminLink> : order.business_name}</td>
+                <td className="admin-mono">{order.po_number}</td>
+                <td className="admin-mono">{formatGbp(order.gross_pence)}</td>
+                <td>
+                  <AdminForm action={voidFinanceInvoice.bind(null, order.id)} submit="Verify and void invoice">
+                    <label className="admin-check"><input type="checkbox" name="confirm" value="yes" required /> Confirm void</label>
+                  </AdminForm>
+                </td>
+              </tr>)}
+            </AdminTable>
+          </>
+        ) : <AdminNotice>No cancelled orders with unpaid invoices on this page.</AdminNotice>}
+        {nav("voids")}
+      </AdminSection>
       <AdminSection title="Payment review">
+        {overview.reviews.some((order) => order.payment_method === "card" && order.payment_review_reason === amountMismatch) &&
+          <p className="admin-muted">Refund a mismatched payment in Stripe first. Edgey closes the review only after verifying the full refund.</p>}
         {overview.reviews.length ? (
-          <AdminTable label="Payment review" headers={["Order", "Business", "Payment", "Reason"]}>
+          <AdminTable label="Payment review" headers={["Order", "Business", "Payment", "Reason", "Action"]}>
             {overview.reviews.slice(0, adminPageSize).map((order) => <tr key={order.id}>
               <td className="admin-mono">{order.id}</td><td>{order.business_name}</td>
               <td>{displayState(order.payment_status)}</td>
-              <td>{order.payment_review_reason ? displayState(order.payment_review_reason) : order.stripe_reconciliation_error}</td>
+              <td>{order.stripe_reconciliation_error ?? (order.payment_review_reason && displayState(order.payment_review_reason))}</td>
+              <td>{order.payment_method === "card" && order.payment_review_reason === amountMismatch
+                ? <AdminForm action={resolveFinancePaymentReview.bind(null, order.id)} submit="Verify full refund">
+                    {order.payment_intent_id && <a className="textlink" href={`https://dashboard.stripe.com/test/payments/${encodeURIComponent(order.payment_intent_id)}`}>Stripe payment</a>}
+                  </AdminForm> : "—"}</td>
             </tr>)}
           </AdminTable>
         ) : <AdminNotice>No orders to review on this page.</AdminNotice>}
@@ -93,9 +152,10 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       </AdminSection>
       <AdminSection title="Orders">
         {overview.orders.length ? (
-          <AdminTable label="Orders and payment status" headers={["Order", "Business", "Payment", "Fulfilment", "Total", "Created"]}>
+          <AdminTable label="Orders and payment status" headers={["Order", "Business", "Method", "Payment", "Fulfilment", "Total", "Created"]}>
             {overview.orders.slice(0, adminPageSize).map((order) => <tr key={order.id}>
               <td className="admin-mono">{order.id}</td><td>{order.business_name}</td>
+              <td>{order.payment_method === "net30" ? "Net 30" : "Card"}</td>
               <td>{displayState(order.payment_status)}</td><td>{displayState(order.fulfilment_status)}</td>
               <td className="admin-mono">{formatGbp(order.gross_pence)}</td>
               <td className="admin-mono">{displayTimestamp(order.created_at)}</td>

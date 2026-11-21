@@ -1,0 +1,265 @@
+import { fork } from "node:child_process";
+import { once } from "node:events";
+import { randomBytes, randomUUID } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { expect, test as base, type Page } from "@playwright/test";
+import { signInStaff } from "../browser/admin-fixtures";
+import {
+  buyerName, carrier, company, creditLimit, gross, partial, poReference, signInBuyer, tracking, withNet30Data, type Net30Data,
+} from "../browser/fixtures/net30-data";
+import { startStripeFixture } from "../browser/fixtures/net30-stripe";
+
+const test = base.extend<{
+  net30Data: Net30Data;
+  net30App: { origin: string; stripe: Awaited<ReturnType<typeof startStripeFixture>> };
+}>({
+  net30Data: async ({}, provide) => withNet30Data(provide),
+  net30App: async ({ net30Data }, provide) => {
+    const stripe = await startStripeFixture();
+    const child = fork(join(process.cwd(), "tests/browser/fixtures/net30-next.mjs"), [], {
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_SUPABASE_URL: net30Data.supabaseUrl,
+        NET30_CHECKOUT_ENABLED: "true",
+        EDGEY_TEST_STRIPE_PORT: String(stripe.port),
+        EDGEY_REQUEST_HASH_KEY: randomBytes(32).toString("hex"),
+        STRIPE_SECRET_KEY: stripe.key,
+        STRIPE_WEBHOOK_SECRET: stripe.secret,
+      },
+    });
+    const exited = once(child, "exit");
+    try {
+      const [origin] = await Promise.race([
+        once(child, "message", { signal: AbortSignal.timeout(30_000) }),
+        exited.then(([code]) => { throw new Error(`Net 30 test app exited before startup (${code}).`); }),
+      ]);
+      if (typeof origin !== "string" || URL.parse(origin)?.hostname !== "127.0.0.1") {
+        throw new Error("Net 30 test app did not start on loopback.");
+      }
+      await provide({ origin, stripe });
+      expect(stripe.unexpected).toEqual([]);
+    } finally {
+      child.kill();
+      try {
+        await exited;
+      } finally {
+        await stripe.close();
+      }
+    }
+  },
+});
+test.use({ trace: "off" });
+
+const pounds = (pence: number) => new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(pence / 100);
+
+async function capture(page: Page, name: string) {
+  const directory = process.env.EDGEY_NET30_RENDERS;
+  if (!directory) return;
+  await mkdir(directory, { recursive: true });
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.screenshot({ path: join(directory, `net30-${name}.png`), fullPage: true, animations: "disabled" });
+}
+
+test("approves trade terms, dispatches before payment, and shows partial and full settlement in buyer history",
+  async ({ browser, net30Data, net30App }) => {
+    test.setTimeout(90_000);
+    const { db, buyer, finance, warehouse, application, slug, sku, variantId, eventIds } = net30Data;
+    const { origin, stripe } = net30App;
+    const buyerContext = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 1000 } });
+    const financeContext = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 1000 } });
+    const warehouseContext = await browser.newContext({ baseURL: origin, viewport: { width: 1440, height: 1000 } });
+    try {
+      const buyerPage = await buyerContext.newPage();
+      const financePage = await financeContext.newPage();
+      const warehousePage = await warehouseContext.newPage();
+      const method = buyerPage.getByRole("radio", { name: "Pay on account (Net 30)" });
+      const orders = buyerPage.getByRole("region", { name: "Orders", exact: true });
+      const trade = buyerPage.getByRole("region", { name: "Trade account", exact: true });
+      const invoices = trade.getByRole("region", { name: "Invoices and PO references" });
+      const delivery = buyerPage.getByRole("region", { name: "Delivery", exact: true });
+      let orderId = "";
+      let financeAccountPath = "";
+      let dispatchedAt: string | null = null;
+
+      async function assertPosition(remaining: number, status: string, paid: number) {
+        const { rows } = await db.query(`
+          select o.payment_status, o.fulfilment_status, o.paid_pence, o.dispatched_at::text,
+            o.carrier, o.tracking_number, i.amount_remaining_pence, cp.held_pence::int,
+            cp.outstanding_pence::int, cp.available_credit_pence::int
+          from public.orders o join public.invoices i on i.order_id = o.id
+          join public.trade_credit_position cp on cp.trade_account_id = o.trade_account_id
+          where o.id = $1
+        `, [orderId]);
+        expect(rows).toEqual([{
+          payment_status: status, fulfilment_status: dispatchedAt ? "dispatched" : "ready_to_pick",
+          paid_pence: paid, dispatched_at: dispatchedAt, carrier: dispatchedAt && carrier,
+          tracking_number: dispatchedAt && tracking, amount_remaining_pence: remaining, held_pence: 0,
+          outstanding_pence: remaining, available_credit_pence: creditLimit - remaining,
+        }]);
+      }
+
+      async function sendWebhook(type: string, eventId = `evt_${randomUUID().replaceAll("-", "")}`, tamper = false) {
+        eventIds.push(eventId);
+        const { body, signature } = stripe.webhook(type, eventId);
+        const response = await buyerContext.request.post("/api/webhooks/stripe", {
+          data: tamper ? Buffer.concat([body, Buffer.from(" ")]) : body,
+          headers: { "Content-Type": "application/json", "Stripe-Signature": signature },
+        });
+        expect(response.status()).toBe(tamper ? 400 : 200);
+        const { rows } = await db.query("select state, last_error from public.provider_events where provider = 'stripe' and event_id = $1",
+          [eventId]);
+        expect(rows).toEqual(tamper ? [] : [{ state: "processed", last_error: null }]);
+        return eventId;
+      }
+
+      await test.step("An unapproved buyer cannot select Net 30; Finance approves the application", async () => {
+        await signInBuyer(buyerContext, origin, buyer);
+        await buyerPage.goto("/account");
+        await expect(trade.getByRole("heading", { name: "Application pending" })).toBeVisible();
+        await buyerPage.goto(`/blades/${slug}`);
+        await buyerPage.getByRole("button", { name: "Add to selection" }).click();
+        await buyerPage.getByRole("dialog", { name: "Your selection" })
+          .getByRole("link", { name: "Go to checkout" }).click();
+        await expect(method).toBeDisabled();
+        await expect(method).toHaveAccessibleDescription("Your trade account isn’t approved for Net 30.");
+
+        await signInStaff(financePage, finance);
+        await financePage.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Requests" }).click();
+        await financePage.getByRole("table", { name: "Trade applications" }).getByRole("row")
+          .filter({ hasText: buyer.email }).getByRole("link", { name: company }).click();
+        await expect(financePage).toHaveURL(`/admin/requests/trade/${application}`);
+        await financePage.getByLabel("Initial credit limit (£)").fill((creditLimit / 100).toFixed(2));
+        await financePage.getByRole("button", { name: "Approve trade account" }).click();
+        const accountLink = financePage.getByRole("link", { name: "View trade account" });
+        await expect(accountLink).toBeVisible();
+        financeAccountPath = (await accountLink.getAttribute("href"))!;
+        await capture(financePage, "01-approval");
+        const createCustomer = stripe.calls.filter(({ method, path }) => method === "POST" && path === "/v1/customers");
+        expect(createCustomer).toHaveLength(1);
+        expect(createCustomer[0]?.params.get("metadata[edgey_trade_application_id]")).toBe(application);
+        expect(createCustomer[0]?.params.get("address[line1]")).toBe("12 Foundry Lane");
+      });
+
+      await test.step("Required PO, gross credit and VAT reach the Stripe invoice before stock can be picked", async () => {
+        await buyerPage.reload();
+        await buyerPage.getByLabel("Business name").fill(company);
+        await buyerPage.getByLabel("Contact email").fill(buyer.email);
+        await buyerPage.getByLabel("I’m buying for work").check();
+        await buyerPage.getByLabel("Recipient name").fill(buyerName);
+        await buyerPage.getByLabel("Address line 1").fill("18 Delivery Lane");
+        await buyerPage.getByLabel("Town or city").fill("London");
+        await buyerPage.getByLabel("Postcode").fill("SW1A 1AA");
+        const summary = buyerPage.getByRole("region", { name: "Order summary" });
+        await expect(summary).toContainText("Next working day");
+        await expect(summary).toContainText(pounds(gross));
+        await method.check();
+        await expect(summary).toContainText("Dates are provisional until your invoice is issued.");
+        const po = buyerPage.getByLabel("Purchase order reference (required)");
+        const placeOrder = buyerPage.getByRole("button", { name: "Place order on account" });
+        await placeOrder.click();
+        await expect(po).toHaveAccessibleDescription("Enter a purchase order reference on one line.");
+        expect(stripe.calls.filter(({ path }) => path.startsWith("/v1/invoices"))).toEqual([]);
+        await po.fill(poReference);
+        await capture(buyerPage, "02-checkout");
+        const submitted = buyerPage.waitForResponse((response) =>
+          new URL(response.url()).pathname === "/api/checkout/net30" && response.request().method() === "POST");
+        await placeOrder.click();
+        const response = await submitted;
+        expect(await response.json()).toEqual({ status: "authorised", orderId: expect.any(String) });
+        expect(response.status()).toBe(200);
+        await expect(buyerPage).toHaveURL(/\/checkout\/net30\/[a-f0-9-]+$/);
+        orderId = new URL(buyerPage.url()).pathname.split("/").at(-1)!;
+        await expect(buyerPage.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
+        await expect(buyerPage.getByText(poReference, { exact: true })).toBeVisible();
+        await expect(buyerPage.getByText("Total invoiced inc VAT")).toBeVisible();
+        await expect(buyerPage.getByRole("link", { name: "View invoice", exact: true })).toHaveAttribute("href", stripe.invoiceUrl);
+        await expect.poll(() => buyerPage.evaluate(() =>
+          JSON.parse(localStorage.getItem("edgey-storefront-selection-v1") ?? "{}"))).toEqual({});
+        await capture(buyerPage, "03-confirmation");
+        const writes = stripe.calls.filter(({ method, path }) => method === "POST" && path.startsWith("/v1/invoices"));
+        expect(writes.map(({ path }) => path)).toEqual([
+          "/v1/invoices", ...["add_lines", "finalize", "send"].map((action) => `/v1/invoices/${stripe.invoiceId}/${action}`),
+        ]);
+        expect(writes[0]?.params.get("metadata[edgey_order_id]")).toBe(orderId);
+        expect(writes[0]?.params.get("metadata[po_number]")).toBe(poReference);
+        expect(writes[1]?.params.get("lines[0][tax_amounts][0][amount]")).toBe("470");
+        expect(writes[1]?.params.get("lines[1][tax_amounts][0][amount]")).toBe("139");
+        expect(new Set(writes.map(({ key }) => key)).size).toBe(4);
+        expect(writes.every(({ key }) => Boolean(key))).toBe(true);
+        await assertPosition(gross, "invoiced", 0);
+      });
+
+      await test.step("Warehouse records real dispatch and tracking while the invoice stays unpaid", async () => {
+        await signInStaff(warehousePage, warehouse);
+        await warehousePage.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Pick and dispatch" }).click();
+        await warehousePage.getByRole("link", { name: orderId, exact: true }).click();
+        await expect(warehousePage.getByText("Invoiced", { exact: true })).toBeVisible();
+        await warehousePage.getByRole("button", { name: "Start picking" }).click();
+        await warehousePage.getByLabel("Carrier").fill(carrier);
+        await warehousePage.getByLabel("Tracking number").fill(tracking);
+        await warehousePage.getByRole("button", { name: "Record dispatch" }).click();
+        await expect(warehousePage.getByText(tracking, { exact: true })).toBeVisible();
+        const { rows } = await db.query<{ dispatched_at: string }>("select dispatched_at::text from public.orders where id = $1", [orderId]);
+        dispatchedAt = rows[0]?.dispatched_at ?? null;
+        expect(dispatchedAt).not.toBeNull();
+        await assertPosition(gross, "invoiced", 0);
+        await capture(warehousePage, "04-dispatch-unpaid");
+      });
+
+      await test.step("A signed partial payment reduces exposure without changing fulfilment", async () => {
+        stripe.pay(partial);
+        await sendWebhook("invoice.payment_succeeded", undefined, true);
+        await assertPosition(gross, "invoiced", 0);
+        const eventId = await sendWebhook("invoice.payment_succeeded");
+        await sendWebhook("invoice.payment_succeeded", eventId);
+        await assertPosition(gross - partial, "partially_paid", partial);
+        await financePage.goto(financeAccountPath);
+        const financeInvoice = financePage.getByRole("table", { name: "Net 30 invoices" }).getByRole("row").filter({ hasText: poReference });
+        await expect(financeInvoice.getByRole("cell", { name: "Partially paid", exact: true })).toBeVisible();
+        await expect(financeInvoice.getByRole("cell", { name: pounds(gross - partial), exact: true })).toBeVisible();
+        await capture(financePage, "05-partial-payment");
+        await buyerPage.goto("/account");
+        await expect(orders.getByRole("listitem")).toContainText("Partially paid");
+        await expect(orders.getByRole("listitem")).toContainText("Dispatched");
+        await expect(invoices.getByRole("listitem")).toContainText(pounds(gross - partial));
+        await expect(trade.getByText(pounds(creditLimit - gross + partial), { exact: true })).toBeVisible();
+        await capture(buyerPage, "06-partial-buyer-history");
+      });
+
+      await test.step("Final settlement restores credit and leaves the dispatched order and invoice linked", async () => {
+        stripe.pay(gross - partial);
+        await sendWebhook("invoice.paid");
+        await assertPosition(0, "paid", gross);
+        const { rows } = await db.query(`
+          select kind, on_hand_delta, reserved_delta from public.stock_movements
+          where order_id = $1 and variant_id = $2 order by id
+        `, [orderId, variantId]);
+        expect(rows).toEqual([
+          { kind: "reserve", on_hand_delta: 0, reserved_delta: 1 },
+          { kind: "dispatch", on_hand_delta: -1, reserved_delta: -1 },
+        ]);
+        await buyerPage.reload();
+        await expect(trade.getByText(pounds(creditLimit), { exact: true })).toBeVisible();
+        await expect(orders.getByRole("listitem").getByText("Paid", { exact: true })).toBeVisible();
+        await expect(orders.getByRole("listitem").getByText("Dispatched", { exact: true })).toBeVisible();
+        await expect(invoices.getByRole("listitem")).toContainText(`PO ${poReference}`);
+        await expect(invoices.getByRole("listitem")).toContainText("Paid · Due");
+        await expect(invoices.getByRole("listitem")).toContainText(pounds(0));
+        await expect(invoices.getByRole("link", { name: `View invoice for PO ${poReference}` })).toHaveAttribute("href", stripe.invoiceUrl);
+        await capture(buyerPage, "07-settled-buyer-history");
+        await orders.getByRole("link", { name: `View order ${orderId}` }).click();
+        await expect(buyerPage).toHaveURL(`/account/orders/${orderId}`);
+        await expect(buyerPage.getByRole("region", { name: "Order items" })).toContainText(sku);
+        await expect(delivery.getByText(carrier, { exact: true })).toBeVisible();
+        await expect(delivery.getByText(tracking, { exact: true })).toBeVisible();
+        await expect(delivery.getByRole("link", { name: "View invoice" })).toHaveAttribute("href", stripe.invoiceUrl);
+        await capture(buyerPage, "08-settled-tracking");
+        await buyerPage.setViewportSize({ width: 390, height: 844 });
+        await expect.poll(() => buyerPage.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+        await capture(buyerPage, "09-settled-tracking-mobile");
+      });
+    } finally {
+      await Promise.all([buyerContext.close(), financeContext.close(), warehouseContext.close()]);
+    }
+  });

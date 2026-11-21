@@ -31,10 +31,44 @@ const copy = {
   },
 };
 
+const accountCopy = {
+  confirmed: {
+    heading: "Order confirmed",
+    details: "We’ve invoiced your trade account on Net 30 terms. You can find the invoice and payment status in your account.",
+  },
+  pending: {
+    heading: "Confirming your invoice",
+    details: "We’re checking whether your invoice has been issued. Please don’t place the order again.",
+  },
+  expired: {
+    heading: "This account order was cancelled",
+    details: "We don’t have an issued invoice for this checkout. Go back to checkout to check whether you can start again.",
+  },
+  "cancelled-issued": {
+    heading: "This account order was cancelled",
+    details: "An invoice was issued before this checkout was resolved. Check its status below; please don’t place the order again.",
+  },
+  review: {
+    heading: "Your account order is under review",
+    details: "Please don’t place the order again while we review it.",
+  },
+  "not-found": {
+    heading: "Checkout not found",
+    details: "Sign in to the account that placed the order to view its confirmation.",
+  },
+  unavailable: {
+    heading: "We can’t check your invoice right now",
+    details: "Try checking again in a moment. Please don’t place the order again.",
+  },
+};
+
 const pollIntervalMs = 3000;
 const maxAutomaticChecks = 10;
 
-export function CheckoutStatus({ kind }: { kind: keyof typeof copy }) {
+type CheckoutStatusProps = { kind: keyof typeof copy; method?: "card" }
+  | { kind: keyof typeof accountCopy; method: "net30" };
+
+export function CheckoutStatus({ kind, method }: CheckoutStatusProps) {
   const router = useRouter();
   const [automaticChecking, startAutomaticCheck] = useTransition();
   const [manualChecking, startManualCheck] = useTransition();
@@ -42,6 +76,8 @@ export function CheckoutStatus({ kind }: { kind: keyof typeof copy }) {
   const checking = automaticChecking || manualChecking;
   const canRetry = kind === "pending" || kind === "unavailable";
   const automaticChecksEnded = kind === "pending" && checks >= maxAutomaticChecks && !checking;
+  const net30 = method === "net30";
+  const status = method === "net30" ? accountCopy[kind] : copy[kind];
 
   useEffect(() => {
     if (kind !== "pending" || checks >= maxAutomaticChecks || checking) return;
@@ -63,16 +99,17 @@ export function CheckoutStatus({ kind }: { kind: keyof typeof copy }) {
   return (
     <>
       <div role="status" aria-live="polite" aria-atomic="true">
-        <h1>{copy[kind].heading}</h1>
+        <h1>{status.heading}</h1>
         <p className={styles.message}>
-          {manualChecking ? "Checking payment status…" : automaticChecksEnded
-            ? "This is taking longer than expected. You can check again below. You don’t need to pay again."
-            : copy[kind].details}
+          {manualChecking ? (net30 ? "Checking invoice status…" : "Checking payment status…") : automaticChecksEnded
+            ? (net30 ? "This is taking longer than expected. You can check again below. Please don’t place the order again."
+              : "This is taking longer than expected. You can check again below. You don’t need to pay again.")
+            : status.details}
         </p>
       </div>
       {canRetry && (
         <button className={`textlink ${styles.retry}`} type="button" onClick={checkAgain} aria-disabled={checking}>
-          Check payment status
+          {net30 ? "Check invoice status" : "Check payment status"}
         </button>
       )}
     </>

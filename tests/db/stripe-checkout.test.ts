@@ -40,6 +40,7 @@ let db: Client;
 const variants: string[] = [];
 const events: string[] = [];
 const attempts: string[] = [];
+const buyerIds: string[] = [];
 const sessions = new Map<string, Stripe.Checkout.Session>();
 const sessionsByKey = new Map<string, Stripe.Checkout.Session>();
 const id = (prefix: string) => prefix + randomUUID().replaceAll("-", "");
@@ -90,6 +91,7 @@ afterEach(async () => {
     await db.query(`delete from ${table} where order_id = any($1)`, [ids]);
   }
   await db.query("delete from public.orders where id = any($1)", [ids]);
+  await db.query("delete from auth.users where id = any($1)", [buyerIds.splice(0)]);
   await db.query("delete from public.variants where id = any($1)", [variants.splice(0)]);
   await db.query("delete from public.provider_events where provider = 'stripe' and event_id = any($1)", [events.splice(0)]);
   await db.query("delete from private.closed_checkout_attempts");
@@ -123,6 +125,13 @@ async function makeVariant(stock: number) {
   `, [variantId, "STRIPE-" + variantId, stock]);
   variants.push(variantId);
   return variantId;
+}
+
+async function makeBuyer(email = `${randomUUID()}@example.test`) {
+  const id = randomUUID();
+  await db.query("insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())", [id, email]);
+  buyerIds.push(id);
+  return { status: "verified" as const, buyer: { id, email } };
 }
 
 async function checkoutInput(variantId: string, quantity: number) {
@@ -211,22 +220,88 @@ it("creates one order and session on replay after its last stock is held, with t
   expect(sessions.size).toBe(1);
 });
 
-it("does not attach the verified buyer to a guest Stripe attempt", async () => {
-  vi.mocked(getBuyerSession).mockResolvedValue({ status: "verified", buyer: { id: randomUUID(), email: fields.email } });
+it("attaches a card order only to the verified buyer and lets that buyer replay, resume and close it", async () => {
+  const actor = await makeBuyer();
+  vi.mocked(getBuyerSession).mockResolvedValue(actor);
   const { input, session } = await checkout(await makeVariant(1), 1);
   expect(getBuyerSession).toHaveBeenCalledOnce();
-  expect(await state(session.client_reference_id!)).toMatchObject({ buyer_id: null, reservation_state: "held" });
-  expect(await submit({ action: "resume", attemptToken: input.attemptToken })).toMatchObject({ status: 200 });
+  expect(await state(session.client_reference_id!)).toMatchObject({
+    buyer_id: actor.buyer.id, email: fields.email, reservation_state: "held",
+  });
+  const payment = { status: "payment", sessionId: session.id, url: session.url };
+  expect(await (await submit(input)).json()).toEqual(payment);
+  expect(await (await submit({ action: "resume", attemptToken: input.attemptToken })).json()).toEqual(payment);
+  const changed = await submit({ ...input, lines: [{ ...input.lines[0], quantity: 2 }] });
+  expect(changed.status).toBe(409);
+  expect(await changed.json()).toMatchObject({ message: expect.stringContaining("changed order"), attemptPending: true });
+  expect(await (await submit({ action: "close", attemptToken: input.attemptToken })).json()).toEqual({ status: "closed" });
+  expect(await state(session.client_reference_id!)).toMatchObject({
+    buyer_id: actor.buyer.id, fulfilment_status: "cancelled", reservation_state: "released",
+  });
+  expect(provider.create).toHaveBeenCalledTimes(1);
+  expect(provider.expire).toHaveBeenCalledExactlyOnceWith(session.id);
 });
 
-it("rejects a new Stripe attempt when the buyer cookie cannot be verified", async () => {
+it("keeps a guest attempt guest-bound even when the signed-in buyer has the order's email", async () => {
+  const { input, session } = await checkout(await makeVariant(1), 1);
+  vi.mocked(getBuyerSession).mockResolvedValue(await makeBuyer(fields.email));
+  for (const action of [undefined, "resume", "close"]) {
+    const response = await submit({ ...input, action });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ status: "error", attemptOwnerMismatch: true, attemptPending: true });
+  }
+  expect(provider.session).not.toHaveBeenCalled();
+  expect(provider.expire).not.toHaveBeenCalled();
+  expect(await state(session.client_reference_id!)).toMatchObject({ buyer_id: null, reservation_state: "held" });
+
+  vi.mocked(getBuyerSession).mockResolvedValue({ status: "guest" });
+  expect(await (await submit({ action: "resume", attemptToken: input.attemptToken })).json()).toMatchObject({
+    status: "payment", sessionId: session.id,
+  });
+  expect(await (await submit({ action: "close", attemptToken: input.attemptToken })).json()).toEqual({ status: "closed" });
+});
+
+it("cannot reopen, close, or supersede another buyer’s card attempt as a guest or different buyer", async () => {
+  const actor = await makeBuyer();
+  vi.mocked(getBuyerSession).mockResolvedValue(actor);
+  const variantId = await makeVariant(2);
+  const replacement = await checkoutInput(variantId, 1);
+  const { input, session } = await checkout(variantId, 1);
+  for (const wrongActor of [{ status: "guest" } as const, await makeBuyer()]) {
+    vi.mocked(getBuyerSession).mockResolvedValue(wrongActor);
+    for (const action of [undefined, "resume", "close"]) {
+      for (const request of [input, { ...replacement, supersedesAttemptToken: input.attemptToken }]) {
+        const response = await submit({ ...request, action, buyerId: actor.buyer.id });
+        expect(response.status).toBe(409);
+        const body = await response.json();
+        expect(body).toMatchObject({ status: "error", attemptOwnerMismatch: true, attemptPending: true });
+        expect(body).not.toHaveProperty("sessionId");
+        expect(body).not.toHaveProperty("url");
+      }
+    }
+  }
+  const orders = await db.query("select buyer_id from public.orders where checkout_attempt_token = any($1)", [attempts]);
+  expect(orders.rows).toEqual([{ buyer_id: actor.buyer.id }]);
+  expect(provider.session).not.toHaveBeenCalled();
+  expect(provider.create).toHaveBeenCalledTimes(1);
+  expect(provider.expire).not.toHaveBeenCalled();
+  expect(await state(session.client_reference_id!)).toMatchObject({ reservation_state: "held" });
+});
+
+it("rejects submit, resume, and close when the buyer cookie cannot be verified", async () => {
+  const { input, session } = await checkout(await makeVariant(1), 1);
   vi.mocked(getBuyerSession).mockResolvedValue({ status: "unverified" });
-  const input = await checkoutInput(await makeVariant(1), 1);
-  const response = await submit(input);
-  expect(response.status).toBe(422);
-  expect(await response.json()).toMatchObject({ status: "error", message: expect.stringContaining("couldn’t verify your sign-in") });
-  expect(provider.create).not.toHaveBeenCalled();
-  const order = await db.query("select id from public.orders where checkout_attempt_token = $1", [input.attemptToken]);
+  const newInput = await checkoutInput(await makeVariant(1), 1);
+  for (const request of [newInput, input, { ...input, action: "resume" }, { ...input, action: "close" }]) {
+    const response = await submit(request);
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ status: "error", message: expect.stringContaining("couldn’t verify your sign-in") });
+  }
+  expect(provider.session).not.toHaveBeenCalled();
+  expect(provider.create).toHaveBeenCalledTimes(1);
+  expect(provider.expire).not.toHaveBeenCalled();
+  expect(await state(session.client_reference_id!)).toMatchObject({ buyer_id: null, reservation_state: "held" });
+  const order = await db.query("select id from public.orders where checkout_attempt_token = $1", [newInput.attemptToken]);
   expect(order.rowCount).toBe(0);
 });
 
@@ -256,7 +331,9 @@ it("never redirects to an open Stripe session with a different total", async () 
   });
 });
 
-it("creates one reservation for two simultaneous requests using the same attempt", async () => {
+it.each(["guest", "signed-in"])("creates one reservation for two simultaneous %s requests using the same attempt", async (kind) => {
+  const actor = kind === "guest" ? { status: "guest" } as const : await makeBuyer();
+  vi.mocked(getBuyerSession).mockResolvedValue(actor);
   const input = await checkoutInput(await makeVariant(1), 1);
   const responses = await Promise.all([submit(input), submit(input)]);
   expect(responses.map((response) => response.status)).toEqual([200, 200]);
@@ -264,7 +341,20 @@ it("creates one reservation for two simultaneous requests using the same attempt
   expect(results[0]).toEqual(results[1]);
   expect(sessions.size).toBe(1);
   const orderId = sessions.get(results[0].sessionId)!.client_reference_id!;
-  expect(await state(orderId)).toMatchObject({ reservation_state: "held", confirmations: 0 });
+  expect(await state(orderId)).toMatchObject({
+    buyer_id: actor.status === "verified" ? actor.buyer.id : null, reservation_state: "held", confirmations: 0,
+  });
+});
+
+it("allows only one actor to submit when a guest and buyer race for the same attempt", async () => {
+  const actor = await makeBuyer();
+  vi.mocked(getBuyerSession).mockResolvedValueOnce(actor).mockResolvedValueOnce({ status: "guest" });
+  const input = await checkoutInput(await makeVariant(1), 1);
+  const responses = await Promise.all([submit(input), submit(input)]);
+  expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+  const failure = responses.find((response) => response.status === 409)!;
+  expect(await failure.json()).toMatchObject({ status: "error", attemptOwnerMismatch: true });
+  expect(sessions.size).toBe(1);
 });
 
 it("admits only one payable checkout for concurrent buyers competing for the last unit", async () => {
@@ -291,7 +381,8 @@ it("resumes a reserved last unit and expires it before replacing a changed check
   expect(sessions.size).toBe(2);
 });
 
-it("cannot recreate a checkout stopped before its order arrived", async () => {
+it.each(["guest", "signed-in"])("cannot recreate a %s checkout stopped before its order arrived", async (kind) => {
+  if (kind === "signed-in") vi.mocked(getBuyerSession).mockResolvedValue(await makeBuyer());
   const input = await checkoutInput(await makeVariant(1), 1);
   const cancelled = await submit({ action: "close", attemptToken: input.attemptToken });
   expect(await cancelled.json()).toEqual({ status: "closed" });

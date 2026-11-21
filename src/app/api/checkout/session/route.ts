@@ -1,8 +1,8 @@
-import { startCheckoutAttempt } from "@/lib/checkout/server";
+import { getCheckoutActor, priceCheckoutAttempt } from "@/lib/checkout/server";
 import type { CheckoutReviewResult } from "@/lib/checkout/types";
 import { isRecord, normaliseAttemptToken, normaliseLines, validateCheckoutFields } from "@/lib/checkout/validation";
 import { readRequestBody } from "@/lib/payments/body";
-import { beginCardPayment, CheckoutUnavailableError, closeCardPayment, resumeCardPayment } from "@/lib/payments/checkout";
+import { beginCardPayment, CheckoutOwnerMismatchError, CheckoutUnavailableError, closeCardPayment, resumeCardPayment } from "@/lib/payments/checkout";
 import { checkoutOrigin, PaymentConfigurationError } from "@/lib/payments/config";
 import { CheckoutRateLimitError, limitCheckout } from "@/lib/payments/rate-limit";
 
@@ -11,7 +11,7 @@ export const maxDuration = 60;
 
 type ReviewFailure = Exclude<CheckoutReviewResult, { status: "payment-unavailable" }>;
 export type CheckoutSessionResult = ReviewFailure | { status: "payment"; sessionId: string; url: string }
-  | { status: "error"; message: string; attemptClosed?: true; attemptPending?: true }
+  | { status: "error"; message: string; attemptClosed?: true; attemptPending?: true; attemptOwnerMismatch?: true }
   | { status: "closed" };
 
 class NeedsCheckoutReview extends Error {
@@ -40,12 +40,18 @@ export async function POST(request: Request) {
     if (sender && sender !== origin) {
       return reply({ status: "error", message: "Start payment from the Edgey checkout." }, 403);
     }
-    const close = (previous: string) => closeCardPayment(previous, () => limitCheckout(request, origin, "checkout_close", previous));
     const previous = normaliseAttemptToken(body.supersedesAttemptToken);
     if (body.supersedesAttemptToken !== undefined && (!previous || previous === token)) return invalidAttempt();
+    const actor = await getCheckoutActor();
+    if (actor.status === "error") return reply(actor, 422);
+    const buyerId = actor.buyerId ?? null;
+    const close = (attemptToken: string) => closeCardPayment(
+      { attemptToken, buyerId }, () => limitCheckout(request, origin, "checkout_close", attemptToken),
+    );
     if (body.action === "resume" || body.action === "close") {
-      let payment = body.action === "resume" ? await resumeCardPayment(token) : await close(token);
-      if (!payment && previous) payment = body.action === "resume" ? await resumeCardPayment(previous) : await close(previous);
+      const recover = body.action === "resume" ? (attemptToken: string) => resumeCardPayment({ attemptToken, buyerId }) : close;
+      let payment = await recover(token);
+      if (!payment && previous) payment = await recover(previous);
       if (!payment && body.action === "resume") return reply({
         status: "error", message: "We can’t find a payable session yet. Try again, or close this checkout to start over.", attemptPending: true,
       }, 409);
@@ -64,11 +70,12 @@ export async function POST(request: Request) {
     }
     const payment = await beginCardPayment({
       attemptToken: token,
+      buyerId,
       lines,
       contact: { email, businessName, recipientName, buyingForWork },
       address: { line1, line2: line2 || undefined, town, region: region || undefined, postcode, country: "GB" },
     }, async () => {
-      const result = await startCheckoutAttempt(body);
+      const result = await priceCheckoutAttempt(body);
       if (result.status !== "ready") throw new NeedsCheckoutReview(result);
       return result.orderInput;
     }, () => limitCheckout(request, origin, "checkout", email));
@@ -81,6 +88,9 @@ export async function POST(request: Request) {
       return reply({ status: "error", message: `Card payment isn’t configured. ${error.message}` }, 503);
     }
     if (error instanceof CheckoutRateLimitError) return reply({ status: "error", message: error.message }, 429);
+    if (error instanceof CheckoutOwnerMismatchError) return reply({
+      status: "error", message: error.message, attemptPending: true, attemptOwnerMismatch: true,
+    }, 409);
     if (error instanceof CheckoutUnavailableError) return reply({
       status: "error", message: error.message,
       ...(error.attemptClosed ? { attemptClosed: true as const } : { attemptPending: true as const }),
@@ -103,7 +113,7 @@ function invalidAttempt() {
 }
 
 async function currentQuote(body: Record<string, unknown>) {
-  const result = await startCheckoutAttempt(body);
+  const result = await priceCheckoutAttempt(body);
   return result.status === "ready" || result.status === "review"
     ? result.quote
     : { status: "error" as const, message: result.message };

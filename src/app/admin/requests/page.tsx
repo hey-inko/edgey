@@ -35,7 +35,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <AdminHeading title="Requests" description={viewFit ? "Review trial requests and respond to enquiries. Access is limited to your assigned roles." : "Read-only trade applications inbox."} />
+      <AdminHeading title="Requests" description={viewFit ? "Review trial requests and respond to enquiries. Access is limited to your assigned roles." : "Review trade applications and record Net 30 decisions."} />
       {enquiries && <AdminSection title="Enquiries">
         {enquiries.data.length ? (
           <AdminTable label="Enquiries" headers={["Type", "Reply address", "Lookup", "Message", "Status", "Received"]}>
@@ -65,7 +65,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         {trade.data.length ? (
           <AdminTable label="Trade applications" headers={["Company", "Applicant", "Email", "Billing postcode", "Status", "Received"]}>
             {trade.data.slice(0, adminPageSize).map((row) => <tr key={row.id}>
-              <td>{row.company}</td><td>{row.buyer_name}</td><td className="admin-mono admin-email">{row.email}</td>
+              <td><AdminLink href={`/admin/requests/trade/${row.id}`}>{row.company}</AdminLink></td><td>{row.buyer_name}</td><td className="admin-mono admin-email">{row.email}</td>
               <td className="admin-mono">{row.billing_postcode}</td><td>{displayState(row.status)}</td>
               <td className="admin-mono">{displayTimestamp(row.created_at)}</td>
             </tr>)}

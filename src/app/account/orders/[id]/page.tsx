@@ -30,6 +30,7 @@ export default async function AccountOrderPage({ params }: { params: Promise<{ i
           <div><dt>Placed</dt><dd><time dateTime={order.created_at} className={styles.figure}>{accountDate(order.created_at)}</time></dd></div>
           <div><dt>Payment</dt><dd>{orderPaymentLabel(order.payment_status, order.fulfilment_status)}</dd></div>
           <div><dt>Fulfilment</dt><dd>{fulfilmentLabels[order.fulfilment_status]}</dd></div>
+          {order.payment_method === "net30" && <div><dt>PO reference</dt><dd className={styles.figure}>{order.po_number}</dd></div>}
         </dl>
       </header>
 

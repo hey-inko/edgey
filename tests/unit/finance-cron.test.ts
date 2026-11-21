@@ -22,7 +22,7 @@ it.each([
     kind: "event",
     handler: reconcilePayments,
     primary: reconcileStripePayments,
-    counts: { eventsChecked: 1, ordersChecked: 2, unresolvedEvents: 0, unresolvedOrders: 0 },
+    counts: { eventsChecked: 1, ordersChecked: 2, tradeOrdersChecked: 0, unresolvedEvents: 0, unresolvedOrders: 0, unresolvedTradeOrders: 0 },
   },
   {
     kind: "confirmation",

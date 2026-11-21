@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { accountDate, fulfilmentLabels, orderPaymentLabel } from "@/lib/account/display";
+import { accountDate, fulfilmentLabels, orderPaymentLabel, tradeInvoiceLabels } from "@/lib/account/display";
 import { listBuyerOrders } from "@/lib/account/server";
-import { getBuyerTradeOverview } from "@/lib/account/trade";
+import { getBuyerTradePosition, listBuyerTradeInvoices } from "@/lib/account/trade";
 import { sendAccountSignInLink, signOutOfAccount } from "@/lib/auth/actions";
 import { getOwnTradeApplicationStatus, getVerifiedBuyer } from "@/lib/auth/server";
 import { formatGbp } from "@/lib/commerce";
@@ -15,8 +15,19 @@ const applicationStatus = {
   rejected: { title: "Application not approved", detail: "If you have questions about the decision, contact us." },
 };
 
+function pageNumber(value: unknown) {
+  return typeof value === "string" && /^[1-9]\d{0,6}$/.test(value) ? Number(value) : 1;
+}
+
+function accountPage(orders: number, invoices: number) {
+  const query = new URLSearchParams();
+  if (orders > 1) query.set("page", String(orders));
+  if (invoices > 1) query.set("invoicePage", String(invoices));
+  return query.size ? `/account?${query}` : "/account";
+}
+
 export default async function AccountPage({ searchParams }: {
-  searchParams: Promise<{ signin?: string; signout?: string; page?: string }>;
+  searchParams: Promise<{ signin?: string; signout?: string; page?: string; invoicePage?: string }>;
 }) {
   const [buyer, params] = await Promise.all([getVerifiedBuyer(), searchParams]);
   if (!buyer) {
@@ -46,11 +57,15 @@ export default async function AccountPage({ searchParams }: {
     );
   }
 
-  const page = typeof params.page === "string" && /^[1-9]\d{0,6}$/.test(params.page) ? Number(params.page) : 1;
-  const [orderResult, applicationResult] = await Promise.allSettled([listBuyerOrders(page), getOwnTradeApplicationStatus()]);
+  const page = pageNumber(params.page);
+  const invoicePage = pageNumber(params.invoicePage);
+  const [orderResult, applicationResult, tradeResult, invoiceResult] = await Promise.allSettled([
+    listBuyerOrders(page), getOwnTradeApplicationStatus(), getBuyerTradePosition(), listBuyerTradeInvoices(invoicePage),
+  ]);
   const history = orderResult.status === "fulfilled" ? orderResult.value : null;
   const status = applicationResult.status === "fulfilled" ? applicationResult.value : null;
-  const trade = status === "approved" ? await getBuyerTradeOverview(buyer.id).catch(() => null) : null;
+  const trade = tradeResult.status === "fulfilled" ? tradeResult.value : null;
+  const invoices = invoiceResult.status === "fulfilled" ? invoiceResult.value : null;
 
   return (
     <main id="main-content" tabIndex={-1} className={`frame ${styles.page}`}>
@@ -99,8 +114,8 @@ export default async function AccountPage({ searchParams }: {
           )}
           {(page > 1 || history?.hasOlder) && (
             <nav aria-label="Order pages" className={styles.actions}>
-              {page > 1 && <Link className="textlink" href={page === 2 ? "/account" : `/account?page=${page - 1}`}>Newer orders</Link>}
-              {history?.hasOlder && <Link className="textlink" href={`/account?page=${page + 1}`}>Older orders</Link>}
+              {page > 1 && <Link className="textlink" href={accountPage(page - 1, invoicePage)}>Newer orders</Link>}
+              {history?.hasOlder && <Link className="textlink" href={accountPage(page + 1, invoicePage)}>Older orders</Link>}
             </nav>
           )}
         </section>
@@ -108,12 +123,33 @@ export default async function AccountPage({ searchParams }: {
         <section aria-labelledby="trade-title">
           <h2 id="trade-title">Trade account</h2>
           <div className={styles.panel}>
-            {applicationResult.status === "rejected" ? (
+            {trade ? (
+              <>
+                <h3>{trade.status === "approved" ? "Approved for Net 30" : trade.status === "suspended" ? "Trade account suspended" : "Trade account pending"}</h3>
+                {trade.status === "suspended" && <p className="muted">You can still view invoices, but you can’t place new orders on account.</p>}
+                {trade.status === "approved" && process.env.NET30_CHECKOUT_ENABLED !== "true" && (
+                  <p className="muted">Pay on account is currently unavailable at checkout.</p>
+                )}
+                <dl className={styles.tradeFacts}>
+                  <div><dt>Available credit</dt><dd className={styles.figure}>{formatGbp(trade.availableCreditPence)}</dd></div>
+                  <div><dt>Outstanding balance</dt><dd className={styles.figure}>{formatGbp(trade.outstandingBalancePence)}</dd></div>
+                </dl>
+              </>
+            ) : tradeResult.status === "rejected" ? (
+              <p>We couldn’t load your trade account. Try again shortly.</p>
+            ) : applicationResult.status === "rejected" ? (
               <p>We couldn’t load your trade application status. Try again shortly.</p>
             ) : status ? (
               <>
                 <h3>{applicationStatus[status].title}</h3>
-                {(status !== "approved" || !trade) && <p className="muted">{applicationStatus[status].detail}</p>}
+                <p className="muted">{applicationStatus[status].detail}</p>
+                {status === "approved" && (
+                  <dl className={styles.tradeFacts}>
+                    <div><dt>Available credit</dt><dd>Not available yet</dd></div>
+                    <div><dt>Outstanding balance</dt><dd>Not available yet</dd></div>
+                    <div><dt>Invoices and PO references</dt><dd>Not available yet</dd></div>
+                  </dl>
+                )}
               </>
             ) : (
               <>
@@ -121,25 +157,36 @@ export default async function AccountPage({ searchParams }: {
                 <Link className="textlink" href="/trade">Apply for a trade account</Link>
               </>
             )}
-            {status === "approved" && (
-              <dl className={styles.tradeFacts}>
-                <div><dt>Available credit</dt><dd>{trade ? <span className={styles.figure}>{formatGbp(trade.availableCreditPence)}</span> : "Not available yet"}</dd></div>
-                <div><dt>Outstanding balance</dt><dd>{trade ? <span className={styles.figure}>{formatGbp(trade.outstandingBalancePence)}</span> : "Not available yet"}</dd></div>
-                <div>
-                  <dt>Invoices and PO references</dt>
-                  <dd>{trade ? (
-                    trade.invoices.length ? (
-                      <ul className={styles.invoiceList} role="list">
-                        {trade.invoices.map(({ orderId, poReference }) => (
-                          <li key={orderId}><Link className="textlink" href={`/account/orders/${orderId}`}>Order {orderId}</Link> · PO {poReference}</li>
-                        ))}
-                      </ul>
-                    ) : "No invoices"
-                  ) : "Not available yet"}</dd>
-                </div>
-              </dl>
-            )}
           </div>
+          {trade && (
+            <section className={styles.invoiceSection} aria-labelledby="invoices-title">
+              <h3 id="invoices-title">Invoices and PO references</h3>
+              {invoiceResult.status === "rejected" ? <p className="muted">We couldn’t load your invoices. Try again shortly.</p>
+                : invoices?.invoices.length ? (
+                  <ul className={styles.invoiceList} role="list">
+                    {invoices.invoices.map((invoice) => (
+                      <li key={invoice.order_id}>
+                        <div className={styles.invoiceHeader}>
+                          <p className={styles.reference}>PO {invoice.po_number}</p>
+                          <p className={styles.figure}>{formatGbp(invoice.amount_remaining_pence)} remaining</p>
+                        </div>
+                        <p className="muted">{tradeInvoiceLabels[invoice.status]} · Due <time dateTime={invoice.due_at}>{accountDate(invoice.due_at)}</time></p>
+                        <div className={styles.invoiceLinks}>
+                          {invoice.url && <a className="textlink" href={invoice.url} rel="noreferrer" aria-label={`View invoice for PO ${invoice.po_number}`}>View invoice</a>}
+                          <Link href={`/account/orders/${invoice.order_id}`} prefetch={false} className="textlink" aria-label={`View order for PO ${invoice.po_number}`}>View order</Link>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="muted">{invoicePage === 1 ? "No invoices yet." : "There are no invoices on this page."}</p>}
+              {(invoicePage > 1 || invoices?.hasOlder) && (
+                <nav className={styles.actions} aria-label="Invoice pages">
+                  {invoicePage > 1 && <Link className="textlink" href={accountPage(page, invoicePage - 1)}>Newer invoices</Link>}
+                  {invoices?.hasOlder && <Link className="textlink" href={accountPage(page, invoicePage + 1)}>Older invoices</Link>}
+                </nav>
+              )}
+            </section>
+          )}
         </section>
       </div>
     </main>

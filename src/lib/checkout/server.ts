@@ -51,12 +51,21 @@ export function quoteCurrentSelection(lines: unknown, postcode?: unknown) {
   return quoteSelectionWith(lines, postcode, deps);
 }
 
-export async function startCheckoutAttempt(input: unknown) {
-  const attempt = await prepareCheckoutAttempt(input, deps);
-  if (attempt.status !== "ready") return attempt;
+export function priceCheckoutAttempt(input: unknown) {
+  return prepareCheckoutAttempt(input, deps);
+}
+
+export async function getCheckoutActor() {
   const session = await getBuyerSession();
   if (session.status === "unverified") {
     return { status: "error" as const, message: "We couldn’t verify your sign-in. Sign in again or reload checkout before continuing." };
   }
-  return { ...attempt, buyerId: session.status === "verified" ? session.buyer.id : undefined };
+  return { status: "ready" as const, buyerId: session.status === "verified" ? session.buyer.id : undefined };
+}
+
+export async function startCheckoutAttempt(input: unknown) {
+  const attempt = await priceCheckoutAttempt(input);
+  if (attempt.status !== "ready") return attempt;
+  const actor = await getCheckoutActor();
+  return actor.status === "ready" ? { ...attempt, buyerId: actor.buyerId } : actor;
 }

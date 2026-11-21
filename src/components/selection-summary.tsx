@@ -50,7 +50,7 @@ export function formatDispatchDate(date: string) {
   return dateFormat.format(new Date(date + "T00:00:00Z"));
 }
 
-export function DispatchEstimate({ quote }: { quote: Quote }) {
+export function DispatchEstimate({ quote, onAccount = false }: { quote: Quote; onAccount?: boolean }) {
   return (
     <>
       <dl className="specs checkout-promise">
@@ -69,7 +69,7 @@ export function DispatchEstimate({ quote }: { quote: Quote }) {
           </>
         )}
       </dl>
-      <p className="fine">Dates are provisional until payment.</p>
+      <p className="fine">{onAccount ? "Dates are provisional until your invoice is issued." : "Dates are provisional until payment."}</p>
     </>
   );
 }

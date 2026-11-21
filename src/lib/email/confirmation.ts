@@ -6,7 +6,7 @@ type Order = Pick<
   Database["public"]["Tables"]["orders"]["Row"],
   | "order_reference" | "email" | "recipient_name" | "goods_net_pence" | "delivery_net_pence"
   | "vat_rate_bps" | "vat_pence" | "gross_pence" | "delivery_service"
-  | "promised_dispatch_date" | "estimated_delivery_date"
+  | "promised_dispatch_date" | "estimated_delivery_date" | "payment_method" | "po_number"
 >;
 type OrderItem = Pick<
   Database["public"]["Tables"]["order_items"]["Row"],
@@ -45,11 +45,12 @@ export function renderConfirmation(
   const subject = `Edgey order confirmation: ${order.order_reference}`;
   const greeting = `Hello ${order.recipient_name},`;
   const intro = `Thank you for your order. Your order reference is ${order.order_reference}.`;
+  const onAccount = order.payment_method === "net30";
   const totals = [
     ["Goods subtotal (ex VAT)", formatGbp(order.goods_net_pence)],
     ["Delivery (ex VAT)", formatGbp(order.delivery_net_pence)],
     [`VAT (${percent.format(order.vat_rate_bps / 10_000)})`, formatGbp(order.vat_pence)],
-    ["Total paid (inc VAT)", formatGbp(order.gross_pence)],
+    [onAccount ? "Order total (inc VAT)" : "Total paid (inc VAT)", formatGbp(order.gross_pence)],
   ] as const;
   const delivery = [
     ["Delivery service", order.delivery_service],
@@ -60,8 +61,11 @@ export function renderConfirmation(
     item.sku, item.option_label, String(item.quantity),
     formatGbp(item.unit_price_pence), formatGbp(item.net_pence),
   ]);
-  const details = [...totals, ...delivery];
-  const invoice = hostedStripeInvoice(hostedInvoice);
+  const details = [...totals, ...(onAccount ? [
+    ["Payment terms", "Net 30 — sign in to your Edgey account to view the invoice, balance and due date"],
+    ["Purchase order", order.po_number ?? ""],
+  ] : []), ...delivery];
+  const invoice = onAccount ? null : hostedStripeInvoice(hostedInvoice);
   const text = [
     greeting, "", intro, "",
     ...lines.map(([sku, label, quantity, unit, total]) => `${sku} — ${label}: ${quantity} × ${unit} = ${total} ex VAT`),
