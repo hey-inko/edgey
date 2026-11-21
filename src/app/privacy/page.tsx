@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { finderAttributionAllowed, finderAttributionEnabled } from "@/lib/commercial/privacy";
 import { publicPrivacyNotice } from "@/lib/requests/public-information";
 import { setFinderAttributionPreference } from "./actions";
@@ -7,7 +8,7 @@ export const metadata: Metadata = { title: "Privacy", robots: { index: false, fo
 export const dynamic = "force-dynamic";
 
 export default async function PrivacyPage() {
-  const notice = publicPrivacyNotice("/privacy");
+  const notice = publicPrivacyNotice({ pathname: "/privacy", host: (await headers()).get("host") });
   const canChoose = finderAttributionEnabled();
   const optedIn = await finderAttributionAllowed();
   return (

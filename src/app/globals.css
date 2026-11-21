@@ -458,6 +458,7 @@ a.p-card { color: inherit; }
 .textlink svg { vertical-align: -1px; }
 .spec-link-end { white-space: nowrap; }
 .spec-link-end svg { display: inline-block; }
+.dialog-scroll:focus-visible { outline-offset: -2px; }
 .materials.is-long { align-items: start; }
 .materials.is-long .mat-copy { position: sticky; top: 24px; }
 @media (max-width: 740px) { .materials.is-long .mat-copy { position: static; } }

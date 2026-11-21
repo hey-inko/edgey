@@ -57,10 +57,10 @@ test("includes pre-hydration Finder edits when a third filter changes", async ({
   await expect(type).toHaveValue("drag");
 });
 
-test.describe("native staff sign-in", () => {
+test.describe("native form submissions", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("returns the usual form error rather than a 500 before hydration", async ({ page, baseURL }) => {
+  test("staff sign-in returns the usual form error rather than a 500", async ({ page, baseURL }) => {
     const initial = await page.goto("/admin/sign-in");
     expect(initial?.headers()).toMatchObject({
       "referrer-policy": "same-origin",
@@ -76,6 +76,21 @@ test.describe("native staff sign-in", () => {
     expect(await post.request().headerValue("origin")).toBe(baseURL);
     await expect(page.getByRole("alert")).toHaveText("Could not sign in. Check your staff email and password.");
   });
+
+  for (const [path, submit] of [
+    ["/enquiry?q=EDGEY-HYDRATION-CHECK", "Send enquiry"],
+    ["/account", "Send sign-in link"],
+  ] as const) {
+    test(`${path} returns a form error rather than a 500`, async ({ page, baseURL }) => {
+      await page.goto(path);
+      const response = page.waitForResponse((candidate) => candidate.request().method() === "POST");
+      await page.getByRole("button", { name: submit, exact: true }).click();
+      const post = await response;
+      expect(post.status()).toBe(200);
+      expect(await post.request().headerValue("origin")).toBe(baseURL);
+      await expect(page.getByRole("link", { name: "Enter a valid email address." })).toBeVisible();
+    });
+  }
 });
 
 test("keeps the compact dialog close and checkout action in view", async ({ page }) => {
@@ -86,11 +101,22 @@ test("keeps the compact dialog close and checkout action in view", async ({ page
   const product = page.getByRole("dialog", { name: /blade/i });
   const close = product.getByRole("button", { name: "Close blade details" });
   const spec = product.getByRole("link", { name: "Full specification and price breaks" });
+  const specs = product.getByRole("region", { name: "Blade specifications and options" });
   await expect(close).toBeInViewport({ ratio: 1 });
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(specs).toBeFocused();
+  await page.keyboard.press("End");
+  await expect.poll(() => specs.evaluate((region) => region.scrollTop)).toBeGreaterThan(0);
   await spec.scrollIntoViewIfNeeded();
   await expect(spec).toBeInViewport({ ratio: 1 });
-  await expect(spec.locator("svg")).toHaveCSS("display", "inline-block");
-  await expect(spec.getByText("breaks", { exact: true })).toHaveCSS("white-space", "nowrap");
+  expect(await spec.getByText("breaks", { exact: true }).evaluate((end) => {
+    const line = document.createRange();
+    line.selectNode(end.firstChild!);
+    const word = line.getBoundingClientRect();
+    const arrow = end.querySelector("svg")!.getBoundingClientRect();
+    return arrow.left >= word.right && arrow.top < word.bottom && arrow.bottom > word.top;
+  })).toBe(true);
   await expect(close).toBeInViewport({ ratio: 1 });
   await close.click();
   await expect(card).toBeFocused();
@@ -98,7 +124,18 @@ test("keeps the compact dialog close and checkout action in view", async ({ page
   await product.getByRole("button", { name: "Add to selection" }).click();
   const tray = page.getByRole("dialog", { name: "Your selection" });
   const checkout = tray.getByRole("link", { name: "Go to checkout" });
+  const details = tray.getByRole("region", { name: "Selection details" });
+  const closeSelection = tray.getByRole("button", { name: "Close selection" });
   await expect(checkout).toBeInViewport({ ratio: 1 });
+  await expect(closeSelection).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(details).toBeFocused();
+  await page.keyboard.press("End");
+  await expect.poll(() => details.evaluate((region) => region.scrollTop)).toBeGreaterThan(0);
+  await expect(checkout).toBeInViewport({ ratio: 1 });
+  await closeSelection.click();
+  await page.getByRole("button", { name: "Selection 1 blade" }).click();
+  await expect.poll(() => details.evaluate((region) => region.scrollTop)).toBe(0);
   await checkout.click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(page.getByRole("heading", { name: "Order summary" })).toBeVisible();

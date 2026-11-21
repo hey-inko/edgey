@@ -88,6 +88,7 @@ export function SelectionDialog() {
   const { lines, opened, close, replace, setQuantity } = useSelection();
   const pathname = usePathname();
   const dialog = useRef<HTMLDialogElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const opener = useRef<HTMLElement | undefined>(undefined);
   const backdropDown = useRef(false);
@@ -104,6 +105,7 @@ export function SelectionDialog() {
     if (!opened || !dialog.current || dialog.current.open) return;
     opener.current = opened.from;
     dialog.current.showModal();
+    if (content.current) content.current.scrollTop = 0;
   }, [opened]);
 
   function changeDraft(id: string, value?: string) {
@@ -147,7 +149,7 @@ export function SelectionDialog() {
           <button type="button" className="x-close" aria-label="Close selection" onClick={() => dialog.current?.close()}>×</button>
           <h2 id="selection-title">Your selection</h2>
         </div>
-        <div className="dialog-scroll">
+        <div ref={content} className="dialog-scroll" role="region" aria-label="Selection details" tabIndex={0}>
           {!lines.length && <p className="tray-empty">Your selection is empty. Choose a blade from the catalogue to compare quantities and prices.</p>}
           <div role="status">
             {pending && <p className="fine">Checking current prices and availability…</p>}

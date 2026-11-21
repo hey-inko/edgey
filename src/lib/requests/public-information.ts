@@ -6,12 +6,12 @@ export function publicContactEmail() {
   if (email && isSingleMailbox(email) && !/[?&#%]/.test(email)) return email;
 }
 
-export function publicPrivacyNotice(currentPath?: string) {
+export function publicPrivacyNotice(currentPage?: { pathname: string; host: string | null }) {
   const url = URL.parse(process.env.EDGEY_PRIVACY_NOTICE_URL ?? "");
   if (url?.protocol !== "https:" || url.username || url.password) return;
-  if (currentPath) {
+  if (currentPage && url.pathname.replace(/\/+$/, "") === currentPage.pathname) {
     const site = URL.parse(process.env.NEXT_PUBLIC_SITE_URL ?? "");
-    if (url.origin === site?.origin && url.pathname.replace(/\/+$/, "") === currentPath) return;
+    if (url.origin === site?.origin || url.host === currentPage.host?.toLowerCase()) return;
   }
   return url.href;
 }

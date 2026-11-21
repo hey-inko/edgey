@@ -10,7 +10,7 @@ type Props = { searchParams: Promise<RouteQuery> };
 export const metadata: Metadata = {
   title: "Enquiries",
   robots: { index: false, follow: false },
-  referrer: "no-referrer",
+  referrer: "same-origin",
 };
 
 export default async function EnquiryPage({ searchParams }: Props) {

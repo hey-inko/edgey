@@ -125,7 +125,7 @@ export function CatalogueControls({
           ))}
         </select>
       </label>
-      <input type="hidden" name="material" defaultValue={filters.material} />
+      {filters.material && <input type="hidden" name="material" defaultValue={filters.material} />}
       <noscript>
         <button className="secondary" type="submit">
           Search

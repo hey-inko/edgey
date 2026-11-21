@@ -30,15 +30,21 @@ test("the privacy shell links only an approved HTTPS notice without credentials"
 
 test("the privacy shell hides a self-link but keeps a notice on another page or site", () => {
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://staging.example.test");
+  const currentPage = { pathname: "/privacy", host: "preview.example.test" };
   for (const path of ["/privacy", "/privacy/", "/privacy?from=intake", "/privacy#notice"]) {
-    const url = `https://staging.example.test${path}`;
-    vi.stubEnv("EDGEY_PRIVACY_NOTICE_URL", url);
-    expect(publicPrivacyNotice("/privacy")).toBeUndefined();
-    expect(publicPrivacyNotice()).toBe(url);
+    for (const host of ["staging.example.test", "preview.example.test"]) {
+      const url = `https://${host}${path}`;
+      vi.stubEnv("EDGEY_PRIVACY_NOTICE_URL", url);
+      expect(publicPrivacyNotice(currentPage)).toBeUndefined();
+      expect(publicPrivacyNotice()).toBe(url);
+    }
   }
+  vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
+  vi.stubEnv("EDGEY_PRIVACY_NOTICE_URL", "https://preview.example.test/privacy");
+  expect(publicPrivacyNotice(currentPage)).toBeUndefined();
   for (const url of ["https://staging.example.test/legal/privacy", "https://example.test/privacy"]) {
     vi.stubEnv("EDGEY_PRIVACY_NOTICE_URL", url);
-    expect(publicPrivacyNotice("/privacy")).toBe(url);
+    expect(publicPrivacyNotice(currentPage)).toBe(url);
   }
 });
 
