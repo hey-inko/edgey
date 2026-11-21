@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Client, QueryResultRow } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vitest";
+import { setDbClaims } from "../helpers/db-claims";
 import type { CommercialMeasures } from "../../src/lib/commercial/database";
 import { connectAccountDb, createAccountBuyer, createAccountCatalogue, createAccountOrder } from "../helpers/account-fixture";
 
@@ -22,8 +23,10 @@ async function as<T extends QueryResultRow>(
 ) {
   await db.query("savepoint commercial_test");
   try {
+    const staff = role === "authenticated" && user !== null
+      && (await db.query("select 1 from public.staff_members where user_id=$1", [user])).rowCount !== 0;
+    await setDbClaims(db, role, user, staff);
     await db.query(`set local role ${role}`);
-    await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: user, aal: "aal2", role })]);
     return (await db.query<T>(sql, args)).rows;
   } catch (error) {
     await db.query("rollback to savepoint commercial_test");
