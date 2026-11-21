@@ -61,6 +61,8 @@ describe.each([
   ["fixture import", ["scripts/apply-hosted-staging-fixture.mjs"]],
   ["demo load", ["scripts/demo-orders.mjs", "load", "--staging"]],
   ["demo cleanup", ["scripts/demo-orders.mjs", "clean", "--staging"]],
+  ["catalogue dry run", ["scripts/sync-catalogue.mjs", "--staging"]],
+  ["catalogue apply", ["scripts/sync-catalogue.mjs", "--staging", "--apply"]],
 ] as const)("%s through the session pooler", (_command, args) => {
   test.each([
     ["matching ref and session port (requires a CA file)", pooler, "Set EDGEY_STAGING_DB_CA_FILE"],
@@ -83,6 +85,25 @@ describe.each([
     expect(result.stderr).toContain(message);
     expect(result.stderr).not.toContain("hidden-password");
   });
+});
+
+test.each([
+  [[], ""],
+  [["--apply"], ""],
+  [["--staging", "--apply"], ""],
+  [["--staging", "--project-ref", "bad"], ""],
+  [["--local", "--staging", "--project-ref", project], ""],
+  [["--local", "--project-ref", project], ""],
+  [["--local", "--apply=false"], ""],
+  [["--local", "--apply"], pooler],
+  [["--local", "--apply"], "postgresql://localhost/postgres?host=db.example.test"],
+] as const)("catalogue sync refuses unsupported or unsafe targets (%j)", (args, url) => {
+  const result = spawnSync(process.execPath, ["scripts/sync-catalogue.mjs", ...args], {
+    env: { NODE_ENV: "test", SUPABASE_DB_URL: url }, encoding: "utf8",
+  });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(url ? "must be a loopback Postgres URL" : "Usage: pnpm catalogue:sync");
+  expect(result.stderr).not.toContain("hidden-password");
 });
 
 test.each([

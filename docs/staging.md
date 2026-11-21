@@ -46,6 +46,28 @@ The first four design products use Appendix A prices, not the portable demo's da
 | EDG-SR6223 | Round-shank blade | £25.50 / £22.50 / £19.95 |
 | EDG-Z50 | Decagonal rotary blade | £38.00 / £34.00 / £30.00 |
 
+### Sync the real draft catalogue to an existing database
+
+Use `catalogue:sync` for existing staging and for a future live database (including an empty first launch). **Never run the development seed, the test fixture, `db:reset`, or `db push --include-seed` on the live database or on the current populated staging database.** Apply all reviewed migrations first, including `20261121001600_catalogue_sync_baselines.sql`. That migration adds an empty, private record of what the sync creates; it changes no existing catalogue rows and requires no storefront release.
+
+For the current staging project, copy **Connect → Session pooler** from its Supabase dashboard. Set `EDGEY_STAGING_DB_URL` privately to `postgresql://postgres.izmtnngzueyuwfwsztzd:<encoded-password>@<pooler-host>:5432/postgres` (copy the full host; don't guess it). Set `EDGEY_STAGING_DB_CA_FILE` to the dashboard's downloaded server root certificate as above. For a future live project, use that project's own ref, URL and CA; `--staging` selects the verified hosted connection mode, not a check that the project is named staging.
+
+```sh
+export STAGING_PROJECT_REF=izmtnngzueyuwfwsztzd
+pnpm catalogue:sync --staging --project-ref "$STAGING_PROJECT_REF"
+# Review the plan before running this separately:
+pnpm catalogue:sync --staging --project-ref "$STAGING_PROJECT_REF" --apply
+# Repeat the dry run to confirm there are no remaining adds or updates.
+pnpm catalogue:sync --staging --project-ref "$STAGING_PROJECT_REF"
+unset EDGEY_STAGING_DB_URL EDGEY_STAGING_DB_CA_FILE STAGING_PROJECT_REF
+```
+
+The default is read-only. Read every `CONFLICT` before applying: it means an existing SKU, family identity, OEM code or alias is in the way. The command skips that SKU and its references and material links, rather than repurposing it; other eligible items can still be applied. An existing family is reused only by exact family code and slug, and is not rewritten if it or any of its variants is protected. `KEEP` explains why other rows are unchanged, including older stock and published demo SKUs, staff-touched records and anything absent from the repository. Expect the 35 desired SKUs to be considered, not necessarily 35 new drafts: existing identities and conflicts can reduce the number imported. Resolve those separately with a catalogue owner; do not change SKU or code ownership just to make the sync pass.
+
+`ADD` lists missing eligible families, draft variants, unverified OEM references, private aliases, candidate compatibility and material rows; `UPDATE` lists the changed fields of unchanged-since-sync drafts or families. Old drafts without a sync record are kept even if blank or zero-stock: there is no way to prove no one edited them. If a later migration changes the shape of tracked rows, the sync also keeps those rows rather than assuming differences are safe. The command won't publish, delete, adjust stock, overwrite existing shared lookup definitions, or edit existing orders, costs, accounts or requests. Its own private record and the database's existing price audit can record newly imported draft prices; published prices stay unchanged. The definition is taken from explicit data blocks in `supabase/seed.sql`; the seed's writes aren't run. After apply, go to **Staff desk → Catalogue** to see the new drafts.
+
+Apply recalculates the plan under short-lived database locks and commits once; it does not replay an old dry run. Run it when staff and order activity are quiet. If it can't lock the tables, it stops without making changes. If the connection drops, run the dry run again to check what was committed before trying again. On local Supabase, use `pnpm db:env` and `pnpm catalogue:sync --local` (optionally `--apply`); pre-existing seed/fixture rows are protected just like pre-existing hosted rows.
+
 ### Load disposable sales dashboard orders
 
 Use these orders only in local development or on isolated, protected staging. Every order has a `[DEMO]` business and recipient name, an `@edgey-orders-demo.invalid` email, and a **DO NOT SHIP** address. Don't change the orders, link real customer activity to them, or use them to test payments or fulfil real parcels. They intentionally count in staging reports.

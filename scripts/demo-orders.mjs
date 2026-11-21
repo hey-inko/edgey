@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import pg from "pg";
 import { runDemoOrders } from "./demo-orders-fixture.mjs";
-import { stagingDbConnection } from "./staging-db-connection.mjs";
+import { localDbConnection, stagingDbConnection } from "./staging-db-connection.mjs";
 
 const usage = "Pass --local or --staging --project-ref <staging-project-ref>.";
 
@@ -20,15 +20,7 @@ export function demoConnection(args, env) {
       (flags.staging && !/^[a-z0-9]{20}$/.test(ref ?? ""))) {
     throw new Error(usage);
   }
-  if (flags.staging) return stagingDbConnection(ref, env);
-
-  const url = URL.parse(env.SUPABASE_DB_URL ?? "");
-  const postgres = url && ["postgres:", "postgresql:"].includes(url.protocol) &&
-    !url.href.includes("?") && !url.href.includes("#");
-  if (!postgres || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
-    throw new Error("SUPABASE_DB_URL must be a loopback Postgres URL without query parameters or a fragment.");
-  }
-  return { connectionString: url.href, ssl: false, connectionTimeoutMillis: 10_000 };
+  return flags.staging ? stagingDbConnection(ref, env) : localDbConnection(env);
 }
 
 async function main() {

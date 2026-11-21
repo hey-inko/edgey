@@ -6,7 +6,9 @@
 -- Reset locally to load a clean catalogue. Upserts are non-destructive and
 -- do not remove records from older seeds or replace approvals or stock.
 
-insert into public.tool_categories (slug, name, sort_order) values
+insert into public.tool_categories (slug, name, sort_order)
+-- catalogue:tool_categories
+values
   ('drag', 'Drag', 10),
   ('oscillating', 'Oscillating', 20),
   ('rotary', 'Rotary', 30),
@@ -14,9 +16,12 @@ insert into public.tool_categories (slug, name, sort_order) values
   ('v-cut', 'V-cut', 50),
   ('tangential', 'Tangential', 60),
   ('roll-plotter', 'Roll plotter', 70)
+-- catalogue:end
 on conflict (slug) do update set name = excluded.name, sort_order = excluded.sort_order;
 
-insert into public.substrates (slug, name, swatch, sort_order) values
+insert into public.substrates (slug, name, swatch, sort_order)
+-- catalogue:substrates
+values
   ('corrugated-board', 'Corrugated board', 'flutes', 10),
   ('vinyl', 'Vinyl', 'film', 20),
   ('textile', 'Textile', 'weave', 30),
@@ -40,10 +45,13 @@ insert into public.substrates (slug, name, swatch, sort_order) values
   ('sandblast-film', 'Sandblast film', null, 210),
   ('stencil-film', 'Stencil film', null, 220),
   ('styrene', 'Styrene', null, 230)
+-- catalogue:end
 on conflict (slug) do update
   set name = excluded.name, swatch = excluded.swatch, sort_order = excluded.sort_order;
 
-insert into public.brands (slug, name) values
+insert into public.brands (slug, name)
+-- catalogue:brands
+values
   ('zund', 'Zünd'),
   ('summa', 'Summa'),
   ('kongsberg', 'Kongsberg'),
@@ -51,11 +59,14 @@ insert into public.brands (slug, name) values
   ('mimaki', 'Mimaki'),
   ('roland', 'Roland'),
   ('graphtec', 'Graphtec')
+-- catalogue:end
 on conflict (slug) do update set name = excluded.name;
 
 -- Families. Names are working names in the design demo's style; the four the
 -- design pack names are used as given. Only those four have approved artwork.
-insert into public.products (family_code, slug, name, tool_category, description, media, sort_order) values
+insert into public.products (family_code, slug, name, tool_category, description, media, sort_order)
+-- catalogue:products
+values
   ('EDG-Z10', 'edg-z10', 'Flat-stock drag blade', 'drag', 'Drag blade for flat sheet and roll stock.', '{"drawing": "drag-line.svg", "photo": "drag.webp", "proof": "coral"}', 10),
   ('EDG-SUM-9802', 'edg-sum-9802', 'Short flat-stock drag blade', 'drag', 'Double-edge flat drag blade for the Summa F-Series Double-Edge Cutout Tool.', '{}', 11),
   ('EDG-Z11', 'edg-z11', 'Tight-corner drag blade', 'drag', 'Steeper drag blade for carton, thin plastics and tight corners.', '{}', 20),
@@ -82,6 +93,7 @@ insert into public.products (family_code, slug, name, tool_category, description
   ('EDG-SUM-DRG', 'edg-sum-drg', 'Summa-pattern drag plotter blade', 'roll-plotter', 'Drag blade for roll plotters cutting vinyl, thick laminate and reflective film.', '{}', 210),
   ('EDG-SUM-TAN', 'edg-sum-tan', 'Tangential plotter blade', 'tangential', 'Tangential blade for heavy vinyl and high-speed lettering.', '{}', 220),
   ('EDG-GRP-CB', 'edg-grp-cb', 'Graphtec-pattern plotter blade', 'roll-plotter', 'Roll-plotter blade for vinyl, reflective films and sandblast films, depending on the option.', '{}', 230)
+-- catalogue:end
 on conflict (family_code) do update set
   slug = excluded.slug, name = excluded.name, tool_category = excluded.tool_category,
   description = excluded.description, media = excluded.media, sort_order = excluded.sort_order
@@ -93,6 +105,7 @@ where not exists (
 -- Variants. A single-variant family reuses its family code as the SKU. Families
 -- with physical options have a distinct draft SKU for each option.
 with data (sku, family_code, option_label, tool, angle_deg, shank_mm, cutting_depth_mm, blade_thickness_mm, diameter_mm, specs, evidence_note, p1, p2, p3, sort_order) as (
+-- catalogue:variants
   values
   ('EDG-Z10', 'EDG-Z10', null, 'UCT, SCT', 50, null, 4.8, 1.5, null, '{"Blade type": "Double-edge flat drag", "Length": "50 mm", "Width": "8 mm", "Other compatible machines": "JWEI and iEcho, 50 mm holders"}', null, 2250, 1995, 1750, 0),
   ('EDG-Z11', 'EDG-Z11', null, 'UCT, SCT', 60, null, 6.9, 1.5, null, '{"Blade type": "Double-edge flat drag", "Length": "50 mm", "Width": "8 mm", "Other compatible machines": "JWEI and iEcho, 50 mm holders"}', null, 2250, 1995, 1750, 0),
@@ -129,6 +142,7 @@ with data (sku, family_code, option_label, tool, angle_deg, shank_mm, cutting_de
   ('EDG-GRP-CB09-60', 'EDG-GRP-CB', 'CB09 holder · 60°', 'PHP33-CB09N-HS (blue holder)', 60, null, null, null, 0.9, '{"Blade type": "Small lettering / thick vinyl drag", "Length": "19 mm", "Offset": "0.25 mm"}', null, 1195, 900, 750, 20),
   ('EDG-GRP-CB15-45', 'EDG-GRP-CB', 'CB15 holder · 45°', 'PHP33-CB15N-HS (red holder)', 45, null, null, null, 1.5, '{"Blade type": "Heavy-duty vinyl/reflective drag", "Length": "19 mm", "Offset": "0.25 mm"}', null, 1195, 900, 750, 30),
   ('EDG-GRP-CB15-60', 'EDG-GRP-CB', 'CB15 holder · 60°', 'PHP33-CB15N-HS (red holder)', 60, null, null, null, 1.5, '{"Blade type": "Heavy-duty reflective/sandblast drag", "Length": "19 mm", "Offset": "0.25 mm"}', null, 1195, 900, 750, 40)
+-- catalogue:end
 )
 insert into public.variants (
   product_id, sku, option_label, tool, angle_deg, shank_mm, cutting_depth_mm, blade_thickness_mm,
@@ -155,6 +169,7 @@ where variants.publication_status = 'draft';
 
 -- Applications to verify; shared family suggestions and option-specific uses.
 with data (family_code, substrate) as (
+-- catalogue:family_materials
   values
   ('EDG-Z10', 'foamex'), ('EDG-Z10', 'correx'), ('EDG-Z10', 'pvc'), ('EDG-Z10', 'vinyl'), ('EDG-Z10', 'banner'),
   ('EDG-Z11', 'folding-carton'), ('EDG-Z11', 'plastics'),
@@ -180,6 +195,7 @@ with data (family_code, substrate) as (
   ('EDG-SUM-TAN', 'vinyl'),
   ('EDG-GRP-CB', 'vinyl'),
   ('EDG-DF113', 'vinyl'), ('EDG-DF113', 'folding-carton'), ('EDG-DF113', 'banner'), ('EDG-DF113', 'styrene')
+-- catalogue:end
 )
 insert into public.variant_substrates (variant_id, substrate)
 select v.id, d.substrate
@@ -189,11 +205,14 @@ join public.variants v on v.product_id = p.id
 where v.publication_status = 'draft'
 union all
 select v.id, d.substrate
-from (values
+from (
+-- catalogue:variant_materials
+values
   ('EDG-SR6315', 'pvc'), ('EDG-SR6315', 'corrugated-board'),
   ('EDG-ROL-A60', 'reflective-film'),
   ('EDG-SUM-DRG-60', 'flock'),
   ('EDG-GRP-CB15-45', 'reflective-film'), ('EDG-GRP-CB15-60', 'reflective-film'), ('EDG-GRP-CB15-60', 'sandblast-film')
+-- catalogue:end
 ) d (sku, substrate)
 join public.variants v on v.sku = d.sku
 where v.publication_status = 'draft'
@@ -202,6 +221,7 @@ on conflict do nothing;
 -- Reference codes are candidates, including cross-brand compatibility. Do not
 -- map 5201345 (Z60) to Z71 or map Z11 to the separately stocked DF113.
 with data (sku, code, code_kind, brand, machine, tool, adapter, legacy, evidence_note) as (
+-- catalogue:compatibility
   values
   ('EDG-Z10', 'Z10', 'model', 'zund', 'G3, S3, L3, D3, PN', 'UCT, SCT', null, false, null),
   ('EDG-Z10', '3910301', 'item_number', 'zund', 'G3, S3, L3, D3, PN', 'UCT, SCT', null, false, null),
@@ -274,6 +294,7 @@ with data (sku, code, code_kind, brand, machine, tool, adapter, legacy, evidence
   ('EDG-GRP-CB09-60', 'CB09U', 'item_number', 'graphtec', 'CE6000, CE7000, CE8000, FC8600, FC9000', 'PHP33-CB09N-HS (blue holder)', null, false, 'This reference is shared by two stated angles. Confirm holder and angle from the packet.'),
   ('EDG-GRP-CB15-45', 'CB15U', 'item_number', 'graphtec', 'FC8600, FC9000, CE7000, CE8000', 'PHP33-CB15N-HS (red holder)', null, false, 'This reference is shared by two stated angles. Confirm holder and angle from the packet.'),
   ('EDG-GRP-CB15-60', 'CB15U', 'item_number', 'graphtec', 'FC8600, FC9000, CE7000, CE8000', 'PHP33-CB15N-HS (red holder)', null, false, 'This reference is shared by two stated angles. Confirm holder and angle from the packet.')
+-- catalogue:end
 )
 insert into public.compatibility (variant_id, code, code_kind, brand, machine, tool, adapter, evidence_source, evidence_note)
 select v.id, d.code, d.code_kind::public.compatibility_code_kind, d.brand, d.machine, d.tool, d.adapter,
