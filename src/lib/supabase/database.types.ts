@@ -110,6 +110,107 @@ export type Database = {
           },
         ];
       };
+      credit_holds: {
+        Row: {
+          amount_pence: number;
+          created_at: string;
+          operation_key: string;
+          order_id: string;
+          resolved_at: string | null;
+          status: Database["public"]["Enums"]["credit_hold_status"];
+          trade_account_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          amount_pence: number;
+          created_at?: string;
+          operation_key: string;
+          order_id: string;
+          resolved_at?: string | null;
+          status?: Database["public"]["Enums"]["credit_hold_status"];
+          trade_account_id: string;
+        };
+        Update: {
+          amount_pence?: number;
+          created_at?: string;
+          operation_key?: string;
+          order_id?: string;
+          resolved_at?: string | null;
+          status?: Database["public"]["Enums"]["credit_hold_status"];
+          trade_account_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credit_holds_order_id_trade_account_id_fkey";
+            columns: ["order_id", "trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id", "trade_account_id"];
+          },
+        ];
+      };
+      credit_ledger: {
+        Row: {
+          actor_id: string | null;
+          created_at: string;
+          held_delta_pence: number;
+          id: number;
+          input: NonNullable<Json>;
+          kind: Database["public"]["Enums"]["credit_ledger_kind"];
+          operation_key: string;
+          order_id: string | null;
+          outstanding_delta_pence: number;
+          trade_account_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          actor_id?: string | null;
+          created_at?: string;
+          held_delta_pence: number;
+          id?: never;
+          input: NonNullable<Json>;
+          kind: Database["public"]["Enums"]["credit_ledger_kind"];
+          operation_key: string;
+          order_id?: string | null;
+          outstanding_delta_pence: number;
+          trade_account_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          created_at?: string;
+          held_delta_pence?: number;
+          id?: never;
+          input?: NonNullable<Json>;
+          kind?: Database["public"]["Enums"]["credit_ledger_kind"];
+          operation_key?: string;
+          order_id?: string | null;
+          outstanding_delta_pence?: number;
+          trade_account_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credit_ledger_order_id_trade_account_id_fkey";
+            columns: ["order_id", "trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id", "trade_account_id"];
+          },
+          {
+            foreignKeyName: "credit_ledger_trade_account_id_fkey";
+            columns: ["trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "trade_accounts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "credit_ledger_trade_account_id_fkey";
+            columns: ["trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "trade_credit_position";
+            referencedColumns: ["trade_account_id"];
+          },
+        ];
+      };
       enquiries: {
         Row: {
           created_at: string;
@@ -211,6 +312,57 @@ export type Database = {
           query_fingerprint?: string | null;
         };
         Relationships: [];
+      };
+      invoices: {
+        Row: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          provider_invoice_id: string;
+          status: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          provider_invoice_id: string;
+          status?: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_due_pence?: number;
+          amount_remaining_pence?: number;
+          currency?: string;
+          due_at?: string;
+          issued_at?: string;
+          order_id?: string;
+          po_number?: string;
+          provider_invoice_id?: string;
+          status?: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoices_order_id_trade_account_id_fkey";
+            columns: ["order_id", "trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id", "trade_account_id"];
+          },
+        ];
       };
       order_items: {
         Row: {
@@ -457,6 +609,7 @@ export type Database = {
           stripe_reconciliation_error: string | null;
           stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -507,6 +660,7 @@ export type Database = {
           stripe_reconciliation_error?: string | null;
           stripe_replay_after?: string;
           tracking_number?: string | null;
+          trade_account_id?: string | null;
           updated_at?: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -556,11 +710,27 @@ export type Database = {
           stripe_reconciliation_error?: string | null;
           stripe_replay_after?: string;
           tracking_number?: string | null;
+          trade_account_id?: string | null;
           updated_at?: string;
           vat_pence?: number;
           vat_rate_bps?: number;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "orders_trade_account_id_fkey";
+            columns: ["trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "trade_accounts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_trade_account_id_fkey";
+            columns: ["trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "trade_credit_position";
+            referencedColumns: ["trade_account_id"];
+          },
+        ];
       };
       products: {
         Row: {
@@ -814,6 +984,51 @@ export type Database = {
           sort_order?: number;
         };
         Relationships: [];
+      };
+      trade_accounts: {
+        Row: {
+          application_id: string;
+          buyer_id: string | null;
+          buyer_name: string;
+          created_at: string;
+          credit_limit_pence: number;
+          id: string;
+          status: Database["public"]["Enums"]["trade_account_status"];
+          stripe_customer_id: string | null;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          application_id: string;
+          buyer_id?: string | null;
+          buyer_name: string;
+          created_at?: string;
+          credit_limit_pence: number;
+          id?: string;
+          status: Database["public"]["Enums"]["trade_account_status"];
+          stripe_customer_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          application_id?: string;
+          buyer_id?: string | null;
+          buyer_name?: string;
+          created_at?: string;
+          credit_limit_pence?: number;
+          id?: string;
+          status?: Database["public"]["Enums"]["trade_account_status"];
+          stripe_customer_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trade_accounts_application_id_fkey";
+            columns: ["application_id"];
+            isOneToOne: true;
+            referencedRelation: "trade_applications";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       trade_applications: {
         Row: {
@@ -1170,7 +1385,64 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      overdue_invoices: {
+        Row: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          status: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          amount_due_pence?: number | null;
+          amount_remaining_pence?: number | null;
+          currency?: string | null;
+          due_at?: string | null;
+          issued_at?: string | null;
+          order_id?: string | null;
+          po_number?: string | null;
+          status?: Database["public"]["Enums"]["trade_invoice_status"] | null;
+          trade_account_id?: string | null;
+        };
+        Update: {
+          amount_due_pence?: number | null;
+          amount_remaining_pence?: number | null;
+          currency?: string | null;
+          due_at?: string | null;
+          issued_at?: string | null;
+          order_id?: string | null;
+          po_number?: string | null;
+          status?: Database["public"]["Enums"]["trade_invoice_status"] | null;
+          trade_account_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoices_order_id_trade_account_id_fkey";
+            columns: ["order_id", "trade_account_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id", "trade_account_id"];
+          },
+        ];
+      };
+      trade_credit_position: {
+        Row: {
+          available_credit_pence: number | null;
+          buyer_id: string | null;
+          credit_limit_pence: number;
+          held_pence: number | null;
+          outstanding_pence: number | null;
+          status: Database["public"]["Enums"]["trade_account_status"];
+          trade_account_id: string;
+        };
+        ComputedFields: never;
+        Relationships: [];
+      };
     };
     Functions: {
       admin_catalogue_review: {
@@ -1309,7 +1581,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1366,7 +1644,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1433,7 +1717,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1501,7 +1791,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1560,7 +1856,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1750,7 +2052,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1836,7 +2144,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -1898,7 +2212,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -2000,7 +2320,13 @@ export type Database = {
           provider_invoice_id: string | null;
           recipient_name: string;
           refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
           tracking_number: string | null;
+          trade_account_id: string | null;
           updated_at: string;
           vat_pence: number;
           vat_rate_bps: number;
@@ -2056,9 +2382,404 @@ export type Database = {
         };
         Returns: string;
       };
+      apply_credit_note: {
+        Args: {
+          p_amount_pence: number;
+          p_currency: string;
+          p_operation_key: string;
+          p_pre_payment_pence: number;
+          p_provider_invoice_id: string;
+        };
+        Returns: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          provider_invoice_id: string;
+          status: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "invoices";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      apply_invoice_payment: {
+        Args: {
+          p_amount_pence: number;
+          p_currency: string;
+          p_operation_key: string;
+          p_provider_invoice_id: string;
+        };
+        Returns: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          provider_invoice_id: string;
+          status: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "invoices";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      apply_invoice_refund: {
+        Args: {
+          p_amount_pence: number;
+          p_currency: string;
+          p_operation_key: string;
+          p_provider_invoice_id: string;
+        };
+        Returns: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          provider_invoice_id: string;
+          status: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "invoices";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      approve_trade_account: {
+        Args: {
+          p_actor_id: string;
+          p_application_id: string;
+          p_credit_limit_pence: number;
+          p_stripe_customer_id: string;
+        };
+        Returns: {
+          application_id: string;
+          buyer_id: string | null;
+          buyer_name: string;
+          created_at: string;
+          credit_limit_pence: number;
+          id: string;
+          status: Database["public"]["Enums"]["trade_account_status"];
+          stripe_customer_id: string | null;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trade_accounts";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      bind_invoice: {
+        Args: {
+          p_amount_due_pence: number;
+          p_currency: string;
+          p_delivery_date: string;
+          p_dispatch_date: string;
+          p_due_at: string;
+          p_issued_at: string;
+          p_order_id: string;
+          p_provider_invoice_id: string;
+          p_stripe_customer_id: string;
+        };
+        Returns: {
+          address_country: string;
+          address_line1: string;
+          address_line2: string | null;
+          address_postcode: string;
+          address_region: string | null;
+          address_town: string;
+          authorised_at: string | null;
+          business_name: string;
+          buyer_id: string | null;
+          buyer_invoice_url: string | null;
+          buying_for_work: boolean;
+          carrier: string | null;
+          checkout_attempt_token: string;
+          checkout_session_id: string | null;
+          created_at: string;
+          currency: string;
+          delivery_net_pence: number;
+          delivery_service: string;
+          dispatched_at: string | null;
+          email: string;
+          estimated_delivery_date: string;
+          fulfilment_status: Database["public"]["Enums"]["order_fulfilment_status"];
+          goods_net_pence: number;
+          gross_pence: number;
+          hold_expires_at: string;
+          id: string;
+          paid_pence: number;
+          payment_intent_id: string | null;
+          payment_method: Database["public"]["Enums"]["order_payment_method"];
+          payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
+          payment_status: Database["public"]["Enums"]["order_payment_status"];
+          phone: string | null;
+          po_number: string | null;
+          promised_dispatch_date: string;
+          provider_invoice_id: string | null;
+          recipient_name: string;
+          refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
+          tracking_number: string | null;
+          trade_account_id: string | null;
+          updated_at: string;
+          vat_pence: number;
+          vat_rate_bps: number;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "orders";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      create_net30_order_with_holds: {
+        Args: {
+          p_address: Json;
+          p_attempt_token: string;
+          p_buyer_id: string;
+          p_contact: Json;
+          p_delivery_date: string;
+          p_delivery_service: string;
+          p_dispatch_date: string;
+          p_hold_expires_at: string;
+          p_lines: Json;
+          p_po_number: string;
+          p_totals: Json;
+        };
+        Returns: {
+          address_country: string;
+          address_line1: string;
+          address_line2: string | null;
+          address_postcode: string;
+          address_region: string | null;
+          address_town: string;
+          authorised_at: string | null;
+          business_name: string;
+          buyer_id: string | null;
+          buyer_invoice_url: string | null;
+          buying_for_work: boolean;
+          carrier: string | null;
+          checkout_attempt_token: string;
+          checkout_session_id: string | null;
+          created_at: string;
+          currency: string;
+          delivery_net_pence: number;
+          delivery_service: string;
+          dispatched_at: string | null;
+          email: string;
+          estimated_delivery_date: string;
+          fulfilment_status: Database["public"]["Enums"]["order_fulfilment_status"];
+          goods_net_pence: number;
+          gross_pence: number;
+          hold_expires_at: string;
+          id: string;
+          paid_pence: number;
+          payment_intent_id: string | null;
+          payment_method: Database["public"]["Enums"]["order_payment_method"];
+          payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
+          payment_status: Database["public"]["Enums"]["order_payment_status"];
+          phone: string | null;
+          po_number: string | null;
+          promised_dispatch_date: string;
+          provider_invoice_id: string | null;
+          recipient_name: string;
+          refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
+          tracking_number: string | null;
+          trade_account_id: string | null;
+          updated_at: string;
+          vat_pence: number;
+          vat_rate_bps: number;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "orders";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      release_credit_hold: {
+        Args: {
+          p_operation_key: string;
+          p_order_id: string;
+          p_provider_invoice_id?: string;
+          p_resolution: string;
+        };
+        Returns: {
+          address_country: string;
+          address_line1: string;
+          address_line2: string | null;
+          address_postcode: string;
+          address_region: string | null;
+          address_town: string;
+          authorised_at: string | null;
+          business_name: string;
+          buyer_id: string | null;
+          buyer_invoice_url: string | null;
+          buying_for_work: boolean;
+          carrier: string | null;
+          checkout_attempt_token: string;
+          checkout_session_id: string | null;
+          created_at: string;
+          currency: string;
+          delivery_net_pence: number;
+          delivery_service: string;
+          dispatched_at: string | null;
+          email: string;
+          estimated_delivery_date: string;
+          fulfilment_status: Database["public"]["Enums"]["order_fulfilment_status"];
+          goods_net_pence: number;
+          gross_pence: number;
+          hold_expires_at: string;
+          id: string;
+          paid_pence: number;
+          payment_intent_id: string | null;
+          payment_method: Database["public"]["Enums"]["order_payment_method"];
+          payment_review_reason: string | null;
+          payment_review_refund_id: string | null;
+          payment_status: Database["public"]["Enums"]["order_payment_status"];
+          phone: string | null;
+          po_number: string | null;
+          promised_dispatch_date: string;
+          provider_invoice_id: string | null;
+          recipient_name: string;
+          refunded_pence: number;
+          stripe_checkout_account_id: string | null;
+          stripe_checkout_request: Json | null;
+          stripe_checkout_started_at: string | null;
+          stripe_reconciliation_error: string | null;
+          stripe_replay_after: string;
+          tracking_number: string | null;
+          trade_account_id: string | null;
+          updated_at: string;
+          vat_pence: number;
+          vat_rate_bps: number;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "orders";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      set_credit_limit: {
+        Args: {
+          p_actor_id: string;
+          p_credit_limit_pence: number;
+          p_operation_key: string;
+          p_trade_account_id: string;
+        };
+        Returns: {
+          application_id: string;
+          buyer_id: string | null;
+          buyer_name: string;
+          created_at: string;
+          credit_limit_pence: number;
+          id: string;
+          status: Database["public"]["Enums"]["trade_account_status"];
+          stripe_customer_id: string | null;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trade_accounts";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      suspend_trade_account: {
+        Args: {
+          p_actor_id: string;
+          p_operation_key: string;
+          p_reason: string;
+          p_trade_account_id: string;
+        };
+        Returns: {
+          application_id: string;
+          buyer_id: string | null;
+          buyer_name: string;
+          created_at: string;
+          credit_limit_pence: number;
+          id: string;
+          status: Database["public"]["Enums"]["trade_account_status"];
+          stripe_customer_id: string | null;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "trade_accounts";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      void_invoice: {
+        Args: { p_provider_invoice_id: string };
+        Returns: {
+          amount_due_pence: number;
+          amount_remaining_pence: number;
+          currency: string;
+          due_at: string;
+          issued_at: string;
+          order_id: string;
+          po_number: string;
+          provider_invoice_id: string;
+          status: Database["public"]["Enums"]["trade_invoice_status"];
+          trade_account_id: string;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "invoices";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
     };
     Enums: {
       compatibility_code_kind: "model" | "item_number" | "alias";
+      credit_hold_status: "held" | "converted" | "released";
+      credit_ledger_kind:
+        | "approve"
+        | "set_limit"
+        | "suspend"
+        | "hold"
+        | "release"
+        | "issue"
+        | "payment"
+        | "credit_note"
+        | "void"
+        | "refund";
       order_fulfilment_status:
         | "awaiting_authorisation"
         | "ready_to_pick"
@@ -2079,13 +2800,11 @@ export type Database = {
       publication_status: "draft" | "published" | "archived";
       staff_role: "warehouse" | "catalogue" | "finance";
       stock_movement_kind:
-        | "opening"
-        | "reserve"
-        | "release"
-        | "dispatch"
-        | "receive"
-        | "restore";
+        "opening" | "reserve" | "release" | "dispatch" | "receive" | "restore";
       stock_reservation_state: "held" | "allocated" | "released" | "dispatched";
+      trade_account_status: "pending" | "approved" | "suspended";
+      trade_invoice_status:
+        "open" | "partially_paid" | "paid" | "credited" | "voided";
       verification_state: "candidate" | "approved" | "rejected";
     };
     CompositeTypes: {
@@ -2218,6 +2937,19 @@ export const Constants = {
   public: {
     Enums: {
       compatibility_code_kind: ["model", "item_number", "alias"],
+      credit_hold_status: ["held", "converted", "released"],
+      credit_ledger_kind: [
+        "approve",
+        "set_limit",
+        "suspend",
+        "hold",
+        "release",
+        "issue",
+        "payment",
+        "credit_note",
+        "void",
+        "refund",
+      ],
       order_fulfilment_status: [
         "awaiting_authorisation",
         "ready_to_pick",
@@ -2248,6 +2980,14 @@ export const Constants = {
         "restore",
       ],
       stock_reservation_state: ["held", "allocated", "released", "dispatched"],
+      trade_account_status: ["pending", "approved", "suspended"],
+      trade_invoice_status: [
+        "open",
+        "partially_paid",
+        "paid",
+        "credited",
+        "voided",
+      ],
       verification_state: ["candidate", "approved", "rejected"],
     },
   },
