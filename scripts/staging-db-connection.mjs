@@ -1,5 +1,15 @@
 import { readFileSync } from "node:fs";
 
+export function localDbConnection(env) {
+  const url = URL.parse(env.SUPABASE_DB_URL ?? "");
+  const postgres = url && ["postgres:", "postgresql:"].includes(url.protocol) &&
+    !url.href.includes("?") && !url.href.includes("#");
+  if (!postgres || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+    throw new Error("SUPABASE_DB_URL must be a loopback Postgres URL without query parameters or a fragment.");
+  }
+  return { connectionString: url.href, ssl: false, connectionTimeoutMillis: 10_000 };
+}
+
 export function stagingDbConnection(projectRef, env) {
   const url = URL.parse(env.EDGEY_STAGING_DB_URL ?? "");
   if (!url || !["postgres:", "postgresql:"].includes(url.protocol) || url.pathname !== "/postgres" ||
