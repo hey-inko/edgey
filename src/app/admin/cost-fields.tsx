@@ -21,18 +21,20 @@ export function CostFields({ cost, optional = false }: { cost?: CostValues | nul
           <input name="supplier_unit_minor" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
             defaultValue={formatPoundsInput(cost?.supplier_unit_minor)} required={!optional} />
         </AdminField>
-        <AdminField label="Supplier currency">
-          <select name="currency" defaultValue={cost?.currency ?? ""} required={!optional}>
+        <div className="admin-field">
+          <label htmlFor="staff-cost-currency">Supplier currency</label>
+          <select id="staff-cost-currency" name="currency" defaultValue={cost?.currency ?? ""} required={!optional}>
             <option value="">Choose a currency</option>
             {supplierCurrencies.map((currency) => <option key={currency}>{currency}</option>)}
           </select>
-        </AdminField>
+        </div>
         <AdminField label="Landed unit cost (£)">
           <input name="landed_unit_pence" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
             defaultValue={formatPoundsInput(cost?.landed_unit_pence)} required={!optional} />
         </AdminField>
         <AdminField label="Exchange rate (GBP per supplier currency unit, optional)">
-          <input name="exchange_rate" inputMode="decimal" maxLength={16} defaultValue={cost?.exchange_rate ?? ""} />
+          <input name="exchange_rate" inputMode="decimal" maxLength={16}
+            defaultValue={cost?.exchange_rate == null ? "" : cost.exchange_rate.toFixed(8).replace(/\.?0+$/, "")} />
         </AdminField>
         <AdminField label="Freight per blade (£, optional)">
           <input name="freight_unit_pence" inputMode="decimal" maxLength={11} pattern={POUNDS_INPUT_PATTERN}
