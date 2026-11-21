@@ -19,11 +19,11 @@ test("finance sees cancellation without a refund and the separate flagged paymen
     await signInStaff(page, finance);
     await page.getByRole("navigation", { name: "Staff areas" }).getByRole("link", { name: "Finance" }).click();
     const captures = page.getByRole("table", { name: "Outstanding captures" });
-    await expect(captures.getByRole("row").filter({ hasText: cancelled.id })).toContainText(formatGbp(cancelled.gross));
+    await expect(captures.getByRole("row").filter({ hasText: cancelled.reference })).toContainText(formatGbp(cancelled.gross));
     const reasons = page.getByRole("table", { name: "Payment review" });
-    await expect(reasons.getByRole("row").filter({ hasText: mismatch.id })).toContainText("Payment amount or currency mismatch");
+    await expect(reasons.getByRole("row").filter({ hasText: mismatch.reference })).toContainText("Payment amount or currency mismatch");
     const orders = page.getByRole("table", { name: "Orders and payment status" });
-    const order = orders.getByRole("row").filter({ hasText: cancelled.id });
+    const order = orders.getByRole("row").filter({ hasText: cancelled.reference });
     await expect(order.getByRole("cell", { name: "Paid", exact: true })).toBeVisible();
     await expect(order.getByRole("cell", { name: "Cancelled", exact: true })).toBeVisible();
   } finally {

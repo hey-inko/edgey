@@ -49,5 +49,6 @@ export async function seedPaidAdminOrder({
   });
   if (captured.error) throw captured.error;
   expect(captured.data.fulfilment_status).toBe(mismatch ? "awaiting_authorisation" : "ready_to_pick");
-  return { id: created.data.id, paymentIntent: captured.data.payment_intent_id, gross, variant, quantity, recipient, service };
+  return { id: created.data.id, reference: created.data.order_reference,
+    paymentIntent: captured.data.payment_intent_id, gross, variant, quantity, recipient, service };
 }
