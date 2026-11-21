@@ -73,9 +73,9 @@ pnpm test:e2e                       # Uses the fixture and starts the production
 pnpm test:acceptance                # PRD §7 card and trial journeys; also runs in CI
 ```
 
-The acceptance command starts and removes a disposable Supabase stack (ports
-55321, 55322 and 55324), loads the staging fixture, builds Next.js for production
-and runs Chromium on port 3110. It doesn't reset your development database.
+The acceptance command starts and removes a disposable Supabase stack on free
+local ports, loads the staging fixture, builds Next.js for production and runs
+Chromium against it. It doesn't reset your development database.
 It replaces `.next`; run `pnpm build` again before starting a regular production preview.
 Stripe's API and hosted payment screen are simulated locally, webhook bodies
 are signed and verified by the Stripe SDK, and confirmation email goes to a

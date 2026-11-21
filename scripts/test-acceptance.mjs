@@ -1,25 +1,41 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEnv } from "node:util";
 import { startStripeApi } from "../tests/acceptance/stripe-api.mjs";
 
 const workdir = await mkdtemp(join(tmpdir(), "edgey-acceptance-"));
-const baseURL = "http://127.0.0.1:3110";
 const projectId = "edgey-acceptance-" + randomBytes(4).toString("hex");
 const secret = () => randomBytes(32).toString("hex");
 const runtime = Object.fromEntries([
   "PATH", "HOME", "USER", "SHELL", "TMPDIR", "LANG", "LC_ALL", "TERM", "CI",
   "PNPM_HOME", "COREPACK_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "PLAYWRIGHT_BROWSERS_PATH",
 ].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
+const docker = Object.fromEntries(["DOCKER_HOST", "DOCKER_CONFIG", "XDG_RUNTIME_DIR"]
+  .filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
 const supabase = (args, options) => execFileSync(
-  "pnpm", ["exec", "supabase", "--workdir", workdir, ...args], { ...options, env: runtime },
+  "pnpm", ["exec", "supabase", "--workdir", workdir, ...args], { ...options, env: { ...runtime, ...docker } },
 );
+async function localPorts(count) {
+  const sockets = Array.from({ length: count }, () => createServer().listen(0, "0.0.0.0"));
+  try {
+    await Promise.all(sockets.map((socket) => once(socket, "listening")));
+    return sockets.map((socket) => socket.address().port);
+  } finally {
+    await Promise.all(sockets.map((socket) => new Promise((resolve) => socket.close(resolve))));
+  }
+}
+
 let started = false;
 let stripe;
 try {
+  const [appPort, apiPort, dbPort, mailPort] = await localPorts(4);
+  const baseURL = `http://127.0.0.1:${appPort}`;
+  const portMap = { 54321: apiPort, 54322: dbPort, 54324: mailPort };
   const config = await readFile("supabase/config.toml", "utf8");
   const directory = join(workdir, "supabase");
   await cp("supabase", directory, {
@@ -28,7 +44,7 @@ try {
   });
   await writeFile(join(directory, "config.toml"), config
     .replace(/^project_id = ".*"$/m, `project_id = "${projectId}"`)
-    .replace(/^port = 5432([124])$/gm, (_, digit) => "port = 5532" + digit)
+    .replace(/^port = (5432[124])$/gm, (_, port) => "port = " + portMap[port])
     .replace("http://127.0.0.1:3100/auth/confirm", baseURL + "/auth/confirm"));
 
   started = true;
@@ -62,6 +78,7 @@ try {
     EDGEY_PRIVACY_NOTICE_URL: "",
     EDGEY_PUBLIC_REQUESTS_ENABLED: "",
     ACCEPTANCE_BASE_URL: baseURL,
+    ACCEPTANCE_DB_PORT: String(dbPort),
     ACCEPTANCE_STRIPE_URL: stripe.url,
     ACCEPTANCE_CLOCK_FILE: clock,
   };

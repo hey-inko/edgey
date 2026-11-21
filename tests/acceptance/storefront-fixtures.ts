@@ -31,7 +31,9 @@ type Invoice = {
 
 export async function database() {
   const url = new URL(process.env.SUPABASE_DB_URL!);
-  if (url.hostname !== "127.0.0.1" || url.port !== "55322") throw new Error("This suite requires its isolated local database.");
+  if (url.hostname !== "127.0.0.1" || !url.port || url.port !== process.env.ACCEPTANCE_DB_PORT || url.search) {
+    throw new Error("This suite requires its isolated local database.");
+  }
   const db = new Client({ connectionString: url.href, statement_timeout: 8000 });
   await db.connect();
   return db;
