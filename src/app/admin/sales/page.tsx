@@ -38,7 +38,7 @@ function Highlights({ report }: { report: SalesReport }) {
     ["Recorded refunds incl VAT", money(c.refundsPence), money(p.refundsPence)],
     ["Net 30 credits and voids", money(c.creditsPence), money(p.creditsPence)],
   ];
-  return <dl className="sales-highlights">
+  return <dl className="sales-highlights" data-margin={report.canSeeMargin}>
     {cards.map(([label, current, previous]) => <div key={label} className="sales-metric">
       <dt>{label}</dt>
       <dd className="sales-value admin-mono">{current}</dd>

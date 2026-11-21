@@ -12,11 +12,13 @@
 
 .sales-highlights {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: solid var(--line);
   border-width: 1px 0 0 1px;
   background: var(--edgey-product-card);
 }
+
+.sales-highlights[data-margin="false"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 .sales-metric {
   min-width: 0;
@@ -90,8 +92,8 @@
 .sales-stock-flag { font-weight: 650; }
 
 @media (max-width: 680px) {
-  .sales-highlights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sales-metric:first-child { grid-column: 1 / -1; }
+  .sales-highlights, .sales-highlights[data-margin="false"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-highlights[data-margin="true"] .sales-metric:first-child { grid-column: 1 / -1; }
   .sales-scroll-hint { display: inline; }
   .sales-table-scroll { scroll-padding-inline: 8.75rem 8px; }
   :is(.sales-table, .sales-stock-table table) tr > th:first-child {
