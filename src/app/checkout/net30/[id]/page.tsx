@@ -26,7 +26,7 @@ export default async function Net30ConfirmationPage({ params }: { params: Promis
     : lateInvoice ? "review" : cancelled ? invoice ? "cancelled-issued" : "expired"
       : invoice && order.authorised_at ? "confirmed" : "pending";
   const issued = kind === "confirmed" || kind === "cancelled-issued" ? order : null;
-  const invoiceUrl = issued ? await getBuyerInvoiceUrl(issued.id) : null;
+  const invoiceUrl = kind === "confirmed" && issued ? await getBuyerInvoiceUrl(issued.id) : null;
   const lines = issued?.order_items.map((item) => ({
     variantId: item.variant_id, sku: item.sku, optionLabel: item.option_label, quantity: item.quantity,
     unitPricePence: item.unit_price_pence, netPence: item.net_pence,

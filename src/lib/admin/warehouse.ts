@@ -49,6 +49,14 @@ export async function getWarehouseQueue(
   return { rows: data.slice(0, warehousePageSize), hasMore: data.length > warehousePageSize };
 }
 
+export async function countWarehousePaymentBlocks(db: StaffDb) {
+  const { count, error } = await db.from("orders").select("id", { count: "exact", head: true })
+    .not("authorised_at", "is", null).in("fulfilment_status", ["ready_to_pick", "picking"])
+    .in("payment_status", ["refunded", "voided"]);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function getWarehouseOrder(db: StaffDb, orderId: string) {
   const { data, error } = await db.from("orders").select(orderColumns)
     .eq("id", orderId).not("authorised_at", "is", null).maybeSingle();

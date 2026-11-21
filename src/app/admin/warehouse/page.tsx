@@ -1,6 +1,6 @@
 import { AdminField, AdminHeading, AdminLink, AdminNotice, AdminSection, AdminTable } from "@/app/admin/ui";
 import { requireStaff } from "@/lib/admin/auth";
-import { getWarehouseQueue, type WarehouseView } from "@/lib/admin/warehouse";
+import { countWarehousePaymentBlocks, getWarehouseQueue, type WarehouseView } from "@/lib/admin/warehouse";
 import { dispatchDate, movementTime, warehouseLabel, warehouseOrderLookup, warehousePage } from "@/lib/admin/warehouse-format";
 import { WarehousePagination } from "./pagination";
 
@@ -22,9 +22,10 @@ export default async function WarehousePage({
   const parsedLookup = warehouseOrderLookup(lookup);
   const invalid = Boolean(lookup) && !parsedLookup;
   const page = lookup ? 1 : warehousePage(requestedPage);
-  const { rows, hasMore } = invalid
-    ? { rows: [], hasMore: false }
-    : await getWarehouseQueue(db, { view, page, lookup: parsedLookup });
+  const [{ rows, hasMore }, blocked] = await Promise.all([
+    invalid ? { rows: [], hasMore: false } : getWarehouseQueue(db, { view, page, lookup: parsedLookup }),
+    countWarehousePaymentBlocks(db),
+  ]);
 
   return (
     <>
@@ -38,6 +39,12 @@ export default async function WarehousePage({
         {view !== "history" && <AdminLink href={views.history.href}>Dispatch and cancellation history</AdminLink>}
         {view !== "blocked" && <AdminLink href={views.blocked.href}>Payment blocks</AdminLink>}
       </nav>
+      {view !== "blocked" && blocked > 0 && <AdminNotice>
+        Stock action needed: <AdminLink href={views.blocked.href}>{blocked} payment-blocked {blocked === 1 ? "order" : "orders"}</AdminLink> still {blocked === 1 ? "has" : "have"} stock allocated.
+      </AdminNotice>}
+      {view === "blocked" && blocked > 0 && <AdminNotice>
+        Do not pick or dispatch these orders. Open each order and cancel it to release the allocation. Finance handles refunds separately.
+      </AdminNotice>}
       <form action="/admin/warehouse" method="get" className="admin-panel mt-3 flex flex-wrap items-end gap-3">
         {view !== "queue" && <input type="hidden" name="view" value={view} />}
         <AdminField label="Order reference">

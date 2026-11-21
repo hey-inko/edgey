@@ -5,7 +5,7 @@ import { isRecord, normaliseAttemptToken, normaliseLines, validateCheckoutFields
 import { readRequestBody } from "@/lib/payments/body";
 import { checkoutOrigin, PaymentConfigurationError } from "@/lib/payments/config";
 import { net30Attempt, reserveNet30Order, submitNet30Invoice } from "@/lib/payments/net30";
-import { CheckoutRateLimitError, limitCheckout } from "@/lib/payments/rate-limit";
+import { checkoutRateKeys, checkoutRateLimitMessage, isCheckoutRateLimit, limitCheckout } from "@/lib/payments/rate-limit";
 import { getOrderItems, paymentStore, type Order } from "@/lib/payments/store";
 import { getStripe } from "@/lib/payments/stripe";
 
@@ -109,6 +109,7 @@ export async function POST(request: Request) {
     if (account?.status === "suspended") return await decline({ status: "trade-unavailable", reason: "suspended" }, 403);
     if (account?.status !== "approved") return await decline({ status: "trade-unavailable", reason: "not-approved" }, 403);
     if (process.env.NET30_CHECKOUT_ENABLED !== "true") return await decline({ status: "trade-unavailable", reason: "unavailable" }, 503);
+    await limitCheckout(request, origin, "checkout_review", buyer.email);
     const ready = await startCheckoutAttempt(body);
     if (ready.status !== "ready") return await decline(ready, ready.status === "review" ? 409 : 422);
     if (ready.buyerId !== buyer.id) return pending();
@@ -122,9 +123,8 @@ export async function POST(request: Request) {
       if (!(error instanceof PaymentConfigurationError)) throw error;
       return await decline({ status: "trade-unavailable", reason: "unavailable" }, 503);
     }
-    await limitCheckout(request, origin, "checkout", buyer.email);
     try {
-      order = await reserveNet30Order({ ...ready.orderInput, poNumber: po });
+      order = await reserveNet30Order({ ...ready.orderInput, poNumber: po }, checkoutRateKeys(request, origin, buyer.email));
     } catch (error) {
       const code = (error as { message?: string })?.message;
       if (code === "checkout_attempt_closed") return closed();
@@ -141,8 +141,8 @@ export async function POST(request: Request) {
     }
     return await complete(order);
   } catch (error) {
-    if (error instanceof CheckoutRateLimitError) {
-      return reply({ status: "error", attemptPending: true, message: error.message }, 429);
+    if (isCheckoutRateLimit(error)) {
+      return reply({ status: "error", attemptPending: true, message: checkoutRateLimitMessage }, 429);
     }
     return pending();
   }

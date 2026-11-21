@@ -1,6 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createOrderWithReservations, type CreateOrderInput } from "@/lib/orders";
+import type { ReservationRateKeys } from "@/lib/orders/reservation-input";
 import type { Json } from "@/lib/supabase/database.types";
 import { checkoutOrigin } from "./config";
 import { bindVerifiedSession, closeUnboundCheckout, findStripeSession, stripeAccountId, stripeRequestKey } from "./recovery";
@@ -37,7 +38,7 @@ async function findCardAttempt({ attemptToken, buyerId }: CardAttemptIdentity) {
   return data;
 }
 
-export async function beginCardPayment(attempt: CardAttempt, priceAttempt: PriceAttempt, beforeReserve: () => Promise<void>) {
+export async function beginCardPayment(attempt: CardAttempt, priceAttempt: PriceAttempt, rateKeys: () => ReservationRateKeys) {
   const existing = () => findCardAttempt(attempt);
   const holdExpiresAt = new Date((Math.floor(Date.now() / 1_000) + 35 * 60) * 1_000).toISOString();
   let order = await existing();
@@ -49,10 +50,9 @@ export async function beginCardPayment(attempt: CardAttempt, priceAttempt: Price
         throw new CheckoutUnavailableError("This order is outside the limits for online card payment.");
       }
       getStripe();
-      await beforeReserve();
       await createOrderWithReservations({
         ...priced, attemptToken: attempt.attemptToken, holdExpiresAt, buyerId: attempt.buyerId ?? undefined,
-      });
+      }, rateKeys());
     } catch (error) {
       order = await existing();
       if (!order) throw error;

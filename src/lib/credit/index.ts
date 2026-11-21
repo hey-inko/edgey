@@ -3,7 +3,7 @@ import "server-only";
 import { requireStaff } from "@/lib/admin/auth";
 import { getVerifiedBuyer } from "@/lib/auth/server";
 import type { CreateOrderInput } from "@/lib/orders";
-import { orderReservationArgs } from "@/lib/orders/reservation-input";
+import { orderReservationArgs, type ReservationRateKeys } from "@/lib/orders/reservation-input";
 import { serviceClient } from "@/lib/supabase/service";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -86,9 +86,9 @@ export async function suspendTradeAccount(input: {
   });
 }
 
-export async function createNet30OrderWithHolds(input: Net30OrderInput) {
+export async function createNet30OrderWithHolds(input: Net30OrderInput, rateKeys?: ReservationRateKeys) {
   return call("create_net30_order_with_holds", {
-    ...orderReservationArgs(input),
+    ...orderReservationArgs(input, rateKeys),
     p_buyer_id: await verifiedActorId(),
     p_po_number: input.poNumber,
   });

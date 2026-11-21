@@ -60,10 +60,8 @@ export async function reconcileSession(
         deliveryDate: promise?.value.estimatedDeliveryDate ?? order.estimated_delivery_date,
       },
     });
-    if (updated.payment_review_reason && !updated.payment_review_refund_id) {
-      throw new PaymentReviewError(updated.payment_review_reason === "payment_amount_or_currency_mismatch"
-        ? "Captured Stripe amount or currency does not match the order."
-        : "Stripe captured payment after the reservation was released.");
+    if (updated.payment_review_reason === "payment_amount_or_currency_mismatch" && !updated.payment_review_refund_id) {
+      throw new PaymentReviewError("Captured Stripe amount or currency does not match the order.");
     }
     return clearReconciliationError({ ...order, ...updated });
   }

@@ -18,8 +18,8 @@ export async function net30Attempt(token: string, buyerId: string) {
   return data;
 }
 
-export async function reserveNet30Order(input: Parameters<typeof createNet30OrderWithHolds>[0]) {
-  const reserved = await retryCredit(() => createNet30OrderWithHolds(input));
+export async function reserveNet30Order(...args: Parameters<typeof createNet30OrderWithHolds>) {
+  const reserved = await retryCredit(() => createNet30OrderWithHolds(...args));
   const order = await getOrder(reserved.id);
   if (!order || order.payment_method !== "net30") throw new PaymentReviewError("Could not read the reserved Net 30 order.");
   return order;
@@ -104,15 +104,19 @@ export async function submitNet30Invoice(order: Order, close = false) {
   }
 }
 
-export async function voidCancelledNet30Invoice(orderId: string, actorId: string): Promise<void> {
+export async function voidCancelledNet30Invoice(orderId: string, actorId: string) {
+  return resolveCancelledNet30Invoice(orderId, actorId, true);
+}
+
+export async function resolveCancelledNet30Invoice(orderId: string, actorId: string, voidIfUnpaid = false) {
   const db = paymentStore();
   const { data: role, error } = await db.from("staff_members").select("role")
     .eq("user_id", actorId).eq("role", "finance").maybeSingle();
   if (error) throw error;
   const order = role && await getOrder(orderId);
   if (!order || order.payment_method !== "net30" || order.fulfilment_status !== "cancelled" ||
-    !order.provider_invoice_id || order.dispatched_at || order.paid_pence) {
-    throw new PaymentReviewError("Only cancelled, undispatched Net 30 orders with no payment can be voided.");
+    !order.provider_invoice_id || order.dispatched_at) {
+    throw new PaymentReviewError("Only cancelled, undispatched Net 30 orders with an issued invoice can be reconciled here.");
   }
   const stripe = getStripe();
   const accountId = await verifyStripeAccount(stripe, order);
@@ -121,20 +125,25 @@ export async function voidCancelledNet30Invoice(orderId: string, actorId: string
   if (!invoice || invoice.deleted) throw new PaymentReviewError("The issued Stripe invoice could not be retrieved.");
   assertInvoiceIdentity(order, customer, invoice);
   assertInvoiceAmounts(order, invoice);
-  if (invoice.status !== "void") {
-    if (invoice.status !== "open" || invoice.amount_paid !== 0) {
-      throw new PaymentReviewError("Stripe has not confirmed that this invoice is open and unpaid.");
-    }
+  const isVoidable = (current: Stripe.Invoice) =>
+    (current.status === "open" || current.status === "uncollectible") && current.amount_paid === 0 && order.paid_pence === 0;
+  if (voidIfUnpaid && isVoidable(invoice)) {
     try {
       invoice = await voidTradeInvoice(stripe, order, invoice.id);
     } catch (error) {
       const current = await readTradeInvoice(stripe, invoice.id);
-      if (!current || current.deleted || current.status !== "void") throw error;
+      if (!current || current.deleted || isVoidable(current)) throw error;
       invoice = current;
     }
   }
-  if (invoice.status !== "void" || invoice.amount_paid !== 0) {
-    throw new PaymentReviewError("Stripe did not confirm an unpaid, voided invoice.");
+  if (invoice.status === "draft") throw new PaymentReviewError("Stripe has not confirmed the issued invoice.");
+  const current = await recordTradeInvoiceState(stripe, order, customer, invoice);
+  const voided = invoice.status === "void" && invoice.amount_paid === 0;
+  if (!voided && (invoice.amount_remaining !== 0 || current.paid_pence !== current.refunded_pence)) return "unresolved";
+  if (current.stripe_reconciliation_error) {
+    const { error } = await db.from("orders").update({ stripe_reconciliation_error: null })
+      .eq("id", current.id).eq("updated_at", current.updated_at);
+    if (error) throw error;
   }
-  await recordTradeInvoiceState(stripe, order, customer, invoice);
+  return voided ? "voided" : "resolved";
 }

@@ -3,7 +3,7 @@ import { assertSessionMatches, checkoutSessionId, PaymentReviewError } from "./s
 import { paymentStore } from "./store";
 import { getStripe } from "./stripe";
 
-export type CheckoutSuccess = { kind: "pending" | "expired" | "review" } | {
+export type CheckoutSuccess = { kind: "pending" | "expired" | "review" | "cancelled" | "cancelled-refunded" } | {
   kind: "confirmed";
   reference: string;
   deliveryService: string;
@@ -28,7 +28,7 @@ export async function readCheckoutSuccess(sessionId: string): Promise<CheckoutSu
   if (!checkoutSessionId.test(sessionId)) return null;
   const db = paymentStore();
   const { data: order, error } = await db.from("orders").select(
-    "id,payment_method,checkout_session_id,hold_expires_at,payment_review_reason,authorised_at,stripe_reconciliation_error,fulfilment_status,order_reference,delivery_service,promised_dispatch_date,estimated_delivery_date,vat_rate_bps,goods_net_pence,delivery_net_pence,vat_pence,gross_pence",
+    "id,payment_method,checkout_session_id,hold_expires_at,payment_review_reason,authorised_at,stripe_reconciliation_error,fulfilment_status,order_reference,delivery_service,promised_dispatch_date,estimated_delivery_date,vat_rate_bps,goods_net_pence,delivery_net_pence,vat_pence,gross_pence,paid_pence,payment_status",
   )
     .eq("checkout_session_id", sessionId).maybeSingle();
   if (error) throw error;
@@ -39,7 +39,11 @@ export async function readCheckoutSuccess(sessionId: string): Promise<CheckoutSu
     if (error instanceof PaymentReviewError || (error as { statusCode?: number })?.statusCode === 404) return null;
     throw error;
   }
+  if (order.fulfilment_status === "cancelled" && order.paid_pence > 0 && order.payment_status === "refunded") {
+    return { kind: "cancelled-refunded" };
+  }
   if (order.payment_review_reason || (!order.authorised_at && order.stripe_reconciliation_error)) return { kind: "review" };
+  if (order.fulfilment_status === "cancelled" && order.paid_pence > 0) return { kind: "cancelled" };
   if (!order.authorised_at) return { kind: order.fulfilment_status === "cancelled" ? "expired" : "pending" };
   const { data: items, error: itemsError } = await db.from("order_items")
     .select("variant_id,sku,option_label,quantity,unit_price_pence,net_pence").eq("order_id", order.id).order("variant_id");

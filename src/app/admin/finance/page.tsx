@@ -4,13 +4,22 @@ import { financeOverview } from "@/lib/admin/finance";
 import { displayState, displayTimestamp } from "@/lib/admin/format";
 import { adminPage, adminPageSize } from "@/lib/admin/pagination";
 import { amountMismatch } from "@/lib/admin/payment-review";
+import { lateCapture } from "@/lib/payments/card-refund";
 import { AdminPagination } from "../pagination";
 import { AdminForm, AdminHeading, AdminLink, AdminNotice, AdminSection, AdminTable } from "../ui";
-import { resolveFinancePaymentReview, retryFinanceFailure, voidFinanceInvoice } from "./actions";
+import { reconcileFinanceInvoice, refundFinanceCard, resolveFinancePaymentReview, retryFinanceFailure } from "./actions";
 
 type Search = Record<string, string | string[] | undefined>;
 
 export const metadata = { title: "Finance" };
+
+function CardRefundForm({ id, intentId, verifyOnly = false }: { id: string; intentId: string | null; verifyOnly?: boolean }) {
+  return <AdminForm action={refundFinanceCard.bind(null, id, !verifyOnly)}
+    submit={verifyOnly ? "Verify recorded refund" : "Verify or refund remaining capture"}>
+    {intentId && <a className="textlink" href={`https://dashboard.stripe.com/test/payments/${encodeURIComponent(intentId)}`}>Stripe payment</a>}
+    {!verifyOnly && <label className="admin-check"><input type="checkbox" name="confirm" value="yes" required /> Confirm full remaining refund</label>}
+  </AdminForm>;
+}
 
 export default async function FinancePage({ searchParams }: { searchParams: Promise<Search> }) {
   const { db } = await requireStaff("finance");
@@ -19,6 +28,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     orders: adminPage(query.orders), captures: adminPage(query.captures), reviews: adminPage(query.reviews),
     events: adminPage(query.events), outbox: adminPage(query.outbox),
     accounts: adminPage(query.accounts), overdue: adminPage(query.overdue), voids: adminPage(query.voids),
+    adjustments: adminPage(query.adjustments),
   };
   const overview = await financeOverview(db, pages);
   const requested = new Map(overview.queued.map(({ kind, target_id, target_updated_at, result }) =>
@@ -68,25 +78,28 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
         ) : <AdminNotice>No overdue invoices on this page.</AdminNotice>}
         {nav("overdue")}
       </AdminSection>
-      <AdminSection title="Cancelled orders with unpaid invoices">
+      <AdminSection title="Cancelled Net 30 invoices">
         {overview.voids.length ? (
           <>
-            <p className="admin-muted">Void the invoice only after the order is cancelled and before it has been paid or dispatched. Edgey checks Stripe before releasing the outstanding balance.</p>
-            <AdminTable label="Cancelled Net 30 orders" headers={["Order", "Business", "PO", "Gross", "Action"]}>
+            <p className="admin-muted">Void only if your finance policy permits it and Stripe confirms the invoice is unpaid. Otherwise, use the Stripe invoice to credit any unpaid balance and refund any payment. If a credit note includes a refund, link it to the existing refund or issue it there once. Then verify the adjustment here. Edgey keeps any outstanding credit until Stripe confirms the change.</p>
+            <AdminTable label="Cancelled Net 30 orders" headers={["Order", "Business", "PO", "Outstanding balance", "Unrefunded payment", "Action"]}>
               {overview.voids.slice(0, adminPageSize).map((order) => <tr key={order.id}>
                 <td className="admin-mono">{order.order_reference}</td>
                 <td>{order.trade_account_id ? <AdminLink href={`/admin/finance/accounts/${order.trade_account_id}`}>{order.business_name}</AdminLink> : order.business_name}</td>
                 <td className="admin-mono">{order.po_number}</td>
-                <td className="admin-mono">{formatGbp(order.gross_pence)}</td>
+                <td className="admin-mono">{order.invoices[0] ? formatGbp(order.invoices[0].amount_remaining_pence) : "—"}</td>
+                <td className="admin-mono">{formatGbp(order.paid_pence - order.refunded_pence)}</td>
                 <td>
-                  <AdminForm action={voidFinanceInvoice.bind(null, order.id)} submit="Verify and void invoice">
-                    <label className="admin-check"><input type="checkbox" name="confirm" value="yes" required /> Confirm void</label>
-                  </AdminForm>
+                  {order.provider_invoice_id && <a className="textlink" href={`https://dashboard.stripe.com/test/invoices/${encodeURIComponent(order.provider_invoice_id)}`}>Stripe invoice</a>}
+                  {!order.paid_pence && <AdminForm action={reconcileFinanceInvoice.bind(null, order.id, true)} submit="Verify and void invoice">
+                    <label className="admin-check"><input type="checkbox" name="confirm" value="yes" required /> Confirm void is permitted</label>
+                  </AdminForm>}
+                  <AdminForm action={reconcileFinanceInvoice.bind(null, order.id, false)} submit="Verify Stripe adjustments" />
                 </td>
               </tr>)}
             </AdminTable>
           </>
-        ) : <AdminNotice>No cancelled orders with unpaid invoices on this page.</AdminNotice>}
+        ) : <AdminNotice>No cancelled Net 30 invoices awaiting resolution on this page.</AdminNotice>}
         {nav("voids")}
       </AdminSection>
       <AdminSection title="Payment review">
@@ -101,23 +114,46 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
               <td>{order.payment_method === "card" && order.payment_review_reason === amountMismatch
                 ? <AdminForm action={resolveFinancePaymentReview.bind(null, order.id)} submit="Verify full refund">
                     {order.payment_intent_id && <a className="textlink" href={`https://dashboard.stripe.com/test/payments/${encodeURIComponent(order.payment_intent_id)}`}>Stripe payment</a>}
-                  </AdminForm> : "—"}</td>
+                  </AdminForm> : order.payment_method === "card" && order.payment_review_reason === lateCapture
+                    ? <CardRefundForm id={order.id} intentId={order.payment_intent_id}
+                        verifyOnly={order.refunded_pence === order.paid_pence} /> : "—"}</td>
             </tr>)}
           </AdminTable>
         ) : <AdminNotice>No orders to review on this page.</AdminNotice>}
         {nav("reviews")}
       </AdminSection>
       <AdminSection title="Cancelled orders with outstanding capture">
+        <p className="admin-muted">Warehouse cancels picking and releases stock. Finance can then verify an existing refund or refund the rest of the capture.</p>
         {overview.captures.length ? (
-          <AdminTable label="Outstanding captures" headers={["Order", "Business", "Payment", "Outstanding"]}>
+          <AdminTable label="Outstanding captures" headers={["Order", "Business", "Payment", "Unrefunded capture", "Action"]}>
             {overview.captures.slice(0, adminPageSize).map((order) => <tr key={order.id}>
               <td className="admin-mono">{order.order_reference}</td><td>{order.business_name}</td>
               <td>{displayState(order.payment_status)}</td>
               <td className="admin-mono">{formatGbp(order.paid_pence - order.refunded_pence)}</td>
+              <td><CardRefundForm id={order.id} intentId={order.payment_intent_id} /></td>
             </tr>)}
           </AdminTable>
         ) : <AdminNotice>No outstanding captures on this page.</AdminNotice>}
         {nav("captures")}
+      </AdminSection>
+      <AdminSection title="Post-dispatch adjustments">
+        <p className="admin-muted">These refunds, credits and voids were reconciled after dispatch. They don’t restore stock. A cash refund does not reopen the invoice balance.</p>
+        {overview.adjustments.length ? (
+          <AdminTable label="Post-dispatch adjustments" headers={["Order", "Method", "Adjustment", "Amount", "Outstanding balance change", "Provider reference", "Reconciled"]}>
+            {overview.adjustments.slice(0, adminPageSize).map((item) => (
+              <tr key={`${item.order_id}:${item.kind}:${item.provider_reference}`}>
+                <td className="admin-mono">{item.order_reference}</td>
+                <td>{item.payment_method === "net30" ? "Net 30" : "Card"}</td>
+                <td>{item.kind && displayState(item.kind)}</td>
+                <td className="admin-mono">{item.amount_pence === null ? "—" : formatGbp(item.amount_pence)}</td>
+                <td className="admin-mono">{item.outstanding_delta_pence === null ? "—" : formatGbp(item.outstanding_delta_pence)}</td>
+                <td className="admin-mono">{item.provider_reference}</td>
+                <td className="admin-mono">{item.reconciled_at && displayTimestamp(item.reconciled_at)}</td>
+              </tr>
+            ))}
+          </AdminTable>
+        ) : <AdminNotice>No post-dispatch adjustments on this page.</AdminNotice>}
+        {nav("adjustments")}
       </AdminSection>
       <AdminSection title="Failed provider events">
         {overview.events.length ? (

@@ -170,7 +170,11 @@ export default async function AccountPage({ searchParams }: {
                           <p className={styles.reference}>PO {invoice.po_number}</p>
                           <p className={styles.figure}>{formatGbp(invoice.amount_remaining_pence)} remaining</p>
                         </div>
-                        <p className="muted">{tradeInvoiceLabels[invoice.status]} · Due <time dateTime={invoice.due_at}>{accountDate(invoice.due_at)}</time></p>
+                        {invoice.cancelled ? (
+                          <p>Cancelled, do not pay · {tradeInvoiceLabels[invoice.status]}</p>
+                        ) : (
+                          <p className="muted">{tradeInvoiceLabels[invoice.status]} · Due <time dateTime={invoice.due_at}>{accountDate(invoice.due_at)}</time></p>
+                        )}
                         <div className={styles.invoiceLinks}>
                           {invoice.url && <a className="textlink" href={invoice.url} rel="noreferrer" aria-label={`View invoice for PO ${invoice.po_number}`}>View invoice</a>}
                           <Link href={`/account/orders/${invoice.order_id}`} prefetch={false} className="textlink" aria-label={`View order for PO ${invoice.po_number}`}>View order</Link>

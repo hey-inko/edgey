@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { serviceClient } from "@/lib/supabase/service";
-import { orderReservationArgs } from "./reservation-input";
+import { orderReservationArgs, type ReservationRateKeys } from "./reservation-input";
 
 export type CreateOrderInput = {
   attemptToken: string;
@@ -68,9 +68,9 @@ async function call<Name extends keyof Functions>(
   return data;
 }
 
-export function createOrderWithReservations(input: CreateOrderInput) {
+export function createOrderWithReservations(input: CreateOrderInput, rateKeys?: ReservationRateKeys) {
   return call("create_order_with_reservations", {
-    ...orderReservationArgs(input),
+    ...orderReservationArgs(input, rateKeys),
     p_buyer_id: input.buyerId,
   });
 }

@@ -21,6 +21,14 @@ const copy = {
     heading: "Your payment is under review",
     details: "Your order isn’t confirmed yet. Please don’t pay again while we review it.",
   },
+  "cancelled-refunded": {
+    heading: "This order was cancelled and refunded",
+    details: "We’ve verified the full refund. No items will be dispatched.",
+  },
+  cancelled: {
+    heading: "This order was cancelled",
+    details: "No items will be dispatched. Please don’t pay again while we reconcile the payment.",
+  },
   "not-found": {
     heading: "Checkout not found",
     details: "Use the link you were given after checkout to check your order.",
@@ -46,7 +54,7 @@ const accountCopy = {
   },
   "cancelled-issued": {
     heading: "This account order was cancelled",
-    details: "An invoice was issued before this checkout was resolved. Check its status below; please don’t place the order again.",
+    details: "Please don’t pay any invoice for this order. Check its status below, and don’t place the order again while we reconcile it.",
   },
   review: {
     heading: "Your account order is under review",

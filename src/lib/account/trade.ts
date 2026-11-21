@@ -30,15 +30,16 @@ export async function listBuyerTradeInvoices(page: number) {
   if (!trade) return null;
   const from = (page - 1) * invoicesPerPage;
   const { data, error } = await (await sessionClient()).from("invoices")
-    .select("order_id,po_number,amount_remaining_pence,due_at,status")
+    .select("order_id,po_number,amount_remaining_pence,due_at,status,orders(fulfilment_status)")
     .eq("trade_account_id", trade.accountId)
     .order("issued_at", { ascending: false }).order("order_id", { ascending: false })
     .range(from, from + invoicesPerPage);
   if (error) throw new Error("Trade invoices are unavailable.");
   return {
-    invoices: await Promise.all(data.slice(0, invoicesPerPage).map(async (invoice) => ({
-      ...invoice, url: await getBuyerInvoiceUrl(invoice.order_id),
-    }))),
+    invoices: await Promise.all(data.slice(0, invoicesPerPage).map(async ({ orders, ...invoice }) => {
+      const cancelled = orders?.fulfilment_status === "cancelled";
+      return { ...invoice, cancelled, url: orders && !cancelled ? await getBuyerInvoiceUrl(invoice.order_id) : null };
+    })),
     hasOlder: data.length > invoicesPerPage,
   };
 }
