@@ -1415,6 +1415,19 @@ export type Database = {
       };
     };
     Views: {
+      finance_post_dispatch_adjustments: {
+        Row: {
+          order_id: string | null;
+          order_reference: string | null;
+          payment_method: Database["public"]["Enums"]["order_payment_method"] | null;
+          provider_reference: string | null;
+          kind: string | null;
+          amount_pence: number | null;
+          outstanding_delta_pence: number | null;
+          reconciled_at: string | null;
+        };
+        Relationships: [];
+      };
       overdue_invoices: {
         Row: {
           amount_due_pence: number;
@@ -1482,6 +1495,10 @@ export type Database = {
       get_staff_authenticator: {
         Args: Record<PropertyKey, never>;
         Returns: { approved_factor_id: string | null; session_factor_id: string | null }[];
+      };
+      has_recorded_stripe_refund: {
+        Args: { p_refund_id: string };
+        Returns: boolean;
       };
       admin_catalogue_review: {
         Args: {
@@ -1579,6 +1596,19 @@ export type Database = {
       finish_outbox_email: {
         Args: { p_outbox_id: string; p_lease_token: string; p_outcome: string; p_provider_message_id?: string };
         Returns: Database["public"]["Tables"]["order_outbox"]["Row"][];
+      };
+      prepare_cancelled_card_refund: {
+        Args: {
+          p_order_id: string;
+          p_actor_id: string;
+          p_account_id: string;
+          p_charge_id: string;
+          p_payment_intent_id: string;
+          p_amount_pence: number;
+          p_previous_request_id?: string;
+          p_failed_refund_id?: string;
+        };
+        Returns: { request_id: string; started_at: string; amount_pence: number }[];
       };
       prepare_stripe_checkout: {
         Args: { p_order_id: string; p_request: Json; p_account_id: string };

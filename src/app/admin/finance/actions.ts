@@ -6,7 +6,8 @@ import { requireStaff } from "@/lib/admin/auth";
 import { resolveCardMismatchRefund } from "@/lib/admin/payment-review";
 import { requestFinanceReplay, type FinanceReplayTarget } from "@/lib/admin/replay";
 import { isWarehouseId } from "@/lib/admin/warehouse-format";
-import { voidCancelledNet30Invoice } from "@/lib/payments/net30";
+import { refundCancelledCardOrder } from "@/lib/payments/card-refund";
+import { resolveCancelledNet30Invoice, voidCancelledNet30Invoice } from "@/lib/payments/net30";
 import { PaymentReviewError } from "@/lib/payments/session-identity";
 
 export async function retryFinanceFailure(target: FinanceReplayTarget): Promise<AdminResult> {
@@ -43,19 +44,45 @@ export async function resolveFinancePaymentReview(orderId: string): Promise<Admi
   return { ok: true, message: "Full refund verified. The payment review is closed." };
 }
 
-export async function voidFinanceInvoice(
-  orderId: string, _previous: AdminResult | null, form: FormData,
+export async function refundFinanceCard(
+  orderId: string, allowCreate: boolean, _previous: AdminResult | null, form: FormData,
 ): Promise<AdminResult> {
   const { userId } = await requireStaff("finance");
   if (!isWarehouseId(orderId)) return { ok: false, message: "This is not a valid order reference." };
-  if (form.get("confirm") !== "yes") return { ok: false, message: "Confirm that you want to void this invoice." };
+  if (allowCreate && form.get("confirm") !== "yes") {
+    return { ok: false, message: "Confirm that you want to refund the remaining capture." };
+  }
   try {
-    await voidCancelledNet30Invoice(orderId, userId);
+    const outcome = await refundCancelledCardOrder(orderId, userId, allowCreate);
+    revalidatePath("/admin/finance");
+    return { ok: true, message: outcome === "refunded" ? "Full refund verified. No stock was changed."
+      : "The refund hasn’t settled yet. Check it again before making any adjustment in Stripe." };
   } catch (error) {
     return { ok: false, message: error instanceof PaymentReviewError ? error.message
-      : "Could not confirm the invoice void. Check its Stripe and Edgey status before retrying." };
+      : "Could not confirm the refund. Retry here to check Stripe before sending another refund." };
+  }
+}
+
+export async function reconcileFinanceInvoice(
+  orderId: string, voidIfUnpaid: boolean, _previous: AdminResult | null, form: FormData,
+): Promise<AdminResult> {
+  const { userId } = await requireStaff("finance");
+  if (!isWarehouseId(orderId)) return { ok: false, message: "This is not a valid order reference." };
+  if (voidIfUnpaid && form.get("confirm") !== "yes") {
+    return { ok: false, message: "Confirm that you are allowed to void this invoice." };
+  }
+  let outcome;
+  try {
+    outcome = voidIfUnpaid ? await voidCancelledNet30Invoice(orderId, userId) : await resolveCancelledNet30Invoice(orderId, userId);
+  } catch (error) {
+    return { ok: false, message: error instanceof PaymentReviewError ? error.message
+      : "Could not confirm the invoice adjustment. Check Stripe and retry verification." };
   }
   for (const path of ["/admin/finance", `/admin/warehouse/${orderId}`, "/account"]) revalidatePath(path);
   revalidatePath("/admin/finance/accounts/[id]", "page");
-  return { ok: true, message: "Invoice voided. Outstanding credit has been released." };
+  if (outcome === "unresolved") return {
+    ok: false, message: "The invoice still has a balance or unrefunded payment. Check Stripe for the required credit note or refund.",
+  };
+  return { ok: true, message: outcome === "voided" ? "Invoice voided. Outstanding credit has been released."
+    : "Stripe adjustments verified. No balance or captured payment remains." };
 }

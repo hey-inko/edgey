@@ -8,6 +8,7 @@ import { POST as stripeWebhook } from "@/app/api/webhooks/stripe/route";
 import { getBuyerSession } from "@/lib/auth/server";
 import { quoteCurrentSelection } from "@/lib/checkout/server";
 import { recordProviderEvent } from "@/lib/orders";
+import { refundCancelledCardOrder } from "@/lib/payments/card-refund";
 import { reconcileStripePayments, replayStripeEvent } from "@/lib/payments/reconciliation";
 import { readCheckoutSuccess } from "@/lib/payments/success";
 import { requestFingerprint } from "@/lib/requests/rate-limit";
@@ -16,6 +17,7 @@ import { withExhaustedQuoteBudget } from "../helpers/quote-budget";
 
 const provider = vi.hoisted(() => ({
   create: vi.fn(), list: vi.fn(), session: vi.fn(), intent: vi.fn(), invoice: vi.fn(), refund: vi.fn(), expire: vi.fn(), account: vi.fn(),
+  refundCreate: vi.fn(), refundList: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({ getBuyerSession: vi.fn() }));
@@ -25,7 +27,7 @@ vi.mock("@/lib/payments/stripe", () => ({
     checkout: { sessions: { create: provider.create, list: provider.list, retrieve: provider.session, expire: provider.expire } },
     paymentIntents: { retrieve: provider.intent },
     invoices: { retrieve: provider.invoice },
-    refunds: { retrieve: provider.refund },
+    refunds: { retrieve: provider.refund, list: provider.refundList, create: provider.refundCreate },
     webhooks: signer.webhooks,
   }),
 }));
@@ -64,6 +66,7 @@ beforeEach(() => {
   vi.stubEnv("STRIPE_WEBHOOK_SECRET", webhookSecret);
   vi.stubEnv("EDGEY_REQUEST_HASH_KEY", randomUUID() + randomUUID());
   provider.account.mockResolvedValue({ id: "acct_testFixture" });
+  provider.refundList.mockResolvedValue({ data: [], has_more: false });
   provider.create.mockImplementation(createSession);
   provider.list.mockImplementation(async (filter: { payment_intent?: string }) => ({
     data: [...sessions.values()].filter((session) => !filter.payment_intent || session.payment_intent === filter.payment_intent),
@@ -97,7 +100,7 @@ afterEach(async () => {
   await db.query("delete from public.variants where id = any($1)", [variants.splice(0)]);
   await db.query("delete from public.provider_events where provider = 'stripe' and event_id = any($1)", [events.splice(0)]);
   await db.query("delete from private.closed_checkout_attempts");
-  await db.query("delete from private.payment_rate_limits where scope in ('checkout', 'checkout_close')");
+  await db.query("delete from private.payment_rate_limits where scope in ('checkout', 'checkout_close', 'checkout_review')");
 });
 
 afterAll(() => db?.end());
@@ -190,7 +193,7 @@ function paid(session: Stripe.Checkout.Session, amount = session.amount_total!, 
     id: intentId, livemode: false, metadata: session.metadata, status: "succeeded", amount_received: amount, currency,
     latest_charge: {
       id: id("ch_"), paid: true, captured: true, livemode: false, payment_intent: intentId,
-      amount_captured: amount, currency, created: Date.parse(paymentDate) / 1000,
+      amount_captured: amount, amount_refunded: 0, currency, created: Date.parse(paymentDate) / 1000,
     },
   });
   return intentId;
@@ -454,7 +457,8 @@ it("applies refund, invoice and crossed checkout events once and keeps success r
   const intentId = paid(session);
   const refundId = id("re_");
   const invoiceId = id("in_");
-  provider.refund.mockResolvedValue({ id: refundId, status: "succeeded", payment_intent: intentId, amount: 300, currency: "gbp" });
+  provider.refund.mockResolvedValue({ id: refundId, status: "succeeded", payment_intent: intentId, amount: 300,
+    currency: "gbp", charge: (await provider.intent()).latest_charge.id });
   provider.invoice.mockResolvedValue({ id: invoiceId, livemode: false, metadata: session.metadata });
   const invoice = event("invoice.finalized", invoiceId);
   expect((await invoice.deliver()).status).toBe(200);
@@ -638,4 +642,196 @@ it("does not release on the local clock or an expired event until Stripe confirm
     reservation_state: "released", fulfilment_status: "cancelled", confirmations: 0,
     payment_review_reason: "payment_after_reservation_released",
   });
+  expect(await eventState(capturedLate.eventId)).toMatchObject({ state: "processed" });
+  const capture = await provider.intent();
+  const refundId = id("re_");
+  const refund = event("refund.updated", refundId);
+  const proof = { id: refundId, status: "succeeded", amount: capture.amount_received,
+    payment_intent: capture.id, currency: "gbp", charge: capture.latest_charge.id };
+  provider.refund.mockResolvedValue({ ...proof, charge: id("ch_") });
+  await refund.deliver();
+  expect(await eventState(refund.eventId)).toMatchObject({ state: "failed" });
+  expect(await state(orderId)).toMatchObject({ refunded_pence: 0, payment_review_refund_id: null });
+  provider.refund.mockResolvedValue(proof);
+  await Promise.all([refund.deliver(), event("refund.created", refundId).deliver()]);
+  expect(await state(orderId)).toMatchObject({
+    reservation_state: "released", fulfilment_status: "cancelled", confirmations: 0,
+    refunded_pence: capture.amount_received, payment_status: "refunded", payment_review_refund_id: refundId,
+  });
+  expect(await readCheckoutSuccess(session.id)).toEqual({ kind: "cancelled-refunded" });
+});
+
+it("resumes a timed-out finance refund with the same amount and provider key without another stock movement", async () => {
+  const variant = await makeVariant(2);
+  const { session } = await checkout(variant, 1);
+  const orderId = session.client_reference_id!;
+  const intentId = paid(session);
+  await event("checkout.session.completed", session.id).deliver();
+  const [finance, warehouse] = await Promise.all([makeBuyer(), makeBuyer()]);
+  await db.query("insert into public.staff_members (user_id, role) values ($1, 'finance'), ($2, 'warehouse')",
+    [finance.buyer.id, warehouse.buyer.id]);
+  await expect(refundCancelledCardOrder(orderId, finance.buyer.id)).rejects.toThrow("Only cancelled");
+  await db.query("select public.cancel_order($1,$2,$3)", [orderId, randomUUID(), warehouse.buyer.id]);
+  await expect(refundCancelledCardOrder(orderId, warehouse.buyer.id)).rejects.toThrow("Only cancelled");
+
+  const capture = await provider.intent();
+  const chargeId = capture.latest_charge.id;
+  provider.account.mockResolvedValueOnce({ id: "acct_wrongSandbox" });
+  await expect(refundCancelledCardOrder(orderId, finance.buyer.id)).rejects.toThrow("sandbox differs");
+  expect(provider.refundCreate).not.toHaveBeenCalled();
+  provider.refundCreate.mockRejectedValueOnce(new Error("Network timeout"));
+  await expect(refundCancelledCardOrder(orderId, finance.buyer.id)).rejects.toThrow("Network timeout");
+  const [params, opts] = provider.refundCreate.mock.calls[0]!;
+  expect(params).toMatchObject({ charge: chargeId, amount: session.amount_total, metadata: { edgey_order_id: orderId } });
+  expect(opts.idempotencyKey).toMatch(/^edgey:card-refund:v1:/);
+  expect(await state(orderId)).toMatchObject({ refunded_pence: 0 });
+
+  const refundId = id("re_");
+  provider.refundCreate.mockResolvedValue({ ...params, id: refundId, payment_intent: intentId, status: "succeeded", currency: "gbp" });
+  expect(await refundCancelledCardOrder(orderId, finance.buyer.id)).toBe("refunded");
+  expect(provider.refundCreate.mock.calls[1]).toEqual([params, opts]);
+  capture.latest_charge.amount_refunded = params.amount;
+  provider.refundList.mockResolvedValue({
+    data: [{ ...params, id: refundId, payment_intent: intentId, status: "succeeded", currency: "gbp" }], has_more: false,
+  });
+  expect(await refundCancelledCardOrder(orderId, finance.buyer.id)).toBe("refunded");
+  expect(provider.refundCreate).toHaveBeenCalledTimes(2);
+  expect(await state(orderId)).toMatchObject({
+    fulfilment_status: "cancelled", reservation_state: "released", payment_status: "refunded",
+    refunded_pence: session.amount_total, confirmations: 1,
+  });
+  expect((await db.query("select action, count(*)::int as count from private.order_operations where order_id=$1 group by action", [orderId])).rows)
+    .toEqual(expect.arrayContaining([{ action: "request_card_refund", count: 1 }, { action: "refund", count: 1 }]));
+  expect((await db.query("select stock_on_hand,stock_reserved from public.variants where id=$1", [variant])).rows)
+    .toEqual([{ stock_on_hand: 2, stock_reserved: 0 }]);
+});
+
+it("lets Finance verify a late capture without issuing, then deduplicates concurrent attempts to refund it", async () => {
+  const variant = await makeVariant(1);
+  const { session } = await checkout(variant, 1);
+  const orderId = session.client_reference_id!;
+  const finance = await makeBuyer();
+  await db.query("insert into public.staff_members(user_id,role) values ($1,'finance')", [finance.buyer.id]);
+  session.status = "expired";
+  await event("checkout.session.expired", session.id).deliver();
+  expect(await state(orderId)).toMatchObject({ fulfilment_status: "cancelled", reservation_state: "released" });
+  const intentId = paid(session);
+  await event("checkout.session.async_payment_succeeded", session.id).deliver();
+  await expect(refundCancelledCardOrder(orderId, finance.buyer.id, false)).rejects.toThrow("hasn’t confirmed a full refund");
+  expect(provider.refundCreate).not.toHaveBeenCalled();
+  expect((await db.query("select 1 from private.order_operations where order_id=$1 and action='request_card_refund'", [orderId])).rows).toHaveLength(0);
+  const { session: replacement } = await checkout(variant, 1);
+  const refundId = id("re_");
+  const bothAtProvider = Promise.withResolvers<void>();
+  provider.refundCreate.mockImplementation(async (params) => {
+    if (provider.refundCreate.mock.calls.length === 2) bothAtProvider.resolve();
+    await bothAtProvider.promise;
+    return { ...params, id: refundId, payment_intent: intentId, status: "succeeded", currency: "gbp" };
+  });
+  const results = await Promise.all([
+    refundCancelledCardOrder(orderId, finance.buyer.id), refundCancelledCardOrder(orderId, finance.buyer.id),
+  ]);
+  expect(results).toEqual(["refunded", "refunded"]);
+  const [first, second] = provider.refundCreate.mock.calls;
+  expect(first?.[1].idempotencyKey).toMatch(/^edgey:card-refund:v1:/);
+  expect(first).toEqual(second);
+  expect(await state(orderId)).toMatchObject({
+    fulfilment_status: "cancelled", reservation_state: "released", confirmations: 0,
+    payment_status: "refunded", refunded_pence: session.amount_total, payment_review_refund_id: refundId,
+  });
+  expect(await state(replacement.client_reference_id!)).toMatchObject({ reservation_state: "held" });
+});
+
+it("verifies an external card refund without issuing and flags a later reversal without rewriting the journal", async () => {
+  const variant = await makeVariant(1);
+  const { session } = await checkout(variant, 1);
+  const orderId = session.client_reference_id!;
+  const [finance, warehouse] = await Promise.all([makeBuyer(), makeBuyer()]);
+  await db.query("insert into public.staff_members (user_id, role) values ($1, 'finance'), ($2, 'warehouse')",
+    [finance.buyer.id, warehouse.buyer.id]);
+  const intentId = paid(session);
+  await event("checkout.session.completed", session.id).deliver();
+  await db.query("select public.cancel_order($1,$2,$3)", [orderId, randomUUID(), warehouse.buyer.id]);
+  const capture = await provider.intent();
+  const refundId = id("re_");
+  const proof = { id: refundId, status: "succeeded", charge: capture.latest_charge.id,
+    amount: session.amount_total, payment_intent: intentId, currency: "gbp" };
+  capture.latest_charge.amount_refunded = proof.amount;
+  provider.refundList.mockResolvedValue({ data: [proof], has_more: false });
+  expect(await refundCancelledCardOrder(orderId, finance.buyer.id, false)).toBe("refunded");
+  expect(provider.refundCreate).not.toHaveBeenCalled();
+  const original = await state(orderId);
+  expect(original).toMatchObject({ payment_status: "refunded", refunded_pence: proof.amount, reservation_state: "released" });
+
+  proof.status = "failed";
+  capture.latest_charge.amount_refunded = 0;
+  provider.refund.mockResolvedValue(proof);
+  const failed = event("refund.failed", refundId);
+  await failed.deliver();
+  expect(await eventState(failed.eventId)).toMatchObject({
+    state: "failed", last_error: expect.stringContaining("previously reconciled Stripe refund"),
+  });
+  expect(await state(orderId)).toEqual(original);
+  await expect(refundCancelledCardOrder(orderId, finance.buyer.id, false)).rejects.toThrow("hasn’t confirmed a full refund");
+  provider.refund.mockResolvedValue({ ...proof, id: id("re_") });
+  const unrelated = event("refund.failed", (await provider.refund()).id);
+  await unrelated.deliver();
+  expect(await eventState(unrelated.eventId)).toMatchObject({ state: "processed" });
+  expect(provider.refundCreate).not.toHaveBeenCalled();
+});
+
+it("does not issue a second refund until Stripe proves the previous request failed", async () => {
+  const { session } = await checkout(await makeVariant(1), 1);
+  const orderId = session.client_reference_id!;
+  const intentId = paid(session);
+  await event("checkout.session.completed", session.id).deliver();
+  const [finance, warehouse] = await Promise.all([makeBuyer(), makeBuyer()]);
+  await db.query("insert into public.staff_members (user_id, role) values ($1, 'finance'), ($2, 'warehouse')",
+    [finance.buyer.id, warehouse.buyer.id]);
+  await db.query("select public.cancel_order($1,$2,$3)", [orderId, randomUUID(), warehouse.buyer.id]);
+  const refundId = id("re_");
+  provider.refundCreate.mockImplementationOnce(async (params) => ({
+    ...params, id: refundId, payment_intent: intentId, status: "pending", currency: "gbp",
+  }));
+  expect(await refundCancelledCardOrder(orderId, finance.buyer.id)).toBe("pending");
+  const [requestParams, requestOptions] = provider.refundCreate.mock.calls[0]!;
+  const refund = { ...requestParams, id: refundId, payment_intent: intentId, status: "pending", currency: "gbp" };
+  provider.refundList.mockResolvedValue({ data: [refund], has_more: false });
+  expect(await refundCancelledCardOrder(orderId, finance.buyer.id)).toBe("pending");
+  await db.query("update private.order_operations set created_at=now()-interval '24 hours' where order_id=$1 and action='request_card_refund'", [orderId]);
+  provider.refundList.mockResolvedValueOnce({ data: [], has_more: false });
+  await expect(refundCancelledCardOrder(orderId, finance.buyer.id)).rejects.toThrow("can’t be retried safely");
+  expect(provider.refundCreate).toHaveBeenCalledOnce();
+  expect(await state(orderId)).toMatchObject({ refunded_pence: 0, payment_status: "paid" });
+
+  refund.status = "failed";
+  provider.refundCreate.mockImplementationOnce(async (params) => ({
+    ...params, id: id("re_"), payment_intent: intentId, status: "succeeded", currency: "gbp",
+  }));
+  expect(await refundCancelledCardOrder(orderId, finance.buyer.id)).toBe("refunded");
+  const [retriedParams, retriedOptions] = provider.refundCreate.mock.calls[1]!;
+  expect(retriedOptions.idempotencyKey).not.toBe(requestOptions.idempotencyKey);
+  expect(retriedParams.amount).toBe(requestParams.amount);
+  expect((await db.query("select input from private.order_operations where order_id=$1 and action='request_card_refund' order by created_at", [orderId])).rows)
+    .toMatchObject([{ input: expect.any(Array) }, {
+      input: [finance.buyer.id, "acct_testFixture", retriedParams.charge, retriedParams.amount,
+        requestParams.metadata.edgey_refund_request_id, refundId],
+    }]);
+});
+
+it("counts only successful fresh reservations toward the lower card limit and never blocks resume on that limit", async () => {
+  const sku = await makeVariant(8);
+  for (let i = 0; i < 4; i++) {
+    const attempt = await checkoutInput(sku, 1);
+    expect((await submit({ ...attempt, quoteKey: "stale-quote" })).status).toBe(409);
+  }
+  const [first, second, third] = await Promise.all(Array.from({ length: 3 }, () => checkoutInput(sku, 1)));
+  const [original, duplicate, next, last] = await Promise.all([submit(first), submit(first), submit(second), submit(third)]);
+  expect([original.status, duplicate.status, next.status, last.status]).toEqual([200, 200, 200, 200]);
+  const rejected = await submit(await checkoutInput(sku, 1));
+  expect(rejected.status).toBe(429);
+  expect(sessionsByKey.size).toBe(3);
+  expect((await submit({ attemptToken: first!.attemptToken, action: "resume" })).status).toBe(200);
+  expect((await db.query("select stock_on_hand,stock_reserved from public.variants where id=$1", [sku])).rows)
+    .toEqual([{ stock_on_hand: 8, stock_reserved: 3 }]);
 });

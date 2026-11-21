@@ -3,7 +3,8 @@ import type Stripe from "stripe";
 import { markProviderEvent, recordProviderEvent, recordRefund } from "@/lib/orders";
 import { applyTradeInvoiceEvent, findTradeInvoiceOrder, releaseTerminalInvoice } from "./net30-ledger";
 import { readTradeInvoice, verifyStripeAccount } from "./net30-provider";
-import { findStripeSession } from "./recovery";
+import { assertCardRefund } from "./card-refund";
+import { findStripeSession, stripeAccountId } from "./recovery";
 import { checkoutSessionId, orderId, PaymentReviewError, stripeId } from "./session-identity";
 import { reconcileSession } from "./settle";
 import { getOrder, paymentStore, type ProviderEvent } from "./store";
@@ -143,10 +144,12 @@ async function applyFinancialEffect(stripe: Stripe, type: string, objectId: stri
   if (type === "charge.refunded") {
     if (!/^ch_[A-Za-z0-9]+$/.test(objectId)) throw new PaymentReviewError("Invalid Stripe Charge ID.");
     const charge = await stripe.charges.retrieve(objectId);
+    if (charge.id !== objectId) throw new PaymentReviewError("Stripe Charge identity did not match.");
     if (charge.livemode) return;
     const intentId = stripeId(charge.payment_intent);
     if (!intentId) return;
-    const intent = await stripe.paymentIntents.retrieve(intentId);
+    const intent = await stripe.paymentIntents.retrieve(intentId, { expand: ["latest_charge"] });
+    if (intent.id !== intentId) throw new PaymentReviewError("Stripe PaymentIntent identity did not match.");
     if (!intent.metadata.edgey_order_id) return reconcileTradeRefundEvent(stripe, intent);
     const order = await knownOrder(intent.metadata.edgey_order_id);
     if (order.payment_method === "net30") return reconcileTradeRefundEvent(stripe, intent);
@@ -156,10 +159,18 @@ async function applyFinancialEffect(stripe: Stripe, type: string, objectId: stri
   } else {
     if (!/^re_[A-Za-z0-9]+$/.test(objectId)) throw new PaymentReviewError("Invalid Stripe Refund ID.");
     const refund = await stripe.refunds.retrieve(objectId);
+    if (refund.id !== objectId) throw new PaymentReviewError("Stripe Refund identity did not match.");
+    if (refund.status === "failed" || refund.status === "canceled") {
+      const { data, error } = await paymentStore().rpc("has_recorded_stripe_refund", { p_refund_id: objectId });
+      if (error) throw error;
+      if (data) throw new PaymentReviewError(
+        "A previously reconciled Stripe refund is now failed or cancelled. Finance must review it; no balances or stock were changed.",
+      );
+    }
     if (refund.status !== "succeeded") return;
     const intentId = stripeId(refund.payment_intent);
     if (!intentId) return;
-    const intent = await stripe.paymentIntents.retrieve(intentId);
+    const intent = await stripe.paymentIntents.retrieve(intentId, { expand: ["latest_charge"] });
     await applyRefund(stripe, refund, intent);
   }
 }
@@ -170,6 +181,9 @@ async function applyRefund(stripe: Stripe, refund: Stripe.Refund, intent: Stripe
   const order = await knownOrder(intent.metadata.edgey_order_id);
   if (stripeId(refund.payment_intent) !== intent.id) throw new PaymentReviewError("Stripe Refund does not match the order payment.");
   if (order.payment_method === "net30") return reconcileTradeRefundEvent(stripe, intent);
+  if (order.stripe_checkout_account_id && await stripeAccountId(stripe) !== order.stripe_checkout_account_id) {
+    throw new PaymentReviewError("The configured Stripe sandbox differs from the one used at checkout.");
+  }
   const session = await findStripeSession(stripe, order, intent.id);
   if (!session || stripeId(session.payment_intent) !== intent.id) {
     throw new PaymentReviewError("Could not match the refunded Stripe payment to its Checkout Session.");
@@ -177,6 +191,13 @@ async function applyRefund(stripe: Stripe, refund: Stripe.Refund, intent: Stripe
   const current = await reconcileSession(stripe, order, session);
   if (current.payment_review_refund_id) return;
   if (!current.paid_pence) throw new PaymentReviewError("The refunded Stripe payment is awaiting capture reconciliation.");
+  const charge = intent.latest_charge;
+  if (!charge || typeof charge === "string" || charge.livemode !== false || !charge.paid || !charge.captured ||
+    stripeId(charge.payment_intent) !== intent.id || intent.status !== "succeeded" ||
+    charge.amount_captured !== current.paid_pence || charge.currency !== intent.currency) {
+    throw new PaymentReviewError("Could not verify the refunded Stripe capture.");
+  }
+  assertCardRefund(refund, intent, charge);
   await recordRefund({
     orderId: order.id,
     refundId: refund.id,

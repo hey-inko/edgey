@@ -3,7 +3,7 @@ import { assertSessionMatches, checkoutSessionId, PaymentReviewError } from "./s
 import { paymentStore } from "./store";
 import { getStripe } from "./stripe";
 
-export type CheckoutSuccess = { kind: "pending" | "expired" | "review" } | {
+export type CheckoutSuccess = { kind: "pending" | "expired" | "review" | "cancelled" | "cancelled-refunded" } | {
   kind: "confirmed";
   reference: string;
   deliveryService: string;
@@ -39,7 +39,11 @@ export async function readCheckoutSuccess(sessionId: string): Promise<CheckoutSu
     if (error instanceof PaymentReviewError || (error as { statusCode?: number })?.statusCode === 404) return null;
     throw error;
   }
+  if (order.fulfilment_status === "cancelled" && order.paid_pence > 0 && order.payment_status === "refunded") {
+    return { kind: "cancelled-refunded" };
+  }
   if (order.payment_review_reason || (!order.authorised_at && order.stripe_reconciliation_error)) return { kind: "review" };
+  if (order.fulfilment_status === "cancelled" && order.paid_pence > 0) return { kind: "cancelled" };
   if (!order.authorised_at) return { kind: order.fulfilment_status === "cancelled" ? "expired" : "pending" };
   const { data: items, error: itemsError } = await db.from("order_items")
     .select("variant_id,sku,option_label,quantity,unit_price_pence,net_pence").eq("order_id", order.id).order("variant_id");

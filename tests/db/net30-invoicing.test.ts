@@ -6,7 +6,7 @@ import { POST as net30 } from "@/app/api/checkout/net30/route";
 import { POST as webhook } from "@/app/api/webhooks/stripe/route";
 import { getBuyerSession, getVerifiedBuyer } from "@/lib/auth/server";
 import { quoteCurrentSelection } from "@/lib/checkout/server";
-import { voidCancelledNet30Invoice } from "@/lib/payments/net30";
+import { resolveCancelledNet30Invoice, voidCancelledNet30Invoice } from "@/lib/payments/net30";
 import { reconcileStripePayments } from "@/lib/payments/reconciliation";
 import { requestFingerprint } from "@/lib/requests/rate-limit";
 import { withExhaustedQuoteBudget } from "../helpers/quote-budget";
@@ -418,6 +418,18 @@ it("preserves dispatch when partial and full payment arrive out of order, then r
   expect(await orderState()).toEqual({ ...dispatched, payment_status: "partially_refunded", paid_pence: 12000, refunded_pence: 2000 });
   expect((await db.query("select stock_on_hand,stock_reserved from public.variants where id=$1", [variantId])).rows)
     .toEqual([{ stock_on_hand: 4, stock_reserved: 0 }]);
+  expect((await db.query(`
+    select kind,provider_reference,amount_pence,outstanding_delta_pence
+    from public.finance_post_dispatch_adjustments where order_id=$1
+  `, [orderId])).rows).toEqual([{
+    kind: "refund", provider_reference: refundId, amount_pence: 2000, outstanding_delta_pence: 0,
+  }]);
+  refunds.get(refundId)!.status = "failed";
+  expect((await event("refund.failed", refundId)).stored).toMatchObject({
+    state: "failed", last_error: expect.stringContaining("previously reconciled Stripe refund"),
+  });
+  expect(await orderState()).toEqual({ ...dispatched, payment_status: "partially_refunded", paid_pence: 12000, refunded_pence: 2000 });
+  expect(await position(accountId)).toMatchObject({ outstanding_pence: 0 });
 });
 
 it("retains collectible debt until finance confirms void for a cancelled undispatched order", async () => {
@@ -436,6 +448,81 @@ it("retains collectible debt until finance confirms void for a cancelled undispa
   expect(await position(accountId)).toEqual({ held_pence: 0, outstanding_pence: 0, available_credit_pence: 20000 });
   expect((await db.query("select stock_on_hand,stock_reserved from public.variants where id=$1", [variantId])).rows)
     .toEqual([{ stock_on_hand: 5, stock_reserved: 0 }]);
+});
+
+it("suppresses the buyer link at cancellation and requires provider proof when payment races the void", async () => {
+  const { buyer, staff, accountId } = await openAccount();
+  const variantId = await variant();
+  const { invoice, orderId } = await placeOrder(buyer, variantId);
+  async function buyerLink() {
+    await db.query("begin");
+    try {
+      await db.query("set local role authenticated");
+      await db.query("select set_config('request.jwt.claim.sub',$1,true)", [buyer.id]);
+      return (await db.query("select public.get_own_buyer_invoice_url($1) as url", [orderId])).rows[0]?.url;
+    } finally {
+      await db.query("rollback");
+    }
+  }
+  expect(await buyerLink()).toBe(invoice.hosted_invoice_url);
+  const warehouse = await user("warehouse");
+  await db.query("select public.cancel_order($1,$2,$3)", [orderId, randomUUID(), warehouse.id]);
+  expect(await buyerLink()).toBeNull();
+  expect((await db.query("select public.set_buyer_invoice_url($1,$2,$3) as saved",
+    [orderId, invoice.id, invoice.hosted_invoice_url])).rows[0]?.saved).toBe(false);
+  expect(await position(accountId)).toMatchObject({ outstanding_pence: 12000 });
+  const intent = providerId("pi");
+  captures.set(intent, { id: intent, status: "succeeded", amount_received: 4000, currency: "gbp", livemode: false } as Stripe.PaymentIntent);
+  stripe.invoices.voidInvoice.mockImplementationOnce(async () => {
+    allocate(invoice, 4000, intent);
+    throw new Error("Payment succeeded before void");
+  });
+  expect(await voidCancelledNet30Invoice(orderId, staff.id)).toBe("unresolved");
+  expect(await position(accountId)).toMatchObject({ outstanding_pence: 8000 });
+  expect(await buyerLink()).toBeNull();
+  expect(await voidCancelledNet30Invoice(orderId, staff.id)).toBe("unresolved");
+  expect(stripe.invoices.voidInvoice).toHaveBeenCalledOnce();
+
+  const refundId = providerId("re");
+  const refund = { id: refundId, status: "pending", amount: 4000, currency: "gbp", payment_intent: intent } as Stripe.Refund;
+  refunds.set(refundId, refund);
+  const noteId = providerId("cn");
+  credits.set(noteId, {
+    id: noteId, invoice: invoice.id, currency: "gbp", livemode: false, status: "issued",
+    pre_payment_amount: 8000, post_payment_amount: 4000, total: 12000,
+  } as Stripe.CreditNote);
+  invoice.pre_payment_credit_notes_amount = 8000;
+  invoice.post_payment_credit_notes_amount = 4000;
+  invoice.amount_due = invoice.amount_paid;
+  invoice.amount_remaining = 0;
+  invoice.status = "paid";
+  expect(await resolveCancelledNet30Invoice(orderId, staff.id)).toBe("unresolved");
+  expect(await position(accountId)).toMatchObject({ outstanding_pence: 0 });
+  refund.status = "succeeded";
+  expect(await resolveCancelledNet30Invoice(orderId, staff.id)).toBe("resolved");
+  expect(await resolveCancelledNet30Invoice(orderId, staff.id)).toBe("resolved");
+  expect((await db.query("select fulfilment_status,payment_status,paid_pence,refunded_pence from public.orders where id=$1", [orderId])).rows)
+    .toEqual([{ fulfilment_status: "cancelled", payment_status: "refunded", paid_pence: 4000, refunded_pence: 4000 }]);
+  expect((await db.query("select stock_on_hand,stock_reserved from public.variants where id=$1", [variantId])).rows)
+    .toEqual([{ stock_on_hand: 5, stock_reserved: 0 }]);
+  expect(await buyerLink()).toBeNull();
+});
+
+it("does not consume the lower Net 30 reservation budget on credit refusals", async () => {
+  const { buyer, accountId } = await openAccount(11_999);
+  const variantId = await variant();
+  for (let i = 0; i < 4; i++) {
+    expect(await (await submit(await input(variantId, buyer.email))).json()).toEqual({
+      status: "trade-unavailable", reason: "over-limit",
+    });
+  }
+  await db.query("update public.trade_accounts set credit_limit_pence=50000 where id=$1", [accountId]);
+  const accepted = await Promise.all(Array.from({ length: 3 }, () => input(variantId, buyer.email)));
+  for (const attempt of accepted) expect((await submit(attempt)).status).toBe(200);
+  expect((await submit(await input(variantId, buyer.email))).status).toBe(429);
+  expect((await submit({ action: "resume", attemptToken: accepted[0]!.attemptToken })).status).toBe(200);
+  expect(await position(accountId)).toMatchObject({ held_pence: 0, outstanding_pence: 36000 });
+  expect(stripe.invoices.create).toHaveBeenCalledTimes(3);
 });
 
 it("reconciles credit notes against overdue balances and preserves credit exposure for uncollectible invoices", async () => {

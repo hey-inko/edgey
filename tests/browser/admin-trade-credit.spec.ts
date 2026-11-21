@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { signInStaff } from "./admin-fixtures";
-import { company, withNet30Data } from "./fixtures/net30-data";
+import { company, signInBuyer, withNet30Data } from "./fixtures/net30-data";
 
 async function captureFinance(page: Page, name: string) {
   const directory = process.env.EDGEY_NET30_RENDERS;
@@ -24,7 +24,7 @@ async function captureFinance(page: Page, name: string) {
   if (original) await page.setViewportSize(original);
 }
 
-test("finance changes Net 30 terms without changing invoice exposure and can follow up overdue balances", async ({ page }) => {
+test("finance changes Net 30 terms without changing invoice exposure and can follow up overdue balances", async ({ page, browser, baseURL }) => {
   await withNet30Data(async ({ db, application, buyer, finance, warehouse, variantId }) => {
     await db.query("select public.review_trade_application($1,$2,'approved')", [application, finance.id]);
     const account = await db.query<{ id: string }>("select id from public.approve_trade_account($1,$2,20000,$3)", [
@@ -42,11 +42,31 @@ test("finance changes Net 30 terms without changing invoice exposure and can fol
       buyer.id,
     ]);
     const { id: orderId, order_reference: reference } = order.rows[0]!;
+    const invoiceId = `in_${randomUUID().replaceAll("-", "")}`;
     await db.query(`
       select public.bind_invoice($1,$2,stripe_customer_id,2820,'GBP',now() - interval '40 days',
         now() - interval '10 days','2099-01-05','2099-01-06') from public.trade_accounts where id=$3
-    `, [orderId, `in_${randomUUID().replaceAll("-", "")}`, accountId]);
+    `, [orderId, invoiceId, accountId]);
+    await db.query("select public.set_buyer_invoice_url($1,$2,$3)",
+      [orderId, invoiceId, `https://invoice.stripe.com/i/${invoiceId}`]);
     await db.query("select public.cancel_order($1,$2,$3)", [orderId, randomUUID(), warehouse.id]);
+    const context = await browser.newContext({ baseURL });
+    try {
+      await signInBuyer(context, baseURL!, buyer);
+      const buyerPage = await context.newPage();
+      await buyerPage.goto(`/checkout/net30/${orderId}`);
+      await expect(buyerPage.getByRole("heading", { name: "This account order was cancelled" })).toBeVisible();
+      await expect(buyerPage.getByRole("link", { name: "View invoice" })).toHaveCount(0);
+      await buyerPage.getByRole("link", { name: "View order in your account" }).click();
+      await expect(buyerPage.getByRole("heading", { name: "Order details" })).toBeVisible();
+      await expect(buyerPage.getByRole("link", { name: "View invoice" })).toHaveCount(0);
+      await buyerPage.getByRole("link", { name: "Back to account" }).click();
+      const invoiceRow = buyerPage.getByRole("listitem").filter({ hasText: "PO PO-FOLLOW-UP" });
+      await expect(invoiceRow).toContainText("Cancelled, do not pay");
+      await expect(invoiceRow.getByRole("link", { name: "View invoice for PO PO-FOLLOW-UP" })).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
     await db.query("update public.orders set payment_review_reason='invoice_issued_after_hold_released' where id=$1", [orderId]);
     await signInStaff(page, finance);
     await page.goto("/admin/finance");
@@ -58,6 +78,7 @@ test("finance changes Net 30 terms without changing invoice exposure and can fol
     await expect(paymentReview.getByRole("row", { name: new RegExp(reference) })).toBeVisible();
     await expect(cancelled.getByLabel("Confirm void")).not.toBeChecked();
     await expect(cancelled.getByRole("button", { name: "Verify and void invoice" })).toBeVisible();
+    await expect(cancelled.getByRole("button", { name: "Verify Stripe adjustments" })).toBeVisible();
     await captureFinance(page, "finance-overview");
     await overdue.getByRole("link", { name: company }).click();
     await expect(page).toHaveURL(`/admin/finance/accounts/${accountId}`);

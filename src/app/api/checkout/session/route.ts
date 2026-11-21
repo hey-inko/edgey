@@ -4,7 +4,7 @@ import { isRecord, normaliseAttemptToken, normaliseLines, validateCheckoutFields
 import { readRequestBody } from "@/lib/payments/body";
 import { beginCardPayment, CheckoutOwnerMismatchError, CheckoutUnavailableError, closeCardPayment, resumeCardPayment } from "@/lib/payments/checkout";
 import { checkoutOrigin, PaymentConfigurationError } from "@/lib/payments/config";
-import { CheckoutRateLimitError, limitCheckout } from "@/lib/payments/rate-limit";
+import { checkoutRateKeys, checkoutRateLimitMessage, isCheckoutRateLimit, limitCheckout } from "@/lib/payments/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -94,10 +94,11 @@ export async function POST(request: Request) {
       contact: { email, businessName, recipientName, buyingForWork },
       address: { line1, line2: line2 || undefined, town, region: region || undefined, postcode, country: "GB" },
     }, async () => {
+      await limitCheckout(request, origin, "checkout_review", email);
       const result = await priceCheckoutAttempt(body);
       if (result.status !== "ready") throw new NeedsCheckoutReview(result);
       return result.orderInput;
-    }, () => limitCheckout(request, origin, "checkout", email));
+    }, () => checkoutRateKeys(request, origin, email));
     return reply({ status: "payment", ...payment }, 200);
   } catch (error) {
     if (error instanceof NeedsCheckoutReview) {
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
       console.error("Card payment configuration is unavailable.");
       return reply({ status: "error", message: "Card payment is unavailable right now. Try again later." }, 503);
     }
-    if (error instanceof CheckoutRateLimitError) return reply({ status: "error", message: error.message }, 429);
+    if (isCheckoutRateLimit(error)) return reply({ status: "error", message: checkoutRateLimitMessage }, 429);
     if (error instanceof CheckoutOwnerMismatchError) return reply({
       status: "error", message: error.message, attemptPending: true, attemptOwnerMismatch: true,
     }, 409);

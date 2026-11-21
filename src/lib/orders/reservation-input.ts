@@ -1,6 +1,8 @@
 import type { CreateOrderInput } from "./index";
 
-export function orderReservationArgs(input: CreateOrderInput) {
+export type ReservationRateKeys = { checkout_ip_key: string; checkout_email_key: string };
+
+export function orderReservationArgs(input: CreateOrderInput, rateKeys?: ReservationRateKeys) {
   return {
     p_attempt_token: input.attemptToken,
     p_lines: input.lines.map(({ variantId, quantity, unitPricePence }) => ({
@@ -22,6 +24,7 @@ export function orderReservationArgs(input: CreateOrderInput) {
       vat_rate_bps: input.totals.vatRateBps,
       vat_pence: input.totals.vatPence,
       gross_pence: input.totals.grossPence,
+      ...rateKeys,
     },
     p_hold_expires_at: input.holdExpiresAt,
     p_delivery_service: input.deliveryService,
