@@ -272,9 +272,9 @@ test("reconciles booked goods, London DST buckets, payment adjustments, identiti
   ]);
   expect(sales.buyers).toEqual({ new: 1, returning: 2 });
   expect(sales.products.slice(0, 2)).toEqual([
-    expect.objectContaining({ id: selected.id, revenuePence: 12500, units: 15, shareBps: 7571,
-      available: 0, weeklyUnits: 26.25, weeksCover: 0, stockFlag: "low" }),
-    expect.objectContaining({ id: available.id, revenuePence: 4010, units: 4, shareBps: 2429,
+    expect.objectContaining({ id: selected.id, published: false, revenuePence: 12500, units: 15, shareBps: 7571,
+      available: 0, weeklyUnits: 26.25, weeksCover: 0, stockFlag: null }),
+    expect.objectContaining({ id: available.id, published: true, revenuePence: 4010, units: 4, shareBps: 2429,
       available: 8, weeklyUnits: 7, weeksCover: 8 / 7, stockFlag: "low" }),
   ]);
   expect(sales.products.find((p) => p.id === soldOut.id)).toMatchObject({

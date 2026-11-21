@@ -39,7 +39,7 @@ export type SalesKpis = Omit<SalesSeries, "date"> & {
 };
 
 export type SalesProduct = {
-  id: string; sku: string; name: string; units: number; revenuePence: number;
+  id: string; sku: string; name: string; published: boolean; units: number; revenuePence: number;
   marginPence: number | null; marginBps: number | null; shareBps: number | null;
   available: number; weeklyUnits: number; weeksCover: number | null;
   stockFlag: "low" | "never_sold" | "no_sales" | null;

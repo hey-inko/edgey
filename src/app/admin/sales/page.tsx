@@ -172,10 +172,10 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       </div>
       <AdminSection title="Stock cover">
         <p className="sales-section-intro admin-muted">
-          Available now, compared with sales in the chosen period. Low cover means less than two weeks at that rate.
+          For published blades, compare stock available now with sales in the chosen period. Low cover means less than two weeks at that rate.
           <span className="sales-scroll-hint"> Scroll across for more columns.</span>
         </p>
-        <StockTable products={report.products} />
+        <StockTable products={report.products.filter((product) => product.published)} />
       </AdminSection>
       <details className="admin-panel sales-details sales-definitions">
         <summary>How these figures are worked out</summary>

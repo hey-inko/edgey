@@ -48,6 +48,12 @@ test("sales works at 320px with keyboard sorting, date filters, chart data and d
     const download = page.waitForEvent("download");
     await page.getByRole("link", { name: "Download product sales CSV" }).click();
     expect((await download).suggestedFilename()).toBe("edgey-sales-products-2001-10-27-to-2001-10-29.csv");
+
+    await page.getByLabel("From", { exact: true }).fill("2001-10-30");
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page.getByText(/enter a valid start and end date/i)).toBeFocused();
+    await expect(page.getByLabel("From", { exact: true })).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByRole("link", { name: "Download daily sales CSV" })).toHaveCount(0);
   } finally {
     if (orderId) {
       await db.query("delete from public.order_items where order_id = $1", [orderId]);

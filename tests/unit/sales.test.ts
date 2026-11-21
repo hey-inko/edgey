@@ -35,7 +35,7 @@ describe("sales reporting filters", () => {
 
 describe("sales CSV", () => {
   const product: SalesProduct = {
-    id: "1", sku: "A", name: '=HYPERLINK("x")', units: 2, revenuePence: 2001,
+    id: "1", sku: "@A", name: '  =HYPERLINK("x")', published: true, units: 2, revenuePence: 2001,
     marginPence: -119, marginBps: -595, shareBps: 10000, available: 3, weeklyUnits: 0.5,
     weeksCover: 6, stockFlag: null, costUnknown: false,
   };
@@ -56,7 +56,7 @@ describe("sales CSV", () => {
     const csv = salesCsv(report, "products", { sort: "marginPence", dir: "asc" });
     expect(csv.split("\r\n")).toEqual([
       '"SKU","Product","Units","Revenue ex VAT (GBP)","Gross margin (GBP)","Gross margin (%)","Cost status","Revenue share (%)"',
-      `"A","'=HYPERLINK(""x"")",2,20.01,-1.19,-5.95,"Cost available",100.00`,
+      `"'@A","'  =HYPERLINK(""x"")",2,20.01,-1.19,-5.95,"Cost available",100.00`,
       '"B","Unknown",2,20.01,,,"Cost missing",100.00',
       "",
     ]);

@@ -10,7 +10,7 @@
 
 The admin extension adds GBP tier editing with VAT, staff-only supplier and landed costs, and signed stock adjustments. The three newly priced SKUs remain draft. This does not import supplier data or real stock. Apply the additive database migrations on staging to enable the new cost, adjustment and archive controls.
 
-Staff desk → Sales adds period comparisons, booked product revenue, estimated margin for finance, refund and credit totals, and stock cover. Daily and product CSVs use the same staff permissions. Apply the additive Sales migrations before loading the reversible demo dataset; the dashboard shows an unavailable notice if the app deploys first. Sales reporting and the demo dataset have not been verified on hosted staging.
+Staff desk → Sales adds period comparisons, booked product revenue, estimated margin for finance, refund and credit totals, and stock cover. Daily and product CSVs use the same staff permissions. Apply the additive Sales migration during a quiet window for the order and stock indexes; the dashboard shows an unavailable notice if the app deploys first. Sales reporting and the demo dataset have not been verified on hosted staging.
 
 ## Hosted staging evidence (21 November 2026)
 

@@ -143,7 +143,8 @@ begin
       bool_or(margin_pence is null) as cost_unknown
     from current_lines group by variant_id
   ), product_rows as (
-    select v.id, v.sku, p.name, coalesce(t.units, 0) as units, coalesce(t.revenue, 0) as revenue,
+    select v.id, v.sku, p.name, v.publication_status = 'published' as published,
+      coalesce(t.units, 0) as units, coalesce(t.revenue, 0) as revenue,
       v.stock_on_hand - v.stock_reserved as available,
       case when can_see_margin and not coalesce(t.cost_unknown, false) then coalesce(t.margin_pence, 0) end
         as margin_pence,
@@ -154,13 +155,14 @@ begin
     where v.publication_status = 'published' or t.variant_id is not null
   ), products_json as (
     select coalesce(jsonb_agg(jsonb_build_object(
-      'id', p.id, 'sku', p.sku, 'name', p.name, 'units', p.units, 'revenuePence', p.revenue,
+      'id', p.id, 'sku', p.sku, 'name', p.name, 'published', p.published, 'units', p.units, 'revenuePence', p.revenue,
       'marginPence', p.margin_pence, 'marginBps', round(10000 * p.margin_pence / nullif(p.revenue, 0)),
       'shareBps', round(10000 * p.revenue::numeric / nullif(k.revenue, 0)),
       'available', p.available, 'weeklyUnits', p.units::numeric * 7 / days,
       'weeksCover', p.available::numeric * days / nullif(p.units::numeric * 7, 0),
       'costUnknown', p.cost_unknown,
       'stockFlag', case
+        when not p.published then null
         when p.units = 0 then case when exists (
           select 1 from public.order_items i join public.orders o on o.id = i.order_id
           where i.variant_id = p.id and o.authorised_at is not null
